@@ -919,20 +919,61 @@ function recommendFollowCard() {
   `;
 }
 
+function svgIcon(className, body, viewBox = "0 0 24 24") {
+  return `<svg class="${className}" viewBox="${viewBox}" aria-hidden="true" focusable="false">${body}</svg>`;
+}
+
+function composerToolIcons() {
+  return [
+    svgIcon("composer-tool-icon", `
+      <path d="M8.2 4.5 6.4 19.5"></path>
+      <path d="M16.8 4.5 15 19.5"></path>
+      <path d="M4.5 9.2h15"></path>
+      <path d="M3.8 14.8h15"></path>
+    `),
+    svgIcon("composer-tool-icon", `
+      <circle cx="12" cy="12" r="8.2"></circle>
+      <circle cx="9.1" cy="10.1" r="1.1" fill="currentColor"></circle>
+      <circle cx="14.9" cy="10.1" r="1.1" fill="currentColor"></circle>
+      <path d="M8.7 14.1c1.6 2 5 2 6.6 0"></path>
+    `),
+    svgIcon("composer-tool-icon", `
+      <rect x="5" y="6" width="14" height="12" rx="1.8"></rect>
+      <circle cx="9.1" cy="10" r="1.1" fill="currentColor"></circle>
+      <path d="m7.2 15 3.2-3 2.3 2 2.8-3.4 2.8 4.4"></path>
+    `),
+    svgIcon("composer-tool-icon", `
+      <rect x="4.8" y="7.2" width="11.8" height="9.6" rx="1.8"></rect>
+      <path d="M16.6 10.2 20 8.4v7.2l-3.4-1.8"></path>
+      <path d="m9.5 10.2 3.7 2-3.7 2v-4Z" fill="currentColor" stroke="none"></path>
+    `),
+    svgIcon("composer-tool-icon", `
+      <rect x="5" y="5" width="14" height="14" rx="1.2"></rect>
+      <path d="M8.5 17V8"></path>
+      <path d="M11.5 17V7"></path>
+      <path d="M14.5 17V9"></path>
+    `),
+  ].map((icon) => `<span>${icon}</span>`).join("");
+}
+
+function composerActionIcon(color, body) {
+  return `<i class="square-icon ${color}">${svgIcon("square-svg", body)}</i>`;
+}
+
 function composer() {
   return `
     <section class="card composer">
       <div class="composer-top">
         <span class="composer-avatar avatar"></span>
         <span class="composer-placeholder">分享此刻的想法...</span>
-        <div class="composer-tools" aria-hidden="true"><span>#</span><span>☺</span><span>▧</span><span>▣</span><span>▥</span></div>
+        <div class="composer-tools" aria-hidden="true">${composerToolIcons()}</div>
         <div class="composer-submit"><span>同步到圈子⌄</span><button class="blue-btn">发想法</button></div>
       </div>
       <div class="composer-bottom">
-        <button><i class="square-icon green">?</i><span>提问题</span></button>
-        <button><i class="square-icon blue">■</i><span>写回答</span></button>
-        <button><i class="square-icon orange">✎</i><span>写文章</span></button>
-        <button><i class="square-icon pink">▶</i><span>发视频</span></button>
+        <button>${composerActionIcon("green", `<path d="M9 9.2a3 3 0 1 1 4.6 2.6c-1 .7-1.6 1.2-1.6 2.7"></path><path d="M12 18h.01"></path>`)}<span>提问题</span></button>
+        <button>${composerActionIcon("blue", `<rect x="6.5" y="6.5" width="11" height="11" rx="2.2" fill="currentColor" stroke="none"></rect>`)}<span>写回答</span></button>
+        <button>${composerActionIcon("orange", `<path d="M7 17l2.4-.5 7.1-7.1-1.9-1.9-7.1 7.1L7 17Z"></path><path d="M13.7 8.4l1.9 1.9"></path>`)}<span>写文章</span></button>
+        <button>${composerActionIcon("pink", `<path d="M9 7.8v8.4l7-4.2-7-4.2Z" fill="currentColor" stroke="none"></path>`)}<span>发视频</span></button>
       </div>
     </section>
   `;
