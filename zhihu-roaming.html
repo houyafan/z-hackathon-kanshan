@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>知乎 - 有问题，就会有答案</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            background-color: #f6f6f6;
+            color: #121212;
+        }
+        
+        /* Header */
+        header {
+            background-color: #fff;
+            box-shadow: 0 1px 3px rgba(18, 18, 18, 0.1);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        
+        .header-inner {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+            height: 52px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .logo {
+            font-size: 24px;
+            font-weight: 700;
+            color: #0084ff;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+        }
+        
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #0084ff 0%, #0066cc 100%);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 18px;
+            margin-right: 8px;
+        }
+        
+        .search-bar {
+            flex: 1;
+            max-width: 400px;
+            margin: 0 40px;
+            position: relative;
+        }
+        
+        .search-bar input {
+            width: 100%;
+            height: 36px;
+            padding: 0 40px 0 16px;
+            border: 1px solid #ebebeb;
+            border-radius: 20px;
+            background-color: #f6f6f6;
+            font-size: 14px;
+            outline: none;
+            transition: all 0.3s;
+        }
+        
+        .search-bar input:focus {
+            background-color: #fff;
+            border-color: #0084ff;
+        }
+        
+        .search-bar button {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 18px;
+            color: #8590a6;
+        }
+        
+        .nav-items {
+            display: flex;
+            align-items: center;
+            gap: 24px;
+        }
+        
+        .nav-item {
+            font-size: 15px;
+            color: #121212;
+            text-decoration: none;
+            padding: 8px 0;
+            position: relative;
+        }
+        
+        .nav-item.active::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background-color: #0084ff;
+            border-radius: 2px;
+        }
+        
+        .nav-btn {
+            background-color: #0084ff;
+            color: #fff;
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-size: 14px;
+            text-decoration: none;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        
+        .nav-btn:hover {
+            background-color: #0066cc;
+        }
+        
+        /* Main Content */
+        .main-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            display: flex;
+            gap: 20px;
+        }
+        
+        /* Left Sidebar */
+        .left-sidebar {
+            width: 200px;
+            flex-shrink: 0;
+        }
+        
+        .sidebar-card {
+            background-color: #fff;
+            border-radius: 8px;
+            padding: 12px 0;
+            margin-bottom: 16px;
+        }
+        
+        .sidebar-item {
+            display: flex;
+            align-items: center;
+            padding: 12px 20px;
+            color: #121212;
+            text-decoration: none;
+            font-size: 15px;
+            transition: background-color 0.3s;
+        }
+        
+        .sidebar-item:hover {
+            background-color: #f6f6f6;
+        }
+        
+        .sidebar-item.active {
+            color: #0084ff;
+            background-color: #f6f7f9;
+        }
+        
+        .sidebar-icon {
+            margin-right: 12px;
+            font-size: 18px;
+        }
+        
+        /* Main Feed */
+        .main-feed {
+            flex: 1;
+            min-width: 0;
+        }
+        
+        .feed-card {
+            background-color: #fff;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 12px;
+            cursor: pointer;
+            transition: box-shadow 0.3s;
+        }
+        
+        .feed-card:hover {
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+        }
+        
+        .feed-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #121212;
+            margin-bottom: 10px;
+            line-height: 1.4;
+        }
+        
+        .feed-content {
+            font-size: 15px;
+            color: #333;
+            line-height: 1.6;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            margin-bottom: 12px;
+        }
+        
+        .feed-meta {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            font-size: 14px;
+            color: #8590a6;
+        }
+        
+        .feed-author {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .author-avatar {
+            width: 24px;
+            height: 24px;
+            background: linear-gradient(135deg, #0084ff 0%, #0066cc 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 12px;
+        }
+        
+        .feed-stats {
+            display: flex;
+            gap: 16px;
+            margin-left: auto;
+        }
+        
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        /* Right Sidebar */
+        .right-sidebar {
+            width: 300px;
+            flex-shrink: 0;
+        }
+        
+        .profile-card {
+            background-color: #fff;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 16px;
+            text-align: center;
+        }
+        
+        .profile-avatar {
+            width: 72px;
+            height: 72px;
+            background: linear-gradient(135deg, #0084ff 0%, #0066cc 100%);
+            border-radius: 50%;
+            margin: 0 auto 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 28px;
+        }
+        
+        .profile-name {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        
+        .profile-desc {
+            font-size: 14px;
+            color: #8590a6;
+            margin-bottom: 16px;
+        }
+        
+        .profile-stats {
+            display: flex;
+            justify-content: space-around;
+            padding-top: 12px;
+            border-top: 1px solid #f0f0f0;
+        }
+        
+        .stat {
+            text-align: center;
+        }
+        
+        .stat-number {
+            font-size: 18px;
+            font-weight: 600;
+            color: #121212;
+        }
+        
+        .stat-label {
+            font-size: 13px;
+            color: #8590a6;
+        }
+        
+        .hot-topics {
+            background-color: #fff;
+            border-radius: 8px;
+            padding: 16px 0;
+        }
+        
+        .hot-title {
+            font-size: 16px;
+            font-weight: 600;
+            padding: 0 16px 12px;
+            border-bottom: 1px solid #f0f0f0;
+            margin-bottom: 8px;
+        }
+        
+        .hot-item {
+            display: flex;
+            padding: 10px 16px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        
+        .hot-item:hover {
+            background-color: #f6f6f6;
+        }
+        
+        .hot-rank {
+            width: 24px;
+            font-size: 18px;
+            font-weight: 600;
+            color: #ff4d4f;
+            flex-shrink: 0;
+        }
+        
+        .hot-rank.hot-3 {
+            color: #faad14;
+        }
+        
+        .hot-rank.normal {
+            color: #8590a6;
+            font-size: 16px;
+            font-weight: 400;
+        }
+        
+        .hot-content {
+            flex: 1;
+        }
+        
+        .hot-text {
+            font-size: 15px;
+            color: #121212;
+            margin-bottom: 4px;
+        }
+        
+        .hot-metrics {
+            font-size: 13px;
+            color: #8590a6;
+        }
+        
+        /* 3D Model Container */
+        .model-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 200px;
+            height: 250px;
+            background-color: rgba(255, 255, 255, 0.95);
+            border-radius: 16px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+            z-index: 1000;
+            overflow: hidden;
+        }
+        
+        .model-header {
+            background: linear-gradient(135deg, #0084ff 0%, #0066cc 100%);
+            color: white;
+            padding: 10px 16px;
+            font-size: 14px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .model-close {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 18px;
+            cursor: pointer;
+            padding: 0;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            transition: background-color 0.3s;
+        }
+        
+        .model-close:hover {
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+        
+        #model-canvas {
+            width: 100%;
+            height: calc(100% - 40px);
+        }
+        
+        .model-minimize {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, #0084ff 0%, #0066cc 100%);
+            border-radius: 50%;
+            box-shadow: 0 4px 12px rgba(0, 132, 255, 0.4);
+            cursor: pointer;
+            z-index: 1000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 24px;
+            transition: transform 0.3s;
+        }
+        
+        .model-minimize:hover {
+            transform: scale(1.1);
+        }
+        
+        /* Roaming Model Styles */
+        .roaming-model {
+            position: fixed;
+            width: 120px;
+            height: 150px;
+            z-index: 999;
+            cursor: pointer;
+            transition: transform 0.1s ease-out;
+        }
+        
+        .roaming-model:hover {
+            transform: scale(1.1);
+        }
+        
+        .roaming-model-canvas {
+            width: 100%;
+            height: 100%;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.9);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+            overflow: hidden;
+        }
+        
+        .roaming-speech {
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            white-space: nowrap;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            margin-bottom: 8px;
+            display: none;
+        }
+        
+        .roaming-speech::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 6px solid transparent;
+            border-top-color: white;
+        }
+        
+        .roaming-model:hover .roaming-speech {
+            display: block;
+        }
+        
+        .click-hint {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 132, 255, 0.9);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 14px;
+            z-index: 1000;
+            animation: fadeInOut 3s ease-in-out;
+        }
+        
+        @keyframes fadeInOut {
+            0%, 100% { opacity: 0; }
+            20%, 80% { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header>
+        <div class="header-inner">
+            <a href="#" class="logo">
+                <div class="logo-icon">知</div>
+                <span>知乎</span>
+            </a>
+            
+            <div class="search-bar">
+                <input type="text" placeholder="探索感兴趣的内容">
+                <button>🔍</button>
+            </div>
+            
+            <div class="nav-items">
+                <a href="#" class="nav-item active">首页</a>
+                <a href="#" class="nav-item">知学堂</a>
+                <a href="#" class="nav-item">发现</a>
+                <a href="#" class="nav-item">等你来答</a>
+                <button class="nav-btn">提问</button>
+            </div>
+        </div>
+    </header>
+    
+    <!-- Main Content -->
+    <div class="main-container">
+        <!-- Left Sidebar -->
+        <aside class="left-sidebar">
+            <nav class="sidebar-card">
+                <a href="#" class="sidebar-item active">
+                    <span class="sidebar-icon">🏠</span>
+                    <span>首页</span>
+                </a>
+                <a href="#" class="sidebar-item">
+                    <span class="sidebar-icon">🔔</span>
+                    <span>消息通知</span>
+                </a>
+                <a href="#" class="sidebar-item">
+                    <span class="sidebar-icon">💬</span>
+                    <span>私信</span>
+                </a>
+                <a href="#" class="sidebar-item">
+                    <span class="sidebar-icon">📌</span>
+                    <span>我的收藏</span>
+                </a>
+                <a href="#" class="sidebar-item">
+                    <span class="sidebar-icon">📝</span>
+                    <span>我的创作</span>
+                </a>
+            </nav>
+        </aside>
+        
+        <!-- Main Feed -->
+        <main class="main-feed">
+            <article class="feed-card">
+                <h2 class="feed-title">为什么越来越多的年轻人开始选择「躺平」？背后的社会原因是什么？</h2>
+                <p class="feed-content">这是一个值得深思的社会现象。在当今快速发展的时代，年轻人面临着前所未有的压力：高房价、职场竞争、教育成本...种种因素交织在一起，让一部分年轻人选择了「躺平」的生活方式。但这真的是消极逃避吗？或许我们应该从更深层次去理解这一现象...</p>
+                <div class="feed-meta">
+                    <div class="feed-author">
+                        <div class="author-avatar">张</div>
+                        <span>张三</span>
+                    </div>
+                    <div class="feed-stats">
+                        <span class="stat-item">👍 2.3k</span>
+                        <span class="stat-item">💬 456</span>
+                    </div>
+                </div>
+            </article>
+            
+            <article class="feed-card">
+                <h2 class="feed-title">如何看待人工智能技术的快速发展？它会对未来就业产生怎样的影响？</h2>
+                <p class="feed-content">AI技术正在以前所未有的速度改变着我们的生活。从ChatGPT到Midjourney，从自动驾驶到智能客服，人工智能已经渗透到各个领域。面对这一趋势，有人担忧失业问题，有人则看到了新的机遇。那么，我们应该如何正确看待AI的发展，又该如何为未来做好准备？</p>
+                <div class="feed-meta">
+                    <div class="feed-author">
+                        <div class="author-avatar">李</div>
+                        <span>李四博士</span>
+                    </div>
+                    <div class="feed-stats">
+                        <span class="stat-item">👍 5.6k</span>
+                        <span class="stat-item">💬 892</span>
+                    </div>
+                </div>
+            </article>
+            
+            <article class="feed-card">
+                <h2 class="feed-title">有哪些高质量的书籍值得反复阅读？</h2>
+                <p class="feed-content">读书是提升自我的最佳途径。有些书读一遍是不够的，需要反复品味才能理解其中的深意。在这里，我想分享一些对我影响深远的书籍：《人类简史》让我重新认识人类文明的发展；《思考，快与慢》让我了解大脑的运作机制；《活着》让我珍惜当下的生活...</p>
+                <div class="feed-meta">
+                    <div class="feed-author">
+                        <div class="author-avatar">王</div>
+                        <span>王五爱读书</span>
+                    </div>
+                    <div class="feed-stats">
+                        <span class="stat-item">👍 1.8k</span>
+                        <span class="stat-item">💬 324</span>
+                    </div>
+                </div>
+            </article>
+            
+            <article class="feed-card">
+                <h2 class="feed-title">程序员如何在35岁之后保持职业竞争力？</h2>
+                <p class="feed-content">「35岁危机」是很多程序员都在担心的问题。但年龄从来不是限制，关键在于如何保持学习和成长。根据我的观察，那些成功度过这一阶段的程序员，都有几个共同特点：持续学习新技术、注重软技能提升、有自己的技术影响力...</p>
+                <div class="feed-meta">
+                    <div class="feed-author">
+                        <div class="author-avatar">赵</div>
+                        <span>老赵说编程</span>
+                    </div>
+                    <div class="feed-stats">
+                        <span class="stat-item">👍 8.2k</span>
+                        <span class="stat-item">💬 1.2k</span>
+                    </div>
+                </div>
+            </article>
+        </main>
+        
+        <!-- Right Sidebar -->
+        <aside class="right-sidebar">
+            <div class="profile-card">
+                <div class="profile-avatar">知</div>
+                <div class="profile-name">知乎用户</div>
+                <div class="profile-desc">记录生活，分享知识</div>
+                <div class="profile-stats">
+                    <div class="stat">
+                        <div class="stat-number">128</div>
+                        <div class="stat-label">关注</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-number">2.5k</div>
+                        <div class="stat-label">粉丝</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-number">568</div>
+                        <div class="stat-label">获赞</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="hot-topics">
+                <div class="hot-title">🔥 热榜</div>
+                <div class="hot-item">
+                    <div class="hot-rank">1</div>
+                    <div class="hot-content">
+                        <div class="hot-text">如何看待2024年的经济形势？</div>
+                        <div class="hot-metrics">6789万热度</div>
+                    </div>
+                </div>
+                <div class="hot-item">
+                    <div class="hot-rank">2</div>
+                    <div class="hot-content">
+                        <div class="hot-text">有哪些让你相见恨晚的高效工作方法？</div>
+                        <div class="hot-metrics">5432万热度</div>
+                    </div>
+                </div>
+                <div class="hot-item">
+                    <div class="hot-rank hot-3">3</div>
+                    <div class="hot-content">
+                        <div class="hot-text">你见过最惊艳的城市设计是什么样的？</div>
+                        <div class="hot-metrics">4321万热度</div>
+                    </div>
+                </div>
+                <div class="hot-item">
+                    <div class="hot-rank normal">4</div>
+                    <div class="hot-content">
+                        <div class="hot-text">如何培养良好的阅读习惯？</div>
+                        <div class="hot-metrics">3210万热度</div>
+                    </div>
+                </div>
+                <div class="hot-item">
+                    <div class="hot-rank normal">5</div>
+                    <div class="hot-content">
+                        <div class="hot-text">人工智能会取代哪些职业？</div>
+                        <div class="hot-metrics">2109万热度</div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </div>
+    
+    <!-- Roaming 3D Model -->
+    <div class="roaming-model" id="roamingModel">
+        <div class="roaming-speech" id="roamingSpeech">嗨！点击让我溜达~</div>
+        <div class="roaming-model-canvas" id="roamingCanvas"></div>
+    </div>
+    
+    <div class="click-hint" id="clickHint">点击页面任意位置，让我溜达过去！</div>
+    
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        
+        let scene, camera, renderer, controls, model, mixer;
+        const clock = new THREE.Clock();
+        let bones = {};
+        let modelParts = {};
+        let isWalking = true;
+        let walkTime = 0;
+        let isModelVisible = true;
+        
+        function init3D() {
+            const container = document.getElementById('model-canvas');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            
+            scene = new THREE.Scene();
+            
+            camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 1000);
+            camera.position.set(3, 2, 4);
+            
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(width, height);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(renderer.domElement);
+            
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.enableZoom = false;
+            controls.enablePan = false;
+            controls.minPolarAngle = Math.PI / 4;
+            controls.maxPolarAngle = Math.PI / 2;
+            
+            addSkybox();
+            addLights();
+            addGround();
+            loadModel();
+            animate();
+            
+            window.addEventListener('resize', onWindowResize);
+        }
+        
+        function addSkybox() {
+            const textureLoader = new THREE.TextureLoader();
+            textureLoader.load(
+                'mobefqrv.png',
+                (texture) => {
+                    texture.mapping = THREE.EquirectangularReflectionMapping;
+                    
+                    const skyGeometry = new THREE.SphereGeometry(50, 64, 64);
+                    const skyMaterial = new THREE.MeshBasicMaterial({
+                        map: texture,
+                        side: THREE.BackSide
+                    });
+                    const skyMesh = new THREE.Mesh(skyGeometry, skyMaterial);
+                    scene.add(skyMesh);
+                },
+                undefined,
+                (error) => {
+                    console.error('Error loading skybox:', error);
+                    scene.background = new THREE.Color(0x87ceeb);
+                }
+            );
+        }
+        
+        function addLights() {
+            const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
+            directionalLight.position.set(5, 10, 5);
+            scene.add(directionalLight);
+            
+            const backLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            backLight.position.set(-5, 5, -5);
+            scene.add(backLight);
+        }
+        
+        function addGround() {
+            const groundGeometry = new THREE.PlaneGeometry(20, 20, 64, 64);
+            
+            const vertices = groundGeometry.attributes.position.array;
+            for (let i = 0; i < vertices.length; i += 3) {
+                const x = vertices[i];
+                const y = vertices[i + 1];
+                const wave = Math.sin(x * 0.5) * Math.cos(y * 0.5) * 0.1;
+                vertices[i + 2] = wave;
+            }
+            groundGeometry.computeVertexNormals();
+            
+            const groundMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x1e90ff,
+                roughness: 0.3,
+                metalness: 0.1,
+                transparent: true,
+                opacity: 0.8
+            });
+            
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = -Math.PI / 2;
+            ground.position.y = -1.2;
+            scene.add(ground);
+        }
+        
+        function loadModel() {
+            const loader = new GLTFLoader();
+            loader.load(
+                '低面数.glb',
+                (gltf) => {
+                    model = gltf.scene;
+                    
+                    model.traverse((child) => {
+                        if (child.isMesh) {
+                            child.castShadow = true;
+                            child.receiveShadow = true;
+                            modelParts[child.name] = child;
+                        }
+                        if (child.isBone) {
+                            bones[child.name] = child;
+                        }
+                    });
+                    
+                    const box = new THREE.Box3().setFromObject(model);
+                    const size = box.getSize(new THREE.Vector3());
+                    const center = box.getCenter(new THREE.Vector3());
+                    
+                    const maxDim = Math.max(size.x, size.y, size.z);
+                    const scale = 1.5 / maxDim;
+                    model.scale.multiplyScalar(scale);
+                    model.position.sub(center.multiplyScalar(scale));
+                    model.position.y -= 0.5;
+                    
+                    scene.add(model);
+                    
+                    addBoat();
+                    
+                    if (gltf.animations && gltf.animations.length > 0) {
+                        mixer = new THREE.AnimationMixer(model);
+                        const action = mixer.clipAction(gltf.animations[0]);
+                        action.play();
+                    }
+                },
+                undefined,
+                (error) => {
+                    console.error('Error loading model:', error);
+                    addPlaceholder();
+                }
+            );
+        }
+        
+        function addPlaceholder() {
+            const geometry = new THREE.BoxGeometry(0.8, 1.2, 0.4);
+            const material = new THREE.MeshStandardMaterial({ color: 0x0084ff });
+            const cube = new THREE.Mesh(geometry, material);
+            cube.position.y = -0.4;
+            scene.add(cube);
+            model = cube;
+        }
+        
+        let boat;
+        function addBoat() {
+            const boatGroup = new THREE.Group();
+            
+            const hullGeometry = new THREE.BoxGeometry(0.8, 0.2, 0.3);
+            const hullMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+            const hull = new THREE.Mesh(hullGeometry, hullMaterial);
+            hull.position.y = -0.9;
+            boatGroup.add(hull);
+            
+            const cabinGeometry = new THREE.BoxGeometry(0.3, 0.2, 0.2);
+            const cabinMaterial = new THREE.MeshStandardMaterial({ color: 0xCD853F });
+            const cabin = new THREE.Mesh(cabinGeometry, cabinMaterial);
+            cabin.position.set(0, -0.7, 0);
+            boatGroup.add(cabin);
+            
+            const mastGeometry = new THREE.CylinderGeometry(0.02, 0.02, 0.6);
+            const mastMaterial = new THREE.MeshStandardMaterial({ color: 0x654321 });
+            const mast = new THREE.Mesh(mastGeometry, mastMaterial);
+            mast.position.set(0.1, -0.5, 0);
+            boatGroup.add(mast);
+            
+            const sailGeometry = new THREE.PlaneGeometry(0.3, 0.4);
+            const sailMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0xFFFFFF,
+                side: THREE.DoubleSide
+            });
+            const sail = new THREE.Mesh(sailGeometry, sailMaterial);
+            sail.position.set(0.25, -0.5, 0);
+            sail.rotation.y = Math.PI / 2;
+            boatGroup.add(sail);
+            
+            boatGroup.position.z = 2;
+            boat = boatGroup;
+            scene.add(boat);
+        }
+        
+        function onWindowResize() {
+            const container = document.getElementById('model-canvas');
+            if (!container) return;
+            
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+            renderer.setSize(width, height);
+        }
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            const delta = clock.getDelta();
+            
+            if (mixer) {
+                mixer.update(delta);
+            }
+            
+            if (model && isWalking) {
+                walkTime += delta * 3;
+                
+                const bounce = Math.sin(walkTime) * 0.05;
+                model.position.y = -0.5 + bounce;
+                
+                const sway = Math.sin(walkTime * 2) * 0.02;
+                model.rotation.z = sway;
+                
+                model.rotation.y = Math.sin(walkTime * 0.5) * 0.1;
+            }
+            
+            if (boat) {
+                const boatBounce = Math.sin(walkTime * 1.5) * 0.05;
+                boat.position.y = -0.9 + boatBounce;
+                boat.rotation.z = Math.sin(walkTime * 1.5) * 0.05;
+                boat.rotation.y = Math.sin(walkTime * 0.3) * 0.2;
+            }
+            
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        
+        window.toggleModel = function() {
+            isModelVisible = !isModelVisible;
+            const container = document.getElementById('modelContainer');
+            const minimize = document.getElementById('modelMinimize');
+            
+            if (isModelVisible) {
+                container.style.display = 'block';
+                minimize.style.display = 'none';
+            } else {
+                container.style.display = 'none';
+                minimize.style.display = 'flex';
+            }
+        }
+        
+        init3D();
+    </script>
+</body>
+</html>

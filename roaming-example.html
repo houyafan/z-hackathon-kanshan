@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>溜达角色 - API使用示例</title>
+    
+    <!-- 导入CSS -->
+    <link rel="stylesheet" href="3d-liukanshan-roaming/roaming-character.css">
+    
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px;
+            color: white;
+        }
+        
+        .content {
+            max-width: 900px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 40px;
+            border-radius: 20px;
+        }
+        
+        h1 {
+            font-size: 28px;
+            margin-bottom: 20px;
+        }
+        
+        h2 {
+            font-size: 20px;
+            margin: 30px 0 15px;
+        }
+        
+        p {
+            font-size: 16px;
+            line-height: 1.8;
+            opacity: 0.9;
+            margin-bottom: 16px;
+        }
+        
+        .btn-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin: 20px 0;
+        }
+        
+        .btn {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            padding: 12px 24px;
+            border-radius: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+        
+        .btn-primary {
+            background: #0084ff;
+            border-color: #0084ff;
+        }
+        
+        .btn-primary:hover {
+            background: #0066cc;
+        }
+        
+        .target-box {
+            background: rgba(0, 132, 255, 0.3);
+            border: 2px dashed rgba(0, 132, 255, 0.5);
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            margin: 10px 0;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .target-box:hover {
+            background: rgba(0, 132, 255, 0.5);
+        }
+        
+        .code-block {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 20px;
+            border-radius: 10px;
+            font-family: monospace;
+            margin: 20px 0;
+            overflow-x: auto;
+        }
+        
+        .target-container {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="content">
+        <h1>🚀 溜达角色 - API使用示例</h1>
+        <p>点击下方按钮，测试角色的各种功能！</p>
+        
+        <h2>📝 设置气泡消息</h2>
+        <div class="btn-group">
+            <button class="btn btn-primary" id="btn-message1">说"你好！"</button>
+            <button class="btn btn-primary" id="btn-message2">说"我是看山~"</button>
+            <button class="btn btn-primary" id="btn-message3">说"很高兴认识你！"</button>
+            <button class="btn" id="btn-message-auto">说"3秒后自动消失" (自动消失)</button>
+        </div>
+        <div class="code-block">
+character.setMessage("你好！");<br>
+character.setMessage("消息内容", { autoHide: 3000 });
+        </div>
+        
+        <h2>🎯 移动到指定位置</h2>
+        <div class="btn-group">
+            <button class="btn btn-primary" id="btn-move1">移动到左上角 (100, 100)</button>
+            <button class="btn btn-primary" id="btn-move2">移动到中央 (500, 400)</button>
+            <button class="btn btn-primary" id="btn-move3">移动到右下角 (800, 600)</button>
+            <button class="btn" id="btn-move-silent">移动但不说话</button>
+        </div>
+        <div class="code-block">
+character.moveTo(x, y);<br>
+character.moveTo(x, y, { message: "我来了！" });<br>
+character.moveTo(x, y, { useRandomMessage: false });
+        </div>
+        
+        <h2>📍 移动到元素位置</h2>
+        <p>点击下方任意框，角色会移动过去：</p>
+        <div class="target-container">
+            <div class="target-box" id="target1">🎯 目标1</div>
+            <div class="target-box" id="target2">🎯 目标2</div>
+            <div class="target-box" id="target3">🎯 目标3</div>
+        </div>
+        <div class="code-block">
+const element = document.getElementById('target1');<br>
+character.moveToElement(element, { message: "找到你了！" });
+        </div>
+        
+        <h2>🔍 获取状态信息</h2>
+        <div class="btn-group">
+            <button class="btn" id="btn-position">获取当前位置</button>
+            <button class="btn" id="btn-status">检查是否在移动</button>
+        </div>
+        <div class="code-block">
+const position = character.getPosition();<br>
+const isMoving = character.isMovingStatus();
+        </div>
+        <div id="status-output" style="margin-top: 10px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 5px;"></div>
+        
+        <h2>🎬 自动演示模式</h2>
+        <div class="btn-group">
+            <button class="btn btn-primary" id="btn-demo">开始自动演示</button>
+            <button class="btn" id="btn-reset">重置位置</button>
+        </div>
+        <div class="code-block">
+// 先欢迎，然后依次移动到多个点<br>
+// 检查到达状态，继续下一步
+        </div>
+    </div>
+    
+    <!-- 溜达角色容器 -->
+    <div class="roaming-character" id="roamingCharacter">
+        <div class="speech-bubble" id="speechBubble">等待指令~</div>
+        <canvas class="character-canvas" id="characterCanvas"></canvas>
+        <div class="character-shadow" id="characterShadow"></div>
+    </div>
+    
+    <!-- Three.js 导入 -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+    
+    <script type="module">
+        import { initRoamingCharacter } from './3d-liukanshan-roaming/roaming-character.js';
+        
+        // 初始化角色（禁用点击移动）
+        const character = initRoamingCharacter({
+            modelPath: '3d-liukanshan-roaming/低面数.glb',
+            scale: 1.3,
+            speed: 250,
+            idleMessage: "等待指令~",
+            arrivedMessage: "到达！🎉",
+            enableClickMove: false,
+            messages: [
+                "收到指令！",
+                "我来了！",
+                "好的！",
+                "这就来！",
+                "马上到！"
+            ]
+        });
+        
+        // --- 设置消息功能 ---
+        document.getElementById('btn-message1').addEventListener('click', () => {
+            character.setMessage("你好！", { autoHide: 2000 });
+        });
+        
+        document.getElementById('btn-message2').addEventListener('click', () => {
+            character.setMessage("我是看山~", { autoHide: 2000 });
+        });
+        
+        document.getElementById('btn-message3').addEventListener('click', () => {
+            character.setMessage("很高兴认识你！", { autoHide: 3000 });
+        });
+        
+        document.getElementById('btn-message-auto').addEventListener('click', () => {
+            character.setMessage("这个消息3秒后会消失~", { autoHide: 3000 });
+        });
+        
+        // --- 移动到坐标功能 ---
+        document.getElementById('btn-move1').addEventListener('click', () => {
+            character.moveTo(100, 100, { message: "我去左上角！" });
+        });
+        
+        document.getElementById('btn-move2').addEventListener('click', () => {
+            character.moveTo(500, 400, { message: "我去中央！" });
+        });
+        
+        document.getElementById('btn-move3').addEventListener('click', () => {
+            character.moveTo(800, 600, { message: "我去右下角！" });
+        });
+        
+        document.getElementById('btn-move-silent').addEventListener('click', () => {
+            character.moveTo(400, 300, { useRandomMessage: false });
+        });
+        
+        // --- 移动到元素功能 ---
+        document.getElementById('target1').addEventListener('click', () => {
+            character.moveToElement(document.getElementById('target1'), { message: "目标1，我来了！" });
+        });
+        
+        document.getElementById('target2').addEventListener('click', () => {
+            character.moveToElement(document.getElementById('target2'), { message: "目标2，找到了！" });
+        });
+        
+        document.getElementById('target3').addEventListener('click', () => {
+            character.moveToElement(document.getElementById('target3'), { message: "目标3，到达！" });
+        });
+        
+        // --- 获取状态功能 ---
+        document.getElementById('btn-position').addEventListener('click', () => {
+            const pos = character.getPosition();
+            document.getElementById('status-output').textContent = 
+                `当前位置：x=${Math.round(pos.x)}, y=${Math.round(pos.y)}`;
+        });
+        
+        document.getElementById('btn-status').addEventListener('click', () => {
+            const isMoving = character.isMovingStatus();
+            document.getElementById('status-output').textContent = 
+                isMoving ? "🔄 角色正在移动中..." : "✅ 角色静止不动";
+        });
+        
+        // --- 自动演示 ---
+        document.getElementById('btn-demo').addEventListener('click', () => {
+            startDemo();
+        });
+        
+        document.getElementById('btn-reset').addEventListener('click', () => {
+            character.moveTo(window.innerWidth - 150, window.innerHeight - 200, { 
+                message: "回到起点！" 
+            });
+        });
+        
+        function startDemo() {
+            const path = [
+                { x: 100, y: 100, message: "第一站！欢迎~" },
+                { x: 400, y: 200, message: "第二站！" },
+                { x: 700, y: 150, message: "第三站！" },
+                { x: 500, y: 400, message: "最后一站！" }
+            ];
+            
+            let currentIndex = 0;
+            
+            function moveToNext() {
+                if (currentIndex < path.length) {
+                    const point = path[currentIndex];
+                    character.moveTo(point.x, point.y, { message: point.message });
+                    currentIndex++;
+                    
+                    const checkArrived = setInterval(() => {
+                        if (!character.isMovingStatus()) {
+                            clearInterval(checkArrived);
+                            setTimeout(moveToNext, 1000);
+                        }
+                    }, 100);
+                }
+            }
+            
+            moveToNext();
+        }
+    </script>
+</body>
+</html>

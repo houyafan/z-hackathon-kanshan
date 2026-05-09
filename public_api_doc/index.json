@@ -1,0 +1,39 @@
+{
+  "groups": [
+    {
+      "name": "社区开放能力",
+      "dir": "community",
+      "docs": [
+        {"file": "quickstart.md", "key": "quickstart", "tab_name": "快速开始"},
+        {"file": "ring_detail.md", "key": "ring_detail", "tab_name": "获取圈子详情"},
+        {"file": "publish_pin.md", "key": "publish_pin", "tab_name": "发布想法"},
+        {"file": "comment_list.md", "key": "comment_list", "tab_name": "获取评论列表"},
+        {"file": "comment_create.md", "key": "comment_create", "tab_name": "创建评论"},
+        {"file": "comment_delete.md", "key": "comment_delete", "tab_name": "删除评论"},
+        {"file": "reaction.md", "key": "reaction", "tab_name": "内容/评论点赞"},
+        {"file": "story_list.md", "key": "story_list", "tab_name": "获取故事列表(Hackathon定制)"},
+        {"file": "story_detail.md", "key": "story_detail", "tab_name": "获取故事详情"}
+      ]
+    },
+    {
+      "name": "OAuth开放能力",
+      "dir": "oauth",
+      "docs": [
+        {"file": "quickstart.md", "key": "oauth_quickstart", "tab_name": "快速开始"},
+        {"file": "access_token.md", "key": "access_token", "tab_name": "获取 Access Token"},
+        {"file": "user_info.md", "key": "user_info", "tab_name": "获取用户信息"},
+        {"file": "user_followers.md", "key": "user_followers", "tab_name": "获取粉丝列表"},
+        {"file": "user_followed.md", "key": "user_followed", "tab_name": "获取关注列表"},
+        {"file": "user_followees.md", "key": "user_followees", "tab_name": "获取互相关注列表"},
+        {"file": "user_moments.md", "key": "user_moments", "tab_name": "获取关注动态"}
+      ]
+    },
+    {
+      "name": "知乎数据平台",
+      "dir": "data_platform",
+      "docs": [
+        {"file": "README.md", "key": "data_platform", "tab_name": "数据平台"}
+      ]
+    }
+  ]
+}

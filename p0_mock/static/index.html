@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>知乎 P0 Mock - 刘看山养成</title>
+  <link rel="preload" href="/3d-liukanshan-roaming/liukanshan-slot.glb" as="fetch" type="model/gltf-binary" crossorigin>
+  <link rel="stylesheet" href="/3d-liukanshan-roaming/roaming-character.css?v=15">
+  <link rel="stylesheet" href="/static/styles.css?v=19">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="toast" class="toast" aria-live="polite"></div>
+  <div id="effectTestPanel" class="effect-test-panel" hidden></div>
+
+  <div class="roaming-character" id="roamingCharacter">
+    <div class="speech-bubble" id="speechBubble">你好，我是刘看山~</div>
+    <canvas class="character-canvas" id="characterCanvas"></canvas>
+    <div class="character-shadow" id="characterShadow"></div>
+    <div class="pet-hover-card" id="petHoverCard"></div>
+  </div>
+
+  <script type="module" src="/static/app.js?v=46"></script>
+</body>
+</html>

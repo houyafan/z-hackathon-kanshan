@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Model Viewer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            overflow: hidden;
+            background-color: #1a1a1a;
+        }
+        
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 100;
+        }
+        
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: white;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            z-index: 100;
+        }
+        
+        #upload-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: white;
+            z-index: 200;
+            background-color: rgba(0, 0, 0, 0.8);
+            padding: 40px;
+            border-radius: 12px;
+            border: 2px dashed #555;
+        }
+        
+        #upload-container.hidden {
+            display: none;
+        }
+        
+        #file-input {
+            display: none;
+        }
+        
+        .upload-btn {
+            background-color: #4CAF50;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 16px;
+            transition: background-color 0.3s;
+        }
+        
+        .upload-btn:hover {
+            background-color: #45a049;
+        }
+        
+        #debug-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: white;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 12px;
+            z-index: 100;
+            max-width: 300px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        #debug-panel h3 {
+            margin: 0 0 8px 0;
+            font-size: 14px;
+        }
+        
+        #debug-panel p {
+            margin: 4px 0;
+            color: #aaa;
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    
+    <div id="info">
+        <p>3D Model Viewer</p>
+    </div>
+    
+    <div id="debug-panel">
+        <h3>模型信息</h3>
+        <div id="model-info"></div>
+    </div>
+    
+    <div id="controls">
+        <p>🖱️ 拖动：旋转视角</p>
+        <p>🔍 滚轮：缩放</p>
+    </div>
+    
+    <div id="upload-container">
+        <h2>上传 GLB 模型</h2>
+        <p>点击下方按钮选择或拖拽 GLB 文件到此处</p>
+        <input type="file" id="file-input" accept=".glb">
+        <button class="upload-btn" id="upload-btn">选择文件</button>
+    </div>
+    
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+    <script type="module" src="main.js"></script>
+</body>
+</html>
