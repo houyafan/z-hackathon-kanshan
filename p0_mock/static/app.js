@@ -660,7 +660,7 @@ async function loadFollowMoments({ sync = false } = {}) {
       }
     }
     const data = await api("/api/p0/follow-moments?limit=30");
-    followMoments = data.moments || [];
+    followMoments = data.data || [];
     followMomentsLoaded = true;
     return followMoments;
   })().catch((error) => {
@@ -1129,24 +1129,30 @@ function feedCard(item) {
 }
 
 function followMomentTitle(moment) {
-  if (moment.targetTitle) return moment.targetTitle;
-  if (moment.actionText?.includes("文章")) return "一篇文章";
-  if (moment.actionText?.includes("问题")) return "一个问题";
-  if (moment.actionText?.includes("回答")) return truncateText(moment.targetExcerpt || "一条回答", 38);
-  return truncateText(moment.targetExcerpt || "一条关注动态", 38);
+  const target = moment.target || {};
+  const action = moment.action_text || "";
+  const excerpt = target.excerpt || "";
+  if (target.title) return target.title;
+  if (action.includes("文章")) return "一篇文章";
+  if (action.includes("问题")) return "一个问题";
+  if (action.includes("回答")) return truncateText(excerpt || "一条回答", 38);
+  return truncateText(excerpt || "一条关注动态", 38);
 }
 
 function followMomentCard(moment) {
+  const actor = moment.actor || {};
+  const target = moment.target || {};
+  const targetAuthor = target.author || {};
   const title = followMomentTitle(moment);
-  const excerpt = moment.targetExcerpt || "";
-  const author = moment.targetAuthorName ? `${moment.targetAuthorName}：` : "";
-  const timeText = formatMomentTime(moment.actionTime);
-  const action = moment.actionText || "有了新动态";
+  const excerpt = target.excerpt || "";
+  const author = targetAuthor.name ? `${targetAuthor.name}：` : "";
+  const timeText = formatMomentTime(moment.action_time);
+  const action = moment.action_text || "有了新动态";
   return `
     <article class="card follow-moment-card">
       <div class="follow-moment-source">
         <span class="follow-moment-avatar avatar"></span>
-        <span><strong>${escapeHTML(moment.actorName || "知乎用户")}</strong>${escapeHTML(action)}</span>
+        <span><strong>${escapeHTML(actor.name || "知乎用户")}</strong>${escapeHTML(action)}</span>
         ${timeText ? `<small>${escapeHTML(timeText)}</small>` : ""}
       </div>
       <h2><button class="content-open-title">${escapeHTML(title)}</button></h2>

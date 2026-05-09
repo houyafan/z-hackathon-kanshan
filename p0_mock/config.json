@@ -2,6 +2,7 @@
   "auth_mode": "oauth",
   "zhihu_openapi_base": "https://openapi.zhihu.com",
   "zhihu_hot_list_api_url": "https://developer.zhihu.com/api/v1/content/hot_list",
+  "zhihu_hot_list_access_secret": "9af73680d34b5b668679cd58e8f4db02e7b31391",
   "zhihu_access_secret": "9af73680d34b5b668679cd58e8f4db02e7b31391",
   "zhihu_app_id": "202",
   "zhihu_app_key": "73b90f3367334630ac53381986c8ba04",

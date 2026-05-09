@@ -37,6 +37,7 @@ def apply_env_overrides(config):
         "auth_mode": "AUTH_MODE",
         "zhihu_openapi_base": "ZH_OPENAPI_BASE",
         "zhihu_hot_list_api_url": "ZH_HOT_LIST_API_URL",
+        "zhihu_hot_list_access_secret": "ZH_HOT_LIST_ACCESS_SECRET",
         "zhihu_access_secret": "ZH_ACCESS_SECRET",
         "zhihu_app_id": "ZH_APP_ID",
         "zhihu_app_key": "ZH_APP_KEY",
@@ -72,6 +73,7 @@ def load_config():
         "auth_mode": "mock",
         "zhihu_openapi_base": "https://openapi.zhihu.com",
         "zhihu_hot_list_api_url": "https://developer.zhihu.com/api/v1/content/hot_list",
+        "zhihu_hot_list_access_secret": "",
         "zhihu_access_secret": "",
         "zhihu_app_id": "",
         "zhihu_app_key": "",
@@ -121,13 +123,14 @@ ZH_HOT_LIST_API_URL = str(
     or CONFIG.get("zhihu_hot_list_api_url")
     or "https://developer.zhihu.com/api/v1/content/hot_list"
 )
-ZH_ACCESS_SECRET = str(
-    os.environ.get("ZH_ACCESS_SECRET")
-    or os.environ.get("ZH_DEVELOPER_ACCESS_SECRET")
-    or os.environ.get("ZH_HOT_LIST_ACCESS_SECRET")
+ZH_HOT_LIST_ACCESS_SECRET = str(
+    os.environ.get("ZH_HOT_LIST_ACCESS_SECRET")
     or os.environ.get("ZH_DATA_PLATFORM_ACCESS_SECRET")
+    or os.environ.get("ZH_DEVELOPER_ACCESS_SECRET")
     or os.environ.get("ZH_DATA_PLATFORM_TOKEN")
+    or CONFIG.get("zhihu_hot_list_access_secret")
     or CONFIG.get("zhihu_access_secret")
+    or os.environ.get("ZH_ACCESS_SECRET")
     or ""
 )
 ZH_APP_ID = str(CONFIG.get("zhihu_app_id") or "")
@@ -353,6 +356,24 @@ def camel_follow_moment(row):
     }
 
 
+def raw_follow_moment(row):
+    if row is None:
+        return None
+    try:
+        return json.loads(row["raw_payload"])
+    except (TypeError, json.JSONDecodeError):
+        return {
+            "actor": {"name": row["actor_name"]},
+            "action_text": row["action_text"],
+            "action_time": row["action_time"],
+            "target": {
+                "title": row["target_title"],
+                "excerpt": row["target_excerpt"],
+                "author": {"name": row["target_author_name"]},
+            },
+        }
+
+
 def fetch_user(conn, user_id):
     return conn.execute(
         "SELECT * FROM zhihu_user WHERE uid = ?",
@@ -551,7 +572,7 @@ def fetch_oauth_token(conn, user_id):
     return row
 
 
-def fetch_zhihu_moments(access_token, page=0, per_page=10):
+def fetch_zhihu_moments_payload(access_token, page=0, per_page=10):
     params = urlencode({"page": page, "per_page": per_page})
     request = Request(
         f"{ZH_OPENAPI_BASE}/user/moments?{params}",
@@ -560,11 +581,16 @@ def fetch_zhihu_moments(access_token, page=0, per_page=10):
     )
     with urlopen(request, timeout=10) as response:
         payload = json.loads(response.read().decode("utf-8"))
-    moments_payload = payload.get("data") if isinstance(payload.get("data"), list) else payload
+    if isinstance(payload, dict) and payload.get("code") and payload.get("code") not in (0, 20000):
+        raise RuntimeError(str(payload.get("data") or payload))
+    return payload
+
+
+def fetch_zhihu_moments(access_token, page=0, per_page=10):
+    payload = fetch_zhihu_moments_payload(access_token, page=page, per_page=per_page)
+    moments_payload = payload.get("data") if isinstance(payload, dict) and isinstance(payload.get("data"), list) else payload
     if isinstance(moments_payload, list):
         return moments_payload
-    if payload.get("code") and payload.get("code") not in (0, 20000):
-        raise RuntimeError(str(payload.get("data") or payload))
     return []
 
 
@@ -731,7 +757,7 @@ def fallback_hot_items(limit):
 
 def fetch_hot_items(limit=30):
     limit = max(1, min(int(limit), 30))
-    if not ZH_ACCESS_SECRET:
+    if not ZH_HOT_LIST_ACCESS_SECRET:
         return {
             "source": "fallback",
             "configured": False,
@@ -745,7 +771,7 @@ def fetch_hot_items(limit=30):
     request = Request(
         api_url,
         headers={
-            "Authorization": f"Bearer {ZH_ACCESS_SECRET}",
+            "Authorization": f"Bearer {ZH_HOT_LIST_ACCESS_SECRET}",
             "X-Request-Timestamp": str(int(time.time())),
             "Content-Type": "application/json",
             "Accept": "application/json",
@@ -2096,29 +2122,32 @@ class Handler(BaseHTTPRequestHandler):
             if session is None:
                 return
             qs = parse_qs(parsed.query)
-            limit = max(1, min(int((qs.get("limit") or [20])[0]), 50))
+            page = max(0, int((qs.get("page") or [0])[0]))
+            per_page = max(1, min(int((qs.get("per_page") or qs.get("perPage") or qs.get("limit") or [20])[0]), 50))
             with connect_db() as conn:
+                token = fetch_oauth_token(conn, session["user_id"])
+                if token is not None:
+                    try:
+                        self.send_json(200, fetch_zhihu_moments_payload(token["access_token"], page=page, per_page=per_page))
+                    except Exception as error:
+                        self.send_json(502, {"error": "FOLLOW_MOMENTS_FETCH_FAILED", "message": str(error)})
+                    return
+                if AUTH_MODE != "mock":
+                    self.send_json(409, {
+                        "error": "OAUTH_TOKEN_REQUIRED",
+                        "message": "缺少知乎 OAuth token，请重新登录",
+                    })
+                    return
                 rows = conn.execute(
                     """
                     SELECT *
                     FROM zhihu_follow_moment
-                    WHERE user_id = ?
                     ORDER BY action_time DESC, id DESC
                     LIMIT ?
                     """,
-                    (session["user_id"], limit),
+                    (per_page,),
                 ).fetchall()
-                if not rows and AUTH_MODE == "mock":
-                    rows = conn.execute(
-                        """
-                        SELECT *
-                        FROM zhihu_follow_moment
-                        ORDER BY action_time DESC, id DESC
-                        LIMIT ?
-                        """,
-                        (limit,),
-                    ).fetchall()
-                self.send_json(200, {"moments": [camel_follow_moment(row) for row in rows]})
+                self.send_json(200, {"data": [raw_follow_moment(row) for row in rows]})
             return
 
         if path == "/api/p1/travel/status":
