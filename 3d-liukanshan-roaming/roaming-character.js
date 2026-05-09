@@ -1171,7 +1171,6 @@ class RoamingCharacter {
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
         this.addLights();
-        this.createPlaceholderModel();
         this.loadModel();
         this.animate();
         this.setupEventListeners();
@@ -1304,6 +1303,9 @@ class RoamingCharacter {
             undefined,
             (error) => {
                 console.log('Using placeholder model:', error);
+                if (!this.model) {
+                    this.createPlaceholderModel();
+                }
                 this.modelReady = true;
                 this.findWaveBone({ silent: true });
                 if (this.pendingSpawnEffect) {
@@ -1984,11 +1986,11 @@ class RoamingCharacter {
     }
 
     playSpawnEffect(options = {}) {
-        if (!this.model) return;
-        if (!this.modelReady && options.waitForModel !== false) {
+        if ((!this.model || !this.modelReady) && options.waitForModel !== false) {
             this.pendingSpawnEffect = options;
             return;
         }
+        if (!this.model) return;
 
         this.cleanupSpawnEffect();
         this.clearTeleportTimers();
