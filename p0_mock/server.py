@@ -85,15 +85,27 @@ def load_config():
             "email": "",
         },
     }
-    config_path = CONFIG_PATH
-    if not config_path.exists() and config_path != BUNDLED_CONFIG_PATH and BUNDLED_CONFIG_PATH.exists():
-        config_path = BUNDLED_CONFIG_PATH
-    if not config_path.exists():
-        return apply_env_overrides(default_config)
-    with config_path.open("r", encoding="utf-8") as file:
-        user_config = json.load(file)
-    merged = {**default_config, **user_config}
-    merged["mock_user"] = {**default_config["mock_user"], **user_config.get("mock_user", {})}
+
+    def read_json_config(path):
+        if not path.exists():
+            return {}
+        with path.open("r", encoding="utf-8") as file:
+            return json.load(file)
+
+    bundled_config = read_json_config(BUNDLED_CONFIG_PATH)
+    external_config = {}
+    if CONFIG_PATH != BUNDLED_CONFIG_PATH:
+        external_config = read_json_config(CONFIG_PATH)
+
+    merged = {**default_config, **bundled_config, **external_config}
+    merged["mock_user"] = {
+        **default_config["mock_user"],
+        **bundled_config.get("mock_user", {}),
+        **external_config.get("mock_user", {}),
+    }
+    for key in ("zhihu_app_id", "zhihu_app_key", "zhihu_auth_redirect_uri"):
+        if not merged.get(key) and bundled_config.get(key):
+            merged[key] = bundled_config[key]
     return apply_env_overrides(merged)
 
 
