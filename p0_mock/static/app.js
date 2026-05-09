@@ -1,4 +1,4 @@
-import { initRoamingCharacter } from "/3d-liukanshan-roaming/roaming-character.js?v=29";
+import { initRoamingCharacter } from "/3d-liukanshan-roaming/roaming-character.js?v=30";
 
 const app = document.getElementById("app");
 const toast = document.getElementById("toast");
@@ -11,6 +11,8 @@ let modelPreloadPromise = null;
 let noticeTimer = null;
 let noticeRemaining = 0;
 let idleBandVisible = true;
+const savedRewardWalk = localStorage.getItem("liukanshan_reward_walk_enabled") ?? localStorage.getItem("liukanshan_level_walk_enabled");
+let rewardWalkEnabled = savedRewardWalk !== "0";
 const MODEL_PATH = "/3d-liukanshan-roaming/liukanshan-slot.glb";
 
 function effectLayer() {
@@ -352,6 +354,15 @@ function mergeUpdatedContent(content) {
 }
 
 function bindPetHoverCard() {
+  document.querySelectorAll("[data-hover-reward-walk]").forEach((input) => {
+    input.addEventListener("click", (event) => event.stopPropagation());
+    input.addEventListener("change", (event) => {
+      rewardWalkEnabled = event.currentTarget.checked;
+      localStorage.setItem("liukanshan_reward_walk_enabled", rewardWalkEnabled ? "1" : "0");
+      showToast(rewardWalkEnabled ? "经验增长会走到触发点" : "经验增长仅气泡提示");
+      renderPetHoverCard();
+    });
+  });
   document.querySelectorAll("[data-hover-reset]").forEach((button) => {
     button.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -385,6 +396,10 @@ function renderPetHoverCard() {
       <a href="/people/p2wcex">个人页</a>
       <button data-hover-reset>重置</button>
     </div>
+    <label class="pet-hover-toggle">
+      <input type="checkbox" data-hover-reward-walk ${rewardWalkEnabled ? "checked" : ""}>
+      <span>经验走到触发点</span>
+    </label>
   `;
   bindPetHoverCard();
 }
@@ -1042,8 +1057,12 @@ function showReward(reward, sourceElement) {
     const centerY = window.innerHeight * 0.58;
     character.setPosition?.(centerX, centerY);
     character.playEvolveEffect?.({ message, autoHide: 3900 });
+    window.setTimeout(() => {
+      character?.setPosition?.(window.innerWidth - 150, window.innerHeight - 200);
+      character?.setMessage?.(`Lv.${profile.level} ${stageText(profile.stage)}`, { autoHide: 2200 });
+    }, 4200);
   }
-  if (sourceElement && character && !reward.levelUp) {
+  if (sourceElement && character && !reward.levelUp && rewardWalkEnabled) {
     const defaultArrivedMessage = character.config.arrivedMessage;
     character.config.arrivedMessage = message;
     character.moveToElement(sourceElement, { message, useRandomMessage: false });
@@ -1054,14 +1073,14 @@ function showReward(reward, sourceElement) {
   if (!reward.levelUp) {
     character?.setMessage(message, { autoHide: 3200 });
   }
-  playRewardEffect(reward, sourceElement, message);
+  playRewardEffect(reward, reward.levelUp || rewardWalkEnabled ? sourceElement : null, message);
 }
 
 function playRewardEffect(reward, sourceElement, message) {
   const sourceRect = sourceElement?.getBoundingClientRect();
-  const sourceX = sourceRect ? sourceRect.left + sourceRect.width / 2 : window.innerWidth / 2;
-  const sourceY = sourceRect ? sourceRect.top + sourceRect.height / 2 : window.innerHeight / 2;
   const center = characterCenter();
+  const sourceX = sourceRect ? sourceRect.left + sourceRect.width / 2 : center.x;
+  const sourceY = sourceRect ? sourceRect.top + sourceRect.height / 2 : center.y;
 
   if (reward.levelUp) {
     pulseCharacter("pet-level-up", 1800);

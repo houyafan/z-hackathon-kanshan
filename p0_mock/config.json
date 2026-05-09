@@ -1,9 +1,9 @@
 {
   "auth_mode": "oauth",
   "zhihu_openapi_base": "https://openapi.zhihu.com",
-  "zhihu_app_id": "201",
-  "zhihu_app_key": "134c29dff4d14bf49c951b64db71d9c9",
-  "zhihu_auth_redirect_uri": "http://24a94f2b.r1.cpolar.top/auth/callback",
+  "zhihu_app_id": "202",
+  "zhihu_app_key": "73b90f3367334630ac53381986c8ba04",
+  "zhihu_auth_redirect_uri": "https://382b6552.r1.cpolar.top/auth/callback",
   "session_ttl_hours": 24,
   "state_ttl_minutes": 10,
   "local_auth_bypass": true,

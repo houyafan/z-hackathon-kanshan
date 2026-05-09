@@ -1139,8 +1139,9 @@ class RoamingCharacter {
         this.waveElapsed = 0;
         this.waveDuration = 1.2;
         this.dragRotation = { yaw: 0, pitch: 0 };
-        this.dragStart = { x: 0, y: 0, yaw: 0, pitch: 0 };
+        this.dragStart = { x: 0, y: 0, yaw: 0, pitch: 0, characterX: 0, characterY: 0 };
         this.dragPointerId = null;
+        this.dragMode = null;
         this.isDragRotating = false;
         this.animationTime = 0;
 
@@ -1504,14 +1505,21 @@ class RoamingCharacter {
 
     startDragRotate(event) {
         if (!this.config.enableDragRotate || !this.model || this.shouldIgnoreDragTarget(event.target)) return;
+        const shouldRotate = event.shiftKey || event.altKey || event.metaKey;
         this.isDragRotating = true;
         this.dragPointerId = event.pointerId;
+        this.dragMode = shouldRotate ? 'rotate' : 'move';
         this.dragStart.x = event.clientX;
         this.dragStart.y = event.clientY;
         this.dragStart.yaw = this.dragRotation.yaw;
         this.dragStart.pitch = this.dragRotation.pitch;
+        this.dragStart.characterX = this.characterX;
+        this.dragStart.characterY = this.characterY;
         this.isMoving = false;
-        this.characterElement.classList.add('is-drag-rotating');
+        this.isTeleporting = false;
+        this.targetX = this.characterX;
+        this.targetY = this.characterY;
+        this.characterElement.classList.add(shouldRotate ? 'is-drag-rotating' : 'is-drag-moving');
         this.characterElement.setPointerCapture?.(event.pointerId);
         event.preventDefault();
     }
@@ -1520,12 +1528,22 @@ class RoamingCharacter {
         if (!this.isDragRotating || event.pointerId !== this.dragPointerId) return;
         const dx = event.clientX - this.dragStart.x;
         const dy = event.clientY - this.dragStart.y;
-        this.dragRotation.yaw = this.dragStart.yaw + dx * this.config.dragRotateSpeed;
-        this.dragRotation.pitch = THREE.MathUtils.clamp(
-            this.dragStart.pitch + dy * this.config.dragRotateSpeed,
-            -this.config.dragPitchLimit,
-            this.config.dragPitchLimit
-        );
+        if (this.dragMode === 'move') {
+            const target = this.clampTarget(this.dragStart.characterX + dx, this.dragStart.characterY + dy);
+            this.characterX = target.x;
+            this.characterY = target.y;
+            this.targetX = target.x;
+            this.targetY = target.y;
+            this.characterElement.style.left = `${this.characterX}px`;
+            this.characterElement.style.top = `${this.characterY}px`;
+        } else {
+            this.dragRotation.yaw = this.dragStart.yaw + dx * this.config.dragRotateSpeed;
+            this.dragRotation.pitch = THREE.MathUtils.clamp(
+                this.dragStart.pitch + dy * this.config.dragRotateSpeed,
+                -this.config.dragPitchLimit,
+                this.config.dragPitchLimit
+            );
+        }
         event.preventDefault();
     }
 
@@ -1533,7 +1551,8 @@ class RoamingCharacter {
         if (!this.isDragRotating || event.pointerId !== this.dragPointerId) return;
         this.isDragRotating = false;
         this.dragPointerId = null;
-        this.characterElement.classList.remove('is-drag-rotating');
+        this.dragMode = null;
+        this.characterElement.classList.remove('is-drag-rotating', 'is-drag-moving');
         this.characterElement.releasePointerCapture?.(event.pointerId);
         event.preventDefault();
     }
