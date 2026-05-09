@@ -6,7 +6,7 @@
   "zhihu_auth_redirect_uri": "https://ahipkiokdnvl.sealosbja.site/auth/callback",
   "session_ttl_hours": 24,
   "state_ttl_minutes": 10,
-  "local_auth_bypass": true,
+  "local_auth_bypass": false,
   "mock_user": {
     "uid": 10001,
     "fullname": "看山七子",

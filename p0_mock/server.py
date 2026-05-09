@@ -1797,6 +1797,9 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path in ("/", "/people/p2wcex"):
+            session = self.require_auth_page(self.path)
+            if session is None:
+                return
             self.send_file(STATIC_DIR / "index.html")
             return
 
@@ -1916,6 +1919,9 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
         if path in ("/", "/people/p2wcex"):
+            session = self.require_auth_page(self.path)
+            if session is None:
+                return
             target = STATIC_DIR / "index.html"
         elif path.startswith("/static/"):
             target = STATIC_DIR / unquote(path.removeprefix("/static/"))
