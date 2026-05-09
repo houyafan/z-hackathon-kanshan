@@ -198,20 +198,17 @@ button {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: linear-gradient(145deg, #fff 0%, #ffd7dc 45%, #111 46%, #111 54%, #f6f6f6 55%);
+  background-color: #fff;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36'%3E%3Cpath fill='%2326d6d6' d='M17.1 3.2h1.8v5h-1.8z'/%3E%3Ccircle cx='18' cy='3.2' r='1.4' fill='%237cf0f1'/%3E%3Cpath fill='%23ff7d32' d='M5.2 15.4h4.2v7.2H5.2a2.2 2.2 0 0 1-2.2-2.2v-2.8a2.2 2.2 0 0 1 2.2-2.2Zm21.4 0h4.2a2.2 2.2 0 0 1 2.2 2.2v2.8a2.2 2.2 0 0 1-2.2 2.2h-4.2v-7.2Z'/%3E%3Crect x='7.6' y='10.1' width='20.8' height='17' rx='3.8' fill='%23fff' stroke='%23cbd3df' stroke-width='1.5'/%3E%3Ccircle cx='14' cy='18.4' r='1.8' fill='%232d333b'/%3E%3Ccircle cx='22' cy='18.4' r='1.8' fill='%232d333b'/%3E%3Cpath fill='none' stroke='%23ff7d32' stroke-linecap='round' stroke-width='1.5' d='M14.2 23.1h7.6'/%3E%3C/svg%3E");
+  background-size: 100% 100%;
+  background-position: center;
+  background-repeat: no-repeat;
   border: 1px solid #edf0f5;
   position: relative;
 }
 
 .avatar::after {
-  content: "";
-  position: absolute;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: #ff8b6a;
-  right: 5px;
-  bottom: 5px;
+  display: none;
 }
 
 .avatar.user-avatar-image::after,
@@ -324,13 +321,14 @@ button {
   position: absolute;
   left: 22px;
   top: 18px;
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 22px;
+  border: 0;
 }
 
 .composer-placeholder {
   position: absolute;
-  left: 62px;
+  left: 54px;
   top: 18px;
   max-width: 220px;
   color: #2f3338;
@@ -344,51 +342,65 @@ button {
 
 .composer-tools {
   position: absolute;
-  left: 205px;
-  top: 68px;
+  left: 52px;
+  top: 70px;
   display: flex;
   align-items: center;
-  gap: 30px;
-  color: #3f4650;
+  gap: 24px;
+  color: #373a40;
   line-height: 1;
 }
 
 .composer-tools span {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 
 .composer-tool-icon {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   display: block;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2.3;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  fill: currentColor;
+  stroke: none;
 }
 
 .composer-submit {
   position: absolute;
   right: 22px;
-  top: 45px;
+  top: 64px;
   display: flex;
   align-items: center;
-  gap: 16px;
-  color: #7f8b9d;
+  gap: 18px;
+  color: #8590a6;
   font-size: 14px;
   font-weight: 700;
 }
 
+.sync-target {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.composer-caret {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .composer-submit .blue-btn {
-  width: 82px;
-  height: 50px;
+  width: 74px;
+  height: 32px;
   padding: 0;
-  border-radius: 12px;
+  border-radius: 16px;
   color: #1677ff;
   background: #edf4ff;
   font-size: 15px;
@@ -400,7 +412,7 @@ button {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   align-items: center;
-  padding: 0 44px;
+  padding: 0;
   font-size: 15px;
   font-weight: 700;
 }
@@ -409,7 +421,7 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
   height: 48px;
   border: 0;
@@ -432,6 +444,14 @@ button {
   color: #fff;
   font-size: 13px;
   line-height: 1;
+}
+
+.square-url-icon {
+  width: 20px;
+  height: 20px;
+  display: block;
+  flex: 0 0 auto;
+  object-fit: contain;
 }
 
 .square-svg {

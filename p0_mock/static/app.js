@@ -926,38 +926,28 @@ function svgIcon(className, body, viewBox = "0 0 24 24") {
 function composerToolIcons() {
   return [
     svgIcon("composer-tool-icon", `
-      <path d="M8.2 4.5 6.4 19.5"></path>
-      <path d="M16.8 4.5 15 19.5"></path>
-      <path d="M4.5 9.2h15"></path>
-      <path d="M3.8 14.8h15"></path>
+      <path fill-rule="evenodd" d="M9.91 2.65c.469.116.755.59.64 1.06l-.844 3.415h6.997l.947-3.835a.875.875 0 0 1 1.7.42l-.845 3.415H21.5a.875.875 0 0 1 0 1.75h-3.427l-1.544 6.25H19.5a.875.875 0 0 1 0 1.75h-3.403l-.948 3.835a.875.875 0 0 1-1.699-.42l.844-3.415H7.297l-.948 3.835a.875.875 0 0 1-1.698-.42l.843-3.415H2.5a.875.875 0 1 1 0-1.75h3.427l1.544-6.25H4.5a.875.875 0 1 1 0-1.75h3.403l.948-3.835a.875.875 0 0 1 1.059-.64Zm4.816 12.475 1.545-6.25H9.273l-1.544 6.25h6.997Z" clip-rule="evenodd"></path>
     `),
     svgIcon("composer-tool-icon", `
-      <circle cx="12" cy="12" r="8.2"></circle>
-      <circle cx="9.1" cy="10.1" r="1.1" fill="currentColor"></circle>
-      <circle cx="14.9" cy="10.1" r="1.1" fill="currentColor"></circle>
-      <path d="M8.7 14.1c1.6 2 5 2 6.6 0"></path>
+      <path d="M14.413 14.223a.785.785 0 0 1 1.45.601A4.174 4.174 0 0 1 12 17.4a4.19 4.19 0 0 1-2.957-1.221 4.174 4.174 0 0 1-.906-1.355.785.785 0 1 1 1.449-.601 2.604 2.604 0 0 0 1.413 1.41 2.621 2.621 0 0 0 2.849-.566c.242-.242.434-.529.565-.844ZM8.6 8.77a1.308 1.308 0 1 1 0 2.615 1.308 1.308 0 0 1 0-2.615ZM15.4 8.77a1.308 1.308 0 1 1 0 2.615 1.308 1.308 0 0 1 0-2.615Z"></path>
+      <path fill-rule="evenodd" d="M12 1.573c5.758 0 10.427 4.669 10.427 10.427S17.758 22.427 12 22.427 1.573 17.758 1.573 12 6.242 1.573 12 1.573Zm0 1.746a8.681 8.681 0 1 0 .001 17.362A8.681 8.681 0 0 0 12 3.32Z" clip-rule="evenodd"></path>
     `),
     svgIcon("composer-tool-icon", `
-      <rect x="5" y="6" width="14" height="12" rx="1.8"></rect>
-      <circle cx="9.1" cy="10" r="1.1" fill="currentColor"></circle>
-      <path d="m7.2 15 3.2-3 2.3 2 2.8-3.4 2.8 4.4"></path>
+      <path fill-rule="evenodd" d="M8.75 6.125a2.625 2.625 0 1 0 0 5.25 2.625 2.625 0 0 0 0-5.25ZM7.875 8.75a.875.875 0 1 1 1.75 0 .875.875 0 0 1-1.75 0Z" clip-rule="evenodd"></path>
+      <path fill-rule="evenodd" d="M2.625 6.5A3.875 3.875 0 0 1 6.5 2.625h11A3.875 3.875 0 0 1 21.375 6.5v11a3.875 3.875 0 0 1-3.875 3.875h-11A3.875 3.875 0 0 1 2.625 17.5v-11ZM6.5 4.375A2.125 2.125 0 0 0 4.375 6.5v8.223l1.928-1.23a3.875 3.875 0 0 1 3.757-.23l.744.357c.648.31 1.409.272 2.023-.102l3.718-2.265a.875.875 0 0 1 .91 1.494l-3.718 2.265a3.875 3.875 0 0 1-3.689.186l-.743-.356a2.125 2.125 0 0 0-2.06.126l-2.774 1.77a.886.886 0 0 1-.096.053v.709c0 1.174.951 2.125 2.125 2.125h11a2.125 2.125 0 0 0 2.125-2.125v-11A2.125 2.125 0 0 0 17.5 4.375h-11Z" clip-rule="evenodd"></path>
     `),
     svgIcon("composer-tool-icon", `
-      <rect x="4.8" y="7.2" width="11.8" height="9.6" rx="1.8"></rect>
-      <path d="M16.6 10.2 20 8.4v7.2l-3.4-1.8"></path>
-      <path d="m9.5 10.2 3.7 2-3.7 2v-4Z" fill="currentColor" stroke="none"></path>
+      <path fill-rule="evenodd" d="M12.704 13.784c1.31-.756 1.31-2.646 0-3.402l-2.858-1.65c-1.31-.756-2.946.19-2.946 1.701v3.3c0 1.512 1.636 2.457 2.946 1.701l2.858-1.65Zm-.875-1.886a.214.214 0 0 1 0 .37l-2.858 1.65a.214.214 0 0 1-.321-.184v-3.3c0-.166.178-.268.32-.186l2.86 1.65Z" clip-rule="evenodd"></path>
+      <path fill-rule="evenodd" d="M.625 7A3.875 3.875 0 0 1 4.5 3.125h11A3.875 3.875 0 0 1 19.375 7v.29l1.272-.603a1.875 1.875 0 0 1 2.678 1.694v7.338a1.875 1.875 0 0 1-2.678 1.694l-1.272-.602V17a3.875 3.875 0 0 1-3.875 3.875h-11A3.875 3.875 0 0 1 .625 17V7Zm18.75 7.878V9.222a.88.88 0 0 0 .075-.031l1.946-.923a.125.125 0 0 1 .179.113v7.338a.125.125 0 0 1-.179.113l-1.946-.923a.876.876 0 0 0-.075-.031ZM4.5 4.875A2.125 2.125 0 0 0 2.375 7v10c0 1.174.951 2.125 2.125 2.125h11A2.125 2.125 0 0 0 17.625 17V7A2.125 2.125 0 0 0 15.5 4.875h-11Z" clip-rule="evenodd"></path>
     `),
     svgIcon("composer-tool-icon", `
-      <rect x="5" y="5" width="14" height="14" rx="1.2"></rect>
-      <path d="M8.5 17V8"></path>
-      <path d="M11.5 17V7"></path>
-      <path d="M14.5 17V9"></path>
+      <path fill-rule="evenodd" d="M13.5 2.125A2.375 2.375 0 0 1 15.875 4.5v2.625H18.5A2.375 2.375 0 0 1 20.875 9.5v10.625H22a.875.875 0 0 1 0 1.75H2a.875.875 0 0 1 0-1.75h1.125V12.5A2.375 2.375 0 0 1 5.5 10.125h2.625V4.5A2.375 2.375 0 0 1 10.5 2.125h3Zm-8 9.75a.625.625 0 0 0-.625.625v7.625h3.25v-8.25H5.5Zm5-8a.625.625 0 0 0-.625.625v15.625h4.25V4.5a.625.625 0 0 0-.625-.625h-3Zm5.375 16.25h3.25V9.5a.625.625 0 0 0-.625-.625h-2.625v11.25Z" clip-rule="evenodd"></path>
     `),
   ].map((icon) => `<span>${icon}</span>`).join("");
 }
 
-function composerActionIcon(color, body) {
-  return `<i class="square-icon ${color}">${svgIcon("square-svg", body)}</i>`;
+function composerActionIcon(src) {
+  return `<img class="square-url-icon" src="${src}" alt="" aria-hidden="true">`;
 }
 
 function composer() {
@@ -967,13 +957,16 @@ function composer() {
         <span class="composer-avatar avatar"></span>
         <span class="composer-placeholder">分享此刻的想法...</span>
         <div class="composer-tools" aria-hidden="true">${composerToolIcons()}</div>
-        <div class="composer-submit"><span>同步到圈子⌄</span><button class="blue-btn">发想法</button></div>
+        <div class="composer-submit">
+          <span class="sync-target">同步到圈子${svgIcon("composer-caret", `<path d="m7 10 5 5 5-5"></path>`)}</span>
+          <button class="blue-btn">发想法</button>
+        </div>
       </div>
       <div class="composer-bottom">
-        <button>${composerActionIcon("green", `<path d="M9 9.2a3 3 0 1 1 4.6 2.6c-1 .7-1.6 1.2-1.6 2.7"></path><path d="M12 18h.01"></path>`)}<span>提问题</span></button>
-        <button>${composerActionIcon("blue", `<rect x="6.5" y="6.5" width="11" height="11" rx="2.2" fill="currentColor" stroke="none"></rect>`)}<span>写回答</span></button>
-        <button>${composerActionIcon("orange", `<path d="M7 17l2.4-.5 7.1-7.1-1.9-1.9-7.1 7.1L7 17Z"></path><path d="M13.7 8.4l1.9 1.9"></path>`)}<span>写文章</span></button>
-        <button>${composerActionIcon("pink", `<path d="M9 7.8v8.4l7-4.2-7-4.2Z" fill="currentColor" stroke="none"></path>`)}<span>发视频</span></button>
+        <button>${composerActionIcon("https://static.zhihu.com/heifetz/assets/question.a5a0c912.png")}<span>提问题</span></button>
+        <button>${composerActionIcon("https://static.zhihu.com/heifetz/assets/answer.cf78e2ff.png")}<span>写回答</span></button>
+        <button>${composerActionIcon("https://static.zhihu.com/heifetz/assets/article.58c0b223.png")}<span>写文章</span></button>
+        <button>${composerActionIcon("https://static.zhihu.com/heifetz/assets/video.eb5f3bfe.png")}<span>发视频</span></button>
       </div>
     </section>
   `;
