@@ -11,15 +11,11 @@ ENV LOCAL_AUTH_BYPASS=false
 
 WORKDIR /app
 
-RUN useradd --create-home --shell /usr/sbin/nologin appuser \
-    && mkdir -p /app/data /app/config /app/db/sqlite \
-    && chown -R appuser:appuser /app
+RUN mkdir -p /app/data /app/config /app/db/sqlite
 
-COPY --chown=appuser:appuser db/sqlite/init_p0.sql /app/db/sqlite/init_p0.sql
-COPY --chown=appuser:appuser p0_mock /app/p0_mock
-COPY --chown=appuser:appuser 3d-liukanshan-roaming /app/3d-liukanshan-roaming
-
-USER appuser
+COPY db/sqlite/init_p0.sql /app/db/sqlite/init_p0.sql
+COPY p0_mock /app/p0_mock
+COPY 3d-liukanshan-roaming /app/3d-liukanshan-roaming
 
 EXPOSE 5173
 
