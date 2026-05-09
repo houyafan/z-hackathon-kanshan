@@ -2046,7 +2046,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, {"authenticated": True, "user": camel_user(user)})
             return
 
-        if path in ("/", "/people/p2wcex", "/hot"):
+        if path in ("/", "/people/p2wcex", "/hot", "/follow"):
             session = self.require_auth_page(self.path)
             if session is None:
                 return
@@ -2108,6 +2108,16 @@ class Handler(BaseHTTPRequestHandler):
                     """,
                     (session["user_id"], limit),
                 ).fetchall()
+                if not rows and AUTH_MODE == "mock":
+                    rows = conn.execute(
+                        """
+                        SELECT *
+                        FROM zhihu_follow_moment
+                        ORDER BY action_time DESC, id DESC
+                        LIMIT ?
+                        """,
+                        (limit,),
+                    ).fetchall()
                 self.send_json(200, {"moments": [camel_follow_moment(row) for row in rows]})
             return
 
@@ -2174,7 +2184,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_HEAD(self):
         parsed = urlparse(self.path)
         path = parsed.path
-        if path in ("/", "/people/p2wcex", "/hot"):
+        if path in ("/", "/people/p2wcex", "/hot", "/follow"):
             session = self.require_auth_page(self.path)
             if session is None:
                 return
@@ -2320,6 +2330,7 @@ if __name__ == "__main__":
     server = ThreadingHTTPServer((host, port), Handler)
     print(f"P0 mock server running at http://{host}:{port}")
     print(f"推荐页: http://{host}:{port}/")
+    print(f"关注页: http://{host}:{port}/follow")
     print(f"热榜页: http://{host}:{port}/hot")
     print(f"个人页: http://{host}:{port}/people/p2wcex")
     server.serve_forever()

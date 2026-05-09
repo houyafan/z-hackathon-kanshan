@@ -11,6 +11,10 @@ let feedItems = [];
 let hotItems = [];
 let hotItemsPromise = null;
 let hotItemsLoaded = false;
+let followMoments = [];
+let followMomentsPromise = null;
+let followMomentsLoaded = false;
+let followSyncError = null;
 let modelPreloadPromise = null;
 let noticeTimer = null;
 let noticeRemaining = 0;
@@ -376,6 +380,28 @@ function escapeHTML(value = "") {
   }[char]));
 }
 
+function formatMomentTime(value) {
+  const timestamp = Number(value || 0);
+  if (!timestamp) return "";
+  const diff = Math.max(0, Date.now() - timestamp * 1000);
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  if (diff < minute) return "刚刚";
+  if (diff < hour) return `${Math.floor(diff / minute)} 分钟前`;
+  if (diff < day) return `${Math.floor(diff / hour)} 小时前`;
+  if (diff < day * 7) return `${Math.floor(diff / day)} 天前`;
+  return new Date(timestamp * 1000).toLocaleDateString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+  });
+}
+
+function truncateText(value = "", maxLength = 48) {
+  const text = String(value || "").trim();
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+}
+
 function renderParagraphs(value = "") {
   return String(value)
     .replace(/\\n/g, "\n")
@@ -615,6 +641,36 @@ async function loadHotItems() {
   return hotItemsPromise;
 }
 
+async function loadFollowMoments({ sync = false } = {}) {
+  if (followMomentsPromise) return followMomentsPromise;
+  followMomentsPromise = (async () => {
+    followSyncError = null;
+    if (sync) {
+      try {
+        const syncData = await api("/api/p0/follow-moments/sync", {
+          method: "POST",
+          body: JSON.stringify({ page: 0, perPage: 30 }),
+        });
+        profile = syncData.profile || profile;
+      } catch (error) {
+        followSyncError = error;
+        if (!["OAUTH_TOKEN_REQUIRED", "FOLLOW_MOMENTS_SYNC_FAILED"].includes(error.error)) {
+          console.warn("Follow moments sync failed", error);
+        }
+      }
+    }
+    const data = await api("/api/p0/follow-moments?limit=30");
+    followMoments = data.moments || [];
+    followMomentsLoaded = true;
+    return followMoments;
+  })().catch((error) => {
+    followMomentsPromise = null;
+    followMomentsLoaded = true;
+    throw error;
+  });
+  return followMomentsPromise;
+}
+
 function syncCharacter() {
   const container = document.getElementById("roamingCharacter");
   if (!container) return;
@@ -729,7 +785,7 @@ function shell(active) {
     <header class="site-header">
       <a class="logo" href="/">知乎</a>
       <nav class="nav">
-        <a href="#" data-follow-tab>关注</a>
+        <a class="${active === "follow" ? "active" : ""}" href="/follow" data-follow-tab>关注</a>
         <a class="${active === "recommend" ? "active" : ""}" href="/">推荐</a>
         <a class="${active === "hot" ? "active" : ""}" href="/hot">热榜</a>
         <a href="#">专栏</a>
@@ -1072,6 +1128,47 @@ function feedCard(item) {
   `;
 }
 
+function followMomentTitle(moment) {
+  if (moment.targetTitle) return moment.targetTitle;
+  if (moment.actionText?.includes("文章")) return "一篇文章";
+  if (moment.actionText?.includes("问题")) return "一个问题";
+  if (moment.actionText?.includes("回答")) return truncateText(moment.targetExcerpt || "一条回答", 38);
+  return truncateText(moment.targetExcerpt || "一条关注动态", 38);
+}
+
+function followMomentCard(moment) {
+  const title = followMomentTitle(moment);
+  const excerpt = moment.targetExcerpt || "";
+  const author = moment.targetAuthorName ? `${moment.targetAuthorName}：` : "";
+  const timeText = formatMomentTime(moment.actionTime);
+  const action = moment.actionText || "有了新动态";
+  return `
+    <article class="card follow-moment-card">
+      <div class="follow-moment-source">
+        <span class="follow-moment-avatar avatar"></span>
+        <span><strong>${escapeHTML(moment.actorName || "知乎用户")}</strong>${escapeHTML(action)}</span>
+        ${timeText ? `<small>${escapeHTML(timeText)}</small>` : ""}
+      </div>
+      <h2><button class="content-open-title">${escapeHTML(title)}</button></h2>
+      ${excerpt ? `
+        <div class="follow-moment-body">
+          <p>${escapeHTML(author)}${escapeHTML(excerpt)}</p>
+          <button class="read-link">阅读全文⌄</button>
+        </div>
+      ` : ""}
+      <div class="feed-actions follow-moment-actions">
+        <button class="vote-btn">${feedActionIcon("up")}<span>赞同</span></button>
+        <button class="vote-btn vote-btn-down" aria-label="反对">${feedActionIcon("down")}</button>
+        <button class="feed-action feed-action-comment">${feedActionIcon("comment")}<span>添加评论</span></button>
+        <button class="feed-action">${feedActionIcon("collect")}<span>收藏</span></button>
+        <button class="feed-action">${feedActionIcon("like")}<span>喜欢</span></button>
+        <button class="feed-action feed-action-share">${feedActionIcon("share")}<span>分享</span></button>
+        <button class="feed-action feed-action-more" aria-label="更多">${feedActionIcon("more")}</button>
+      </div>
+    </article>
+  `;
+}
+
 function hotListItem(item, index) {
   const rank = item.rank || index + 1;
   const url = item.url || "https://www.zhihu.com/hot";
@@ -1122,6 +1219,40 @@ function renderRecommend() {
   `;
   bindCommon();
   bindRecommend();
+}
+
+function renderFollow() {
+  if (!followMoments.length && !followMomentsLoaded) {
+    const pendingFollowMoments = loadFollowMoments({ sync: true });
+    pendingFollowMoments
+      .then(() => {
+        if (window.location.pathname === "/follow") renderFollow();
+      })
+      .catch(() => {
+        if (window.location.pathname === "/follow") showToast("关注动态加载失败");
+      });
+  }
+  const emptyText = followSyncError?.error === "OAUTH_TOKEN_REQUIRED"
+    ? "重新登录知乎后查看关注动态"
+    : "暂无关注动态";
+  app.innerHTML = `
+    ${shell("follow")}
+    <main class="page follow-page">
+      <section class="follow-main">
+        ${followMoments.length
+          ? followMoments.map(followMomentCard).join("")
+          : `<section class="card follow-empty">${followMomentsLoaded ? emptyText : "关注动态加载中"}</section>`}
+      </section>
+      <aside class="side-stack">
+        ${creatorCard()}
+        ${petPanel()}
+        ${hotCard()}
+        ${authorPlatformCard()}
+        ${recommendFollowCard()}
+      </aside>
+    </main>
+  `;
+  bindCommon();
 }
 
 function renderHot() {
@@ -1602,6 +1733,8 @@ function renderCurrentRoute() {
   const path = window.location.pathname;
   if (path === "/people/p2wcex") {
     renderPeople();
+  } else if (path === "/follow") {
+    renderFollow();
   } else if (path === "/hot") {
     renderHot();
   } else {
@@ -1615,7 +1748,7 @@ document.addEventListener("click", (event) => {
   const link = event.target.closest("a");
   if (!link) return;
   const url = new URL(link.href);
-  if (url.origin === window.location.origin && ["/", "/people/p2wcex", "/hot"].includes(url.pathname)) {
+  if (url.origin === window.location.origin && ["/", "/people/p2wcex", "/hot", "/follow"].includes(url.pathname)) {
     event.preventDefault();
     window.history.pushState({}, "", url.pathname);
     renderCurrentRoute();
@@ -1631,6 +1764,9 @@ if (authUser) {
     await loadHotItems();
   } else {
     loadHotItems().catch(() => {});
+  }
+  if (window.location.pathname === "/follow") {
+    await loadFollowMoments({ sync: true });
   }
   renderCurrentRoute();
   syncFollowMoments();

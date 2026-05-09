@@ -680,6 +680,89 @@ button {
   background: rgba(23, 114, 246, 0.1);
 }
 
+.follow-page {
+  align-items: start;
+}
+
+.follow-main {
+  min-width: 0;
+}
+
+.follow-moment-card {
+  padding: 16px 22px 0;
+  border-bottom: 1px solid #edf0f5;
+  border-radius: 0;
+}
+
+.follow-moment-source {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  margin-bottom: 10px;
+  color: #8491a5;
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.follow-moment-source strong {
+  margin-right: 4px;
+  color: #646b7a;
+  font-weight: 600;
+}
+
+.follow-moment-source small {
+  margin-left: 8px;
+  color: #b0b7c3;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.follow-moment-avatar {
+  width: 24px;
+  height: 24px;
+  margin-right: 10px;
+  flex: 0 0 auto;
+}
+
+.follow-moment-card h2 {
+  margin: 0 0 9px;
+  color: #191b1f;
+  font-size: 18px;
+  line-height: 1.45;
+}
+
+.follow-moment-body {
+  display: block;
+  color: #1f2329;
+}
+
+.follow-moment-body p {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: #1f2329;
+  font-size: 15px;
+  line-height: 1.68;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.follow-moment-body .read-link {
+  margin-top: 2px;
+  margin-left: 0;
+}
+
+.follow-moment-actions {
+  margin-bottom: 0;
+}
+
+.follow-empty {
+  padding: 42px 22px;
+  color: #8491a5;
+  font-size: 15px;
+  text-align: center;
+}
+
 .hot-page {
   align-items: start;
 }
@@ -2163,6 +2246,7 @@ button {
     order: -1;
   }
 
+  .follow-page .side-stack,
   .hot-page .side-stack {
     order: 0;
   }
