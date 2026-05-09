@@ -357,8 +357,10 @@ function travelStatusText(status) {
 
 function travelThemeText(theme) {
   return {
-    arctic: "北极远行",
-    mountain: "山海漫游",
+    polar: "极地旅行",
+    hotspot: "热点旅行",
+    arctic: "极地旅行",
+    mountain: "热点旅行",
   }[theme] || theme || "游历";
 }
 
@@ -1535,7 +1537,7 @@ async function claimTravel(travelId = "") {
 
 function showTravelReturnCard(travel) {
   document.querySelector(".travel-return-card")?.remove();
-  const first = travel.contents?.[0];
+  const count = (travel.contents || []).length;
   const card = document.createElement("div");
   card.className = "travel-return-card";
   card.innerHTML = `
@@ -1543,20 +1545,150 @@ function showTravelReturnCard(travel) {
       <span>${escapeHTML(travelThemeText(travel.theme))}</span>
       <button aria-label="关闭">×</button>
     </div>
-    <strong>${escapeHTML(travel.message || "刘看山带回了好内容")}</strong>
-    ${first ? `<p>${escapeHTML(first.title)}</p>` : ""}
+    <strong>${escapeHTML(travel.message || "刘看山转了一圈回来啦")}</strong>
+    ${count ? `<p>带回 ${count} 条素材，点开手账看看看山的汇报～</p>` : ""}
     <div class="travel-return-actions">
-      ${first ? `<button data-open-travel-content="${escapeHTML(first.id)}">查看内容</button>` : ""}
+      <button data-open-handbook-from-return>看看手账</button>
       <button data-claim-travel="${escapeHTML(travel.travelId)}">领取奖励</button>
     </div>
   `;
   document.body.appendChild(card);
   card.querySelector("[aria-label='关闭']").addEventListener("click", () => card.remove());
   card.querySelector("[data-claim-travel]")?.addEventListener("click", () => claimTravel(travel.travelId));
-  card.querySelector("[data-open-travel-content]")?.addEventListener("click", async (event) => {
-    const contentId = event.currentTarget.dataset.openTravelContent;
-    const data = await api(`/api/p0/contents/${encodeURIComponent(contentId)}`);
-    renderContentModal(data.content);
+  card.querySelector("[data-open-handbook-from-return]")?.addEventListener("click", () => {
+    card.remove();
+    openTravelHandbook();
+  });
+}
+
+function renderTravelHandbookEntry(entry) {
+  const status = entry.llmSummaryStatus || "skipped";
+  const summaryText = (entry.llmSummary || "").trim();
+  const quote = (entry.llmPetQuote || "").trim() || entry.petQuote || "";
+  const highlights = Array.isArray(entry.llmHighlights) ? entry.llmHighlights : [];
+  let badgeLabel = "";
+  let badgeClass = "";
+  if (status === "ready" && summaryText) {
+    badgeLabel = "看山的现场汇报";
+    badgeClass = "ready";
+  } else if (status === "processing" || status === "pending") {
+    badgeLabel = "看山正在整理…";
+    badgeClass = "pending";
+  } else if (status === "failed") {
+    badgeLabel = "看山没整理出来，给你看素材清单";
+    badgeClass = "failed";
+  }
+  const summaryBlock = summaryText
+    ? `<p class="handbook-llm-summary">${escapeHTML(summaryText)}</p>`
+    : `<p class="handbook-route-text">${escapeHTML(entry.routeText || "")}</p>`;
+  const badgeBlock = badgeLabel
+    ? `<span class="handbook-llm-badge ${badgeClass}">${escapeHTML(badgeLabel)}</span>`
+    : "";
+  const highlightsBlock = highlights.length
+    ? `<ul class="handbook-highlights">${highlights
+        .map(
+          (item) => `
+        <li>
+          <strong>${escapeHTML(item.title || "")}</strong>
+          ${item.reason ? `<span>${escapeHTML(item.reason)}</span>` : ""}
+        </li>`,
+        )
+        .join("")}</ul>`
+    : "";
+  const contentsBlock = (entry.contents || [])
+    .map((content) => travelContentButtonHTML(content))
+    .join("");
+  return `
+    <article class="travel-handbook-entry ${escapeHTML(entry.coverStyle || "")}">
+      <div>
+        <small>${escapeHTML(entry.themeTitle || "")}</small>
+        ${badgeBlock}
+        ${summaryBlock}
+        <p class="handbook-pet-quote">${escapeHTML(quote)}</p>
+        ${highlightsBlock}
+      </div>
+      <div class="travel-handbook-contents">
+        ${contentsBlock}
+      </div>
+    </article>
+  `;
+}
+
+function travelSourceLabel(source) {
+  if (source === "follow_moment") return "关注动态";
+  if (source === "hot_list") return "知乎热榜";
+  return "";
+}
+
+const handbookContentMap = new Map();
+
+function travelContentButtonHTML(content) {
+  const sourceLabel = travelSourceLabel(content.source);
+  const metaText = content.source === "hot_list"
+    ? (content.meta?.heatText || "")
+    : (content.meta?.actorName ? `${content.meta.actorName} ${content.meta.actionText || ""}`.trim() : (content.author || ""));
+  if (content.sourceRef) {
+    handbookContentMap.set(content.sourceRef, {
+      title: content.title,
+      excerpt: content.excerpt,
+      author: content.author,
+      meta: content.meta,
+    });
+  }
+  return `
+    <button class="handbook-content-button"
+      data-handbook-content-source="${escapeHTML(content.source || "")}"
+      data-handbook-content-url="${escapeHTML(content.url || "")}"
+      data-handbook-content-ref="${escapeHTML(content.sourceRef || "")}">
+      ${sourceLabel ? `<span class="handbook-content-source">${escapeHTML(sourceLabel)}</span>` : ""}
+      <span class="handbook-content-title">${escapeHTML(content.title || "")}</span>
+      ${metaText ? `<span class="handbook-content-meta">${escapeHTML(metaText)}</span>` : ""}
+    </button>
+  `;
+}
+
+function isSafeHttpUrl(value) {
+  if (!value) return false;
+  try {
+    const parsed = new URL(value, window.location.href);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch (error) {
+    return false;
+  }
+}
+
+function handleHandbookContentClick(button) {
+  const url = button.dataset.handbookContentUrl;
+  if (isSafeHttpUrl(url)) {
+    window.open(url, "_blank", "noopener,noreferrer");
+    return;
+  }
+  const ref = button.dataset.handbookContentRef;
+  const payload = (ref && handbookContentMap.get(ref)) || {};
+  showTravelMaterialModal(payload, button.dataset.handbookContentSource);
+}
+
+function showTravelMaterialModal(payload, source) {
+  document.querySelector(".travel-material-modal")?.remove();
+  const sourceLabel = travelSourceLabel(source);
+  const meta = payload.meta || {};
+  const modal = document.createElement("div");
+  modal.className = "travel-material-modal";
+  modal.innerHTML = `
+    <div class="travel-material-dialog" role="dialog" aria-modal="true" aria-label="素材详情">
+      <button class="content-close" aria-label="关闭">×</button>
+      ${sourceLabel ? `<div class="content-type">${escapeHTML(sourceLabel)}</div>` : ""}
+      <h2>${escapeHTML(payload.title || "")}</h2>
+      ${meta.actorName ? `<p class="material-actor"><strong>${escapeHTML(meta.actorName)}</strong> ${escapeHTML(meta.actionText || "")}</p>` : ""}
+      ${payload.author ? `<p class="material-author">作者：${escapeHTML(payload.author)}</p>` : ""}
+      ${payload.excerpt ? `<p class="material-excerpt">${escapeHTML(payload.excerpt)}</p>` : ""}
+      ${meta.heatText ? `<p class="material-heat">${escapeHTML(meta.heatText)}</p>` : ""}
+    </div>
+  `;
+  document.body.appendChild(modal);
+  modal.querySelector(".content-close").addEventListener("click", () => modal.remove());
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal) modal.remove();
   });
 }
 
@@ -1579,20 +1711,7 @@ function renderTravelHandbook(entries) {
       <div class="content-type">看山旅行手账</div>
       <h1>刘看山带回的路上风景</h1>
       <div class="travel-handbook-list">
-        ${entries.length ? entries.map((entry) => `
-          <article class="travel-handbook-entry ${escapeHTML(entry.coverStyle)}">
-            <div>
-              <small>${escapeHTML(entry.themeTitle)}</small>
-              <strong>${escapeHTML(entry.routeText)}</strong>
-              <p>${escapeHTML(entry.petQuote)}</p>
-            </div>
-            <div class="travel-handbook-contents">
-              ${(entry.contents || []).map((content) => `
-                <button data-open-travel-content="${escapeHTML(content.id)}">${escapeHTML(content.title)}</button>
-              `).join("")}
-            </div>
-          </article>
-        `).join("") : `<p class="empty-handbook">还没有旅行记录，攒够精力后让看山出门吧。</p>`}
+        ${entries.length ? entries.map((entry) => renderTravelHandbookEntry(entry)).join("") : `<p class="empty-handbook">还没有旅行记录，攒够精力后让看山出门吧。</p>`}
       </div>
     </div>
   `;
@@ -1601,11 +1720,8 @@ function renderTravelHandbook(entries) {
   modal.addEventListener("click", (event) => {
     if (event.target === modal) modal.remove();
   });
-  modal.querySelectorAll("[data-open-travel-content]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const data = await api(`/api/p0/contents/${encodeURIComponent(button.dataset.openTravelContent)}`);
-      renderContentModal(data.content);
-    });
+  modal.querySelectorAll(".handbook-content-button").forEach((button) => {
+    button.addEventListener("click", () => handleHandbookContentClick(button));
   });
 }
 

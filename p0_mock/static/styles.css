@@ -1615,6 +1615,16 @@ button {
   background: #f7fbff;
 }
 
+.travel-handbook-entry.polar {
+  background: linear-gradient(180deg, #f5faff 0%, #eaf4ff 100%);
+  border-color: rgba(22, 119, 255, 0.18);
+}
+
+.travel-handbook-entry.hotspot {
+  background: linear-gradient(180deg, #fff7f0 0%, #fdebdc 100%);
+  border-color: rgba(255, 123, 51, 0.22);
+}
+
 .travel-handbook-entry.mountain {
   background: #f5fbf6;
   border-color: rgba(30, 134, 76, 0.14);
@@ -1624,6 +1634,10 @@ button {
   color: #1677ff;
   font-size: 12px;
   font-weight: 800;
+}
+
+.travel-handbook-entry.hotspot small {
+  color: #d4671f;
 }
 
 .travel-handbook-entry strong {
@@ -1638,6 +1652,176 @@ button {
   color: #667085;
   font-size: 14px;
   line-height: 1.6;
+}
+
+.handbook-llm-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(22, 119, 255, 0.1);
+  color: #1677ff;
+  font-size: 11px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.handbook-llm-badge.pending {
+  background: rgba(140, 142, 150, 0.12);
+  color: #8c8e96;
+}
+
+.handbook-llm-badge.failed {
+  background: rgba(255, 123, 51, 0.14);
+  color: #c4581d;
+}
+
+.travel-handbook-entry.hotspot .handbook-llm-badge.ready {
+  background: rgba(255, 123, 51, 0.16);
+  color: #c4581d;
+}
+
+.handbook-llm-summary {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.7);
+  color: #1f2329;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.handbook-route-text {
+  margin: 10px 0 0;
+  color: #667085;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.handbook-pet-quote {
+  margin: 8px 0 0;
+  color: #1f2329;
+  font-size: 13px;
+  font-style: italic;
+}
+
+.handbook-highlights {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.handbook-highlights li {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.8);
+  border-left: 3px solid rgba(22, 119, 255, 0.4);
+}
+
+.travel-handbook-entry.hotspot .handbook-highlights li {
+  border-left-color: rgba(255, 123, 51, 0.5);
+}
+
+.handbook-highlights strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  color: #1f2329;
+  line-height: 1.4;
+}
+
+.handbook-highlights span {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: #667085;
+  line-height: 1.5;
+}
+
+.handbook-content-button {
+  display: grid;
+  gap: 4px;
+  padding: 9px 10px;
+  border: 1px solid #d8e5ff;
+  border-radius: 8px;
+  background: #fff;
+  color: #1f2329;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.45;
+  text-align: left;
+  cursor: pointer;
+}
+
+.travel-handbook-entry.hotspot .handbook-content-button {
+  border-color: rgba(255, 123, 51, 0.3);
+}
+
+.handbook-content-source {
+  font-size: 11px;
+  font-weight: 800;
+  color: #1677ff;
+  letter-spacing: 0.4px;
+}
+
+.travel-handbook-entry.hotspot .handbook-content-source {
+  color: #c4581d;
+}
+
+.handbook-content-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1f2329;
+}
+
+.handbook-content-meta {
+  font-size: 11px;
+  font-weight: 500;
+  color: #8c8e96;
+}
+
+.travel-material-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  display: grid;
+  place-items: center;
+  z-index: 9000;
+  padding: 24px;
+}
+
+.travel-material-dialog {
+  position: relative;
+  max-width: 480px;
+  width: 100%;
+  background: #fff;
+  border-radius: 12px;
+  padding: 24px 28px 28px;
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.18);
+}
+
+.travel-material-dialog h2 {
+  margin: 6px 0 12px;
+  font-size: 18px;
+  line-height: 1.4;
+}
+
+.travel-material-dialog .material-actor,
+.travel-material-dialog .material-author,
+.travel-material-dialog .material-heat {
+  margin: 4px 0 0;
+  color: #667085;
+  font-size: 13px;
+}
+
+.travel-material-dialog .material-excerpt {
+  margin: 12px 0 0;
+  color: #1f2329;
+  font-size: 14px;
+  line-height: 1.65;
 }
 
 .travel-handbook-contents {
