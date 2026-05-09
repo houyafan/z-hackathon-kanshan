@@ -850,6 +850,10 @@ function creatorCard() {
         <span>♟ 创作中心 <span class="level-pill">Lv3</span></span>
         <small>草稿箱(1)</small>
       </div>
+      <div class="creator-metrics">
+        <div><small>今日阅读（播放）数</small><strong>0</strong></div>
+        <div><small>今日新增赞同数</small><strong>0</strong></div>
+      </div>
       <div class="creator-banner">给妈妈点时间<br>2026 母亲节</div>
       <div class="two-btns">
         <button class="outline-btn">进入创作中心 ›</button>
@@ -874,8 +878,43 @@ function hotCard() {
     <section class="card side-card">
       <div class="side-title"><span>大家都在搜</span><small>换一换</small></div>
       <ol class="hot-list">
-        ${items.map(([text, heat]) => `<li><span>${text}</span><small>${heat}</small></li>`).join("")}
+        ${items.map(([text, heat]) => `<li><span>${text}</span><small>${heat}</small><em>热</em></li>`).join("")}
       </ol>
+    </section>
+  `;
+}
+
+function authorPlatformCard() {
+  return `
+    <section class="card side-card author-platform-card">
+      <div class="side-title">盐言作者平台</div>
+      <div class="author-platform-banner">
+        <span><strong>写好故事，赚高收益！</strong>已有 100 万+作者入驻</span>
+        <i class="author-platform-medal" aria-hidden="true"></i>
+      </div>
+      <button class="outline-btn">去投稿 ›</button>
+    </section>
+  `;
+}
+
+function recommendFollowCard() {
+  const users = [
+    ["知乎城市指南", "发现本地新问题"],
+    ["刘看山陪读员", "和你一起读好内容"],
+    ["盐选故事会", "每日精选短篇"],
+  ];
+  return `
+    <section class="card side-card">
+      <div class="side-title">推荐关注</div>
+      <ul class="follow-list">
+        ${users.map(([name, desc]) => `
+          <li>
+            <span class="follow-avatar"></span>
+            <span><strong>${name}</strong><small>${desc}</small></span>
+            <button>关注</button>
+          </li>
+        `).join("")}
+      </ul>
     </section>
   `;
 }
@@ -938,7 +977,8 @@ function renderRecommend() {
         ${creatorCard()}
         ${petPanel()}
         ${hotCard()}
-        <section class="card side-card"><div class="side-title">盐言作者平台</div></section>
+        ${authorPlatformCard()}
+        ${recommendFollowCard()}
       </aside>
     </main>
   `;
