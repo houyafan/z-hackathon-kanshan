@@ -14,7 +14,7 @@ let noticeRemaining = 0;
 let idleBandVisible = true;
 const savedRewardWalk = localStorage.getItem("liukanshan_reward_walk_enabled") ?? localStorage.getItem("liukanshan_level_walk_enabled");
 let rewardWalkEnabled = savedRewardWalk !== "0";
-const MODEL_PATH = "/3d-liukanshan-roaming/liukanshan-slot.glb";
+const MODEL_PATH = "/3d-liukanshan-roaming/liukanshan-slot.glb?v=2";
 
 function effectLayer() {
   let layer = document.querySelector(".pet-effect-layer");
