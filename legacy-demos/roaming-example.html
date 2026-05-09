@@ -6,7 +6,7 @@
     <title>溜达角色 - API使用示例</title>
     
     <!-- 导入CSS -->
-    <link rel="stylesheet" href="3d-liukanshan-roaming/roaming-character.css">
+    <link rel="stylesheet" href="../3d-liukanshan-roaming/roaming-character.css">
     
     <style>
         body {
@@ -189,11 +189,11 @@ const isMoving = character.isMovingStatus();
     </script>
     
     <script type="module">
-        import { initRoamingCharacter } from './3d-liukanshan-roaming/roaming-character.js';
+        import { initRoamingCharacter } from '../3d-liukanshan-roaming/roaming-character.js';
         
         // 初始化角色（禁用点击移动）
         const character = initRoamingCharacter({
-            modelPath: '3d-liukanshan-roaming/低面数.glb',
+            modelPath: '低面数.glb',
             scale: 1.3,
             speed: 250,
             idleMessage: "等待指令~",

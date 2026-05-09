@@ -12,16 +12,13 @@
 .cursor
 blender-mcp/
 刘看山3d+平面/
+legacy-demos/
 
 *.docx
 *.psd
 *.c4d
 *.obj
 *.ai
-
-mobefqrv.png
-mobeohg5.png
-低面数.glb
 
 db/sqlite/*.sqlite
 
