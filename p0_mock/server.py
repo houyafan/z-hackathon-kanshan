@@ -19,6 +19,7 @@ INIT_SQL = ROOT / "db" / "sqlite" / "init_p0.sql"
 STATIC_DIR = ROOT / "p0_mock" / "static"
 ROAMING_DIR = ROOT / "3d-liukanshan-roaming"
 CONFIG_PATH = Path(os.environ.get("CONFIG_PATH") or ROOT / "p0_mock" / "config.json")
+BUNDLED_CONFIG_PATH = ROOT / "p0_mock" / "config.json"
 DEFAULT_USER_ID = 10001
 SESSION_COOKIE_NAME = "lks_session"
 
@@ -84,9 +85,12 @@ def load_config():
             "email": "",
         },
     }
-    if not CONFIG_PATH.exists():
+    config_path = CONFIG_PATH
+    if not config_path.exists() and config_path != BUNDLED_CONFIG_PATH and BUNDLED_CONFIG_PATH.exists():
+        config_path = BUNDLED_CONFIG_PATH
+    if not config_path.exists():
         return apply_env_overrides(default_config)
-    with CONFIG_PATH.open("r", encoding="utf-8") as file:
+    with config_path.open("r", encoding="utf-8") as file:
         user_config = json.load(file)
     merged = {**default_config, **user_config}
     merged["mock_user"] = {**default_config["mock_user"], **user_config.get("mock_user", {})}
