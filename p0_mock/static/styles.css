@@ -964,6 +964,157 @@ button {
   margin: 0 0 16px;
 }
 
+.travel-return-card {
+  position: fixed;
+  right: 28px;
+  bottom: 184px;
+  z-index: 1450;
+  width: 328px;
+  padding: 16px;
+  border: 1px solid rgba(22, 119, 255, 0.18);
+  border-radius: 10px;
+  background: linear-gradient(145deg, #ffffff 0%, #eef7ff 54%, #fff5fb 100%);
+  box-shadow: 0 24px 70px rgba(15, 45, 87, 0.2);
+  color: #1f2329;
+  animation: travelCardIn 360ms ease both;
+}
+
+.travel-return-head,
+.travel-return-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.travel-return-head span {
+  color: #1677ff;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.travel-return-head button {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.74);
+  color: #667085;
+  font-size: 18px;
+}
+
+.travel-return-card strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.travel-return-card p {
+  margin: 10px 0 14px;
+  color: #475467;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.travel-return-actions button {
+  flex: 1;
+  height: 34px;
+  border: 1px solid #d8e5ff;
+  border-radius: 8px;
+  background: #fff;
+  color: #1677ff;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.travel-handbook-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1350;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 72px 24px 40px;
+  background: rgba(18, 18, 18, 0.38);
+  overflow-y: auto;
+}
+
+.travel-handbook-dialog {
+  position: relative;
+  width: min(840px, 100%);
+  max-height: calc(100vh - 112px);
+  overflow-y: auto;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 24px 80px rgba(18, 18, 18, 0.22);
+  padding: 30px 36px 34px;
+}
+
+.travel-handbook-dialog h1 {
+  margin: 0 0 20px;
+  padding-right: 32px;
+  font-size: 26px;
+}
+
+.travel-handbook-list {
+  display: grid;
+  gap: 14px;
+}
+
+.travel-handbook-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(220px, 0.75fr);
+  gap: 18px;
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(22, 119, 255, 0.12);
+  background: #f7fbff;
+}
+
+.travel-handbook-entry.mountain {
+  background: #f5fbf6;
+  border-color: rgba(30, 134, 76, 0.14);
+}
+
+.travel-handbook-entry small {
+  color: #1677ff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.travel-handbook-entry strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 16px;
+}
+
+.travel-handbook-entry p,
+.empty-handbook {
+  margin: 8px 0 0;
+  color: #667085;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.travel-handbook-contents {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.travel-handbook-contents button {
+  padding: 9px 10px;
+  border: 1px solid #d8e5ff;
+  border-radius: 8px;
+  background: #fff;
+  color: #1f2329;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.45;
+  text-align: left;
+}
+
 #roamingCharacter {
   display: none;
 }
@@ -1114,6 +1265,32 @@ button {
   font-size: 18px;
 }
 
+.pet-hover-travel {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #eef7ff 0%, #fff4fb 100%);
+  border: 1px solid rgba(22, 119, 255, 0.12);
+}
+
+.pet-hover-travel small,
+.pet-hover-travel strong {
+  display: block;
+}
+
+.pet-hover-travel small {
+  color: #1677ff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pet-hover-travel strong {
+  margin-top: 3px;
+  color: #1f2329;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .pet-hover-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1133,6 +1310,20 @@ button {
   text-align: center;
   text-decoration: none;
   line-height: 30px;
+}
+
+.pet-hover-actions button:disabled,
+.travel-panel-actions button:disabled {
+  color: #98a2b3;
+  background: #f5f7fa;
+  cursor: not-allowed;
+}
+
+.travel-panel-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 10px 0;
 }
 
 .pet-hover-toggle {
@@ -1451,6 +1642,17 @@ button {
   100% {
     opacity: 0;
     transform: translate(-50%, -50%) scale(1.9);
+  }
+}
+
+@keyframes travelCardIn {
+  0% {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 }
 

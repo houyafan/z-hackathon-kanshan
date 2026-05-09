@@ -66,6 +66,13 @@ CREATE TABLE IF NOT EXISTS pet_profile (
 
   satiety INTEGER NOT NULL DEFAULT 50 CHECK (satiety BETWEEN 0 AND 100),
   mood INTEGER NOT NULL DEFAULT 50 CHECK (mood BETWEEN 0 AND 100),
+  health INTEGER NOT NULL DEFAULT 100 CHECK (health BETWEEN 0 AND 100),
+  travel_energy INTEGER NOT NULL DEFAULT 0 CHECK (travel_energy >= 0),
+  travel_status TEXT NOT NULL DEFAULT 'home'
+    CHECK (travel_status IN ('home', 'traveling', 'returned', 'cooldown', 'sleeping')),
+  current_travel_id TEXT DEFAULT NULL,
+  cooldown_until TEXT DEFAULT NULL,
+  last_travel_at TEXT DEFAULT NULL,
 
   total_read_count INTEGER NOT NULL DEFAULT 0 CHECK (total_read_count >= 0),
   total_watch_count INTEGER NOT NULL DEFAULT 0 CHECK (total_watch_count >= 0),
@@ -95,6 +102,7 @@ CREATE TABLE IF NOT EXISTS pet_content_event (
   exp_reward INTEGER NOT NULL DEFAULT 0 CHECK (exp_reward >= 0),
   satiety_reward INTEGER NOT NULL DEFAULT 0 CHECK (satiety_reward >= 0),
   mood_reward INTEGER NOT NULL DEFAULT 0 CHECK (mood_reward >= 0),
+  travel_energy_reward INTEGER NOT NULL DEFAULT 0 CHECK (travel_energy_reward >= 0),
 
   occurred_at TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -144,6 +152,7 @@ CREATE TABLE IF NOT EXISTS pet_daily_stat (
   exp_gained INTEGER NOT NULL DEFAULT 0 CHECK (exp_gained >= 0),
   satiety_gained INTEGER NOT NULL DEFAULT 0 CHECK (satiety_gained >= 0),
   mood_gained INTEGER NOT NULL DEFAULT 0 CHECK (mood_gained >= 0),
+  travel_energy_gained INTEGER NOT NULL DEFAULT 0 CHECK (travel_energy_gained >= 0),
 
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -216,6 +225,70 @@ CREATE TABLE IF NOT EXISTS zhihu_follow_moment_sync (
   UNIQUE (user_id)
 );
 
+CREATE TABLE IF NOT EXISTS pet_travel_theme_config (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  theme TEXT NOT NULL CHECK (theme IN ('arctic', 'mountain')),
+  title TEXT NOT NULL,
+  required_level INTEGER NOT NULL DEFAULT 2 CHECK (required_level >= 1),
+  energy_cost INTEGER NOT NULL DEFAULT 10 CHECK (energy_cost >= 0),
+  duration_sec INTEGER NOT NULL DEFAULT 60 CHECK (duration_sec > 0),
+  preferred_tags TEXT NOT NULL CHECK (json_valid(preferred_tags)),
+  return_count INTEGER NOT NULL DEFAULT 1 CHECK (return_count >= 1),
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+  UNIQUE (theme)
+);
+
+CREATE TABLE IF NOT EXISTS pet_travel_event (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  travel_id TEXT NOT NULL,
+  user_id INTEGER NOT NULL,
+  theme TEXT NOT NULL CHECK (theme IN ('arctic', 'mountain')),
+  status TEXT NOT NULL
+    CHECK (status IN ('traveling', 'returned', 'claimed', 'recalled', 'failed')),
+  energy_cost INTEGER NOT NULL DEFAULT 0 CHECK (energy_cost >= 0),
+  started_at TEXT NOT NULL,
+  expected_return_at TEXT NOT NULL,
+  returned_at TEXT DEFAULT NULL,
+  claimed_at TEXT DEFAULT NULL,
+  message TEXT DEFAULT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+  UNIQUE (travel_id)
+);
+
+CREATE TABLE IF NOT EXISTS pet_travel_return_content (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  travel_id TEXT NOT NULL,
+  content_id TEXT NOT NULL,
+  rank INTEGER NOT NULL DEFAULT 1 CHECK (rank >= 1),
+  match_reason TEXT DEFAULT NULL,
+  claimed INTEGER NOT NULL DEFAULT 0 CHECK (claimed IN (0, 1)),
+  reward_exp INTEGER NOT NULL DEFAULT 8 CHECK (reward_exp >= 0),
+  reward_mood INTEGER NOT NULL DEFAULT 5 CHECK (reward_mood >= 0),
+  reward_energy INTEGER NOT NULL DEFAULT 1 CHECK (reward_energy >= 0),
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+  UNIQUE (travel_id, content_id)
+);
+
+CREATE TABLE IF NOT EXISTS pet_travel_handbook (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  travel_id TEXT NOT NULL,
+  user_id INTEGER NOT NULL,
+  theme_title TEXT NOT NULL,
+  route_text TEXT NOT NULL,
+  pet_quote TEXT NOT NULL,
+  cover_style TEXT NOT NULL DEFAULT 'blue',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+  UNIQUE (travel_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_pet_content_event_user_time
   ON pet_content_event (user_id, occurred_at);
 
@@ -249,6 +322,15 @@ CREATE INDEX IF NOT EXISTS idx_zhihu_follow_moment_notify
 CREATE INDEX IF NOT EXISTS idx_zhihu_follow_moment_llm
   ON zhihu_follow_moment (llm_summary_status, action_time DESC);
 
+CREATE INDEX IF NOT EXISTS idx_pet_travel_event_user_status
+  ON pet_travel_event (user_id, status, started_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_pet_travel_return_content_travel
+  ON pet_travel_return_content (travel_id, rank);
+
+CREATE INDEX IF NOT EXISTS idx_pet_travel_handbook_user
+  ON pet_travel_handbook (user_id, created_at DESC);
+
 CREATE INDEX IF NOT EXISTS idx_auth_session_user
   ON auth_session (user_id, expires_at);
 
@@ -268,6 +350,12 @@ VALUES
   (8, 'adult', 1400, '寻文看山', '[]'),
   (9, 'adult', 1900, '知心看山', '[]'),
   (10, 'advanced', 2500, '进阶看山', '[]');
+
+INSERT OR IGNORE INTO pet_travel_theme_config
+  (theme, title, required_level, energy_cost, duration_sec, preferred_tags, return_count)
+VALUES
+  ('arctic', '北极远行', 2, 10, 60, '["科技","科普","理科","硬核","学术","知识","冷知识","AI"]', 1),
+  ('mountain', '山海漫游', 2, 10, 60, '["旅行","生活","文化","历史","美食","摄影","自然","社会观察"]', 1);
 
 INSERT OR IGNORE INTO zhihu_content_pool
   (content_id, content_type, title, author, excerpt, full_content, read_text, tags, media_type, media_label,

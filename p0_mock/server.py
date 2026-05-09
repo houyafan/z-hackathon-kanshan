@@ -107,6 +107,30 @@ FOLLOW_MOMENT_EXP = 2
 FOLLOW_MOMENT_MAX_EXP_PER_SYNC = 10
 FOLLOW_MOMENT_MOOD = 1
 FOLLOW_MOMENT_MAX_MOOD_PER_SYNC = 5
+TRAVEL_MIN_SATIETY = 60
+TRAVEL_DEFAULT_ENERGY_COST = 10
+TRAVEL_COOLDOWN_MINUTES = 10
+TRAVEL_CLAIM_EXP = 8
+TRAVEL_CLAIM_MOOD = 5
+TRAVEL_CLAIM_ENERGY = 1
+TRAVEL_THEME_MESSAGES = {
+    "arctic": {
+        "title": "北极远行",
+        "start": "看山踏上北极探险之路，去寻找冷门硬核干货。",
+        "return": "冰川里挖到一篇硬核科普，小众又干货，主人一定会喜欢。",
+        "route": "北极冰原 -> 冷知识雪丘 -> 极光书库",
+        "quote": "我在冰川下面翻到一束很亮的知识光。",
+        "cover": "arctic",
+    },
+    "mountain": {
+        "title": "山海漫游",
+        "start": "看山去山海间旅行啦，正在为你寻觅沿途的优质文章。",
+        "return": "主人，我从山间归来，带回了一篇很适合慢慢读的风物文章。",
+        "route": "山间小路 -> 湖畔书亭 -> 风物驿站",
+        "quote": "山风翻页的时候，我替你按住了最好看的那一页。",
+        "cover": "mountain",
+    },
+}
 
 
 def now_text():
@@ -160,6 +184,28 @@ def init_db():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with connect_db() as conn:
         conn.executescript(INIT_SQL.read_text(encoding="utf-8"))
+        migrate_db(conn)
+
+
+def column_names(conn, table_name):
+    return {row["name"] for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()}
+
+
+def add_column_if_missing(conn, table_name, column_name, definition):
+    if column_name in column_names(conn, table_name):
+        return
+    conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
+
+
+def migrate_db(conn):
+    add_column_if_missing(conn, "pet_profile", "health", "INTEGER NOT NULL DEFAULT 100 CHECK (health BETWEEN 0 AND 100)")
+    add_column_if_missing(conn, "pet_profile", "travel_energy", "INTEGER NOT NULL DEFAULT 0 CHECK (travel_energy >= 0)")
+    add_column_if_missing(conn, "pet_profile", "travel_status", "TEXT NOT NULL DEFAULT 'home'")
+    add_column_if_missing(conn, "pet_profile", "current_travel_id", "TEXT DEFAULT NULL")
+    add_column_if_missing(conn, "pet_profile", "cooldown_until", "TEXT DEFAULT NULL")
+    add_column_if_missing(conn, "pet_profile", "last_travel_at", "TEXT DEFAULT NULL")
+    add_column_if_missing(conn, "pet_content_event", "travel_energy_reward", "INTEGER NOT NULL DEFAULT 0 CHECK (travel_energy_reward >= 0)")
+    add_column_if_missing(conn, "pet_daily_stat", "travel_energy_gained", "INTEGER NOT NULL DEFAULT 0 CHECK (travel_energy_gained >= 0)")
 
 
 def row_to_dict(row):
@@ -201,6 +247,12 @@ def camel_profile(row, user_id=DEFAULT_USER_ID):
         "totalExp": row["total_exp"],
         "satiety": row["satiety"],
         "mood": row["mood"],
+        "health": row["health"],
+        "travelEnergy": row["travel_energy"],
+        "travelStatus": row["travel_status"],
+        "currentTravelId": row["current_travel_id"],
+        "cooldownUntil": row["cooldown_until"],
+        "lastTravelAt": row["last_travel_at"],
         "totalReadCount": row["total_read_count"],
         "totalWatchCount": row["total_watch_count"],
         "totalInteractionCount": row["total_interaction_count"],
@@ -554,20 +606,20 @@ def fetch_level(conn, total_exp):
 
 def calculate_reward(content_type, action_type):
     if action_type == "like":
-        return {"exp": 1, "satiety": 0, "mood": 3}
+        return {"exp": 1, "satiety": 0, "mood": 3, "travelEnergy": 1}
     if action_type == "collect":
-        return {"exp": 2, "satiety": 0, "mood": 5}
+        return {"exp": 2, "satiety": 0, "mood": 5, "travelEnergy": 1}
     if action_type == "comment":
-        return {"exp": 3, "satiety": 0, "mood": 8}
+        return {"exp": 3, "satiety": 0, "mood": 8, "travelEnergy": 1}
     if content_type == "article" and action_type == "read":
-        return {"exp": 5, "satiety": 5, "mood": 0}
+        return {"exp": 5, "satiety": 5, "mood": 0, "travelEnergy": 1}
     if content_type == "pin" and action_type == "read":
-        return {"exp": 3, "satiety": 3, "mood": 0}
+        return {"exp": 3, "satiety": 3, "mood": 0, "travelEnergy": 1}
     if content_type == "video" and action_type == "watch":
-        return {"exp": 8, "satiety": 5, "mood": 0}
+        return {"exp": 8, "satiety": 5, "mood": 0, "travelEnergy": 1}
     if content_type == "novel" and action_type == "read":
-        return {"exp": 10, "satiety": 6, "mood": 0}
-    return {"exp": 0, "satiety": 0, "mood": 0}
+        return {"exp": 10, "satiety": 6, "mood": 0, "travelEnergy": 2}
+    return {"exp": 0, "satiety": 0, "mood": 0, "travelEnergy": 0}
 
 
 def moment_text_value(value):
@@ -877,9 +929,9 @@ def apply_content_event(payload, user_id):
                 INSERT INTO pet_content_event
                   (event_id, user_id, content_id, content_type, action_type,
                    completion_ratio, duration_sec, content_tags, reward_status,
-                   exp_reward, satiety_reward, mood_reward, occurred_at, created_at)
+                   exp_reward, satiety_reward, mood_reward, travel_energy_reward, occurred_at, created_at)
                 VALUES
-                  (?, ?, ?, ?, ?, ?, ?, ?, 'granted', ?, ?, ?, ?, ?)
+                  (?, ?, ?, ?, ?, ?, ?, ?, 'granted', ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     event_id,
@@ -893,6 +945,7 @@ def apply_content_event(payload, user_id):
                     reward["exp"],
                     reward["satiety"],
                     reward["mood"],
+                    reward["travelEnergy"],
                     occurred_at,
                     now_text(),
                 ),
@@ -909,6 +962,7 @@ def apply_content_event(payload, user_id):
                     "exp": existing["exp_reward"],
                     "satiety": existing["satiety_reward"],
                     "mood": existing["mood_reward"],
+                    "travelEnergy": existing["travel_energy_reward"],
                     "levelUp": False,
                     "stageChanged": False,
                 },
@@ -919,6 +973,7 @@ def apply_content_event(payload, user_id):
         new_total_exp = old["total_exp"] + reward["exp"]
         new_satiety = min(100, old["satiety"] + reward["satiety"])
         new_mood = min(100, old["mood"] + reward["mood"])
+        new_travel_energy = old["travel_energy"] + reward["travelEnergy"]
         level_row = fetch_level(conn, new_total_exp)
         new_level = level_row["level"] if level_row else old["level"]
         new_stage = level_row["stage"] if level_row else old["stage"]
@@ -933,6 +988,7 @@ def apply_content_event(payload, user_id):
             SET total_exp = ?,
                 satiety = ?,
                 mood = ?,
+                travel_energy = ?,
                 level = ?,
                 stage = ?,
                 total_read_count = total_read_count + ?,
@@ -946,6 +1002,7 @@ def apply_content_event(payload, user_id):
                 new_total_exp,
                 new_satiety,
                 new_mood,
+                new_travel_energy,
                 new_level,
                 new_stage,
                 read_increment,
@@ -972,9 +1029,9 @@ def apply_content_event(payload, user_id):
             """
             INSERT INTO pet_daily_stat
               (user_id, stat_date, valid_read_count, valid_watch_count, valid_interaction_count,
-               exp_gained, satiety_gained, mood_gained, created_at, updated_at)
+               exp_gained, satiety_gained, mood_gained, travel_energy_gained, created_at, updated_at)
             VALUES
-              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(user_id, stat_date) DO UPDATE SET
               valid_read_count = valid_read_count + excluded.valid_read_count,
               valid_watch_count = valid_watch_count + excluded.valid_watch_count,
@@ -982,6 +1039,7 @@ def apply_content_event(payload, user_id):
               exp_gained = exp_gained + excluded.exp_gained,
               satiety_gained = satiety_gained + excluded.satiety_gained,
               mood_gained = mood_gained + excluded.mood_gained,
+              travel_energy_gained = travel_energy_gained + excluded.travel_energy_gained,
               updated_at = excluded.updated_at
             """,
             (
@@ -993,6 +1051,7 @@ def apply_content_event(payload, user_id):
                 reward["exp"],
                 reward["satiety"],
                 reward["mood"],
+                reward["travelEnergy"],
                 now_text(),
                 now_text(),
             ),
@@ -1013,6 +1072,522 @@ def apply_content_event(payload, user_id):
             },
             "profile": camel_profile(new_profile, user_id),
             "content": camel_content(updated_content) if updated_content else None,
+        }
+
+
+def fetch_theme_config(conn, theme):
+    return conn.execute(
+        "SELECT * FROM pet_travel_theme_config WHERE theme = ?",
+        (theme,),
+    ).fetchone()
+
+
+def theme_meta(theme):
+    return TRAVEL_THEME_MESSAGES.get(theme) or TRAVEL_THEME_MESSAGES["arctic"]
+
+
+def camel_travel_content(row):
+    if row is None:
+        return None
+    content = camel_content(row)
+    return {
+        **content,
+        "rank": row["rank"],
+        "matchReason": row["match_reason"],
+        "claimed": bool(row["claimed"]),
+        "reward": {
+            "exp": row["reward_exp"],
+            "mood": row["reward_mood"],
+            "travelEnergy": row["reward_energy"],
+        },
+    }
+
+
+def fetch_travel_contents(conn, travel_id):
+    return [
+        camel_travel_content(row)
+        for row in conn.execute(
+            """
+            SELECT c.*, rc.rank, rc.match_reason, rc.claimed,
+                   rc.reward_exp, rc.reward_mood, rc.reward_energy
+            FROM pet_travel_return_content rc
+            JOIN zhihu_content_pool c ON c.content_id = rc.content_id
+            WHERE rc.travel_id = ?
+            ORDER BY rc.rank ASC, rc.id ASC
+            """,
+            (travel_id,),
+        ).fetchall()
+    ]
+
+
+def camel_travel(row, conn=None, include_contents=False):
+    if row is None:
+        return None
+    payload = {
+        "travelId": row["travel_id"],
+        "userId": row["user_id"],
+        "theme": row["theme"],
+        "themeTitle": theme_meta(row["theme"])["title"],
+        "status": row["status"],
+        "energyCost": row["energy_cost"],
+        "startedAt": row["started_at"],
+        "expectedReturnAt": row["expected_return_at"],
+        "returnedAt": row["returned_at"],
+        "claimedAt": row["claimed_at"],
+        "message": row["message"],
+    }
+    if include_contents and conn is not None:
+        payload["contents"] = fetch_travel_contents(conn, row["travel_id"])
+    return payload
+
+
+def camel_handbook(row, conn=None, include_contents=False):
+    if row is None:
+        return None
+    payload = {
+        "travelId": row["travel_id"],
+        "userId": row["user_id"],
+        "themeTitle": row["theme_title"],
+        "routeText": row["route_text"],
+        "petQuote": row["pet_quote"],
+        "coverStyle": row["cover_style"],
+        "createdAt": row["created_at"],
+    }
+    if include_contents and conn is not None:
+        payload["contents"] = fetch_travel_contents(conn, row["travel_id"])
+    return payload
+
+
+def fetch_travel(conn, travel_id):
+    return conn.execute(
+        "SELECT * FROM pet_travel_event WHERE travel_id = ?",
+        (travel_id,),
+    ).fetchone()
+
+
+def fetch_current_travel(conn, user_id):
+    profile = fetch_profile(conn, user_id)
+    if profile and profile["current_travel_id"]:
+        row = fetch_travel(conn, profile["current_travel_id"])
+        if row is not None:
+            return row
+    return conn.execute(
+        """
+        SELECT *
+        FROM pet_travel_event
+        WHERE user_id = ? AND status IN ('traveling', 'returned')
+        ORDER BY started_at DESC, id DESC
+        LIMIT 1
+        """,
+        (user_id,),
+    ).fetchone()
+
+
+def refresh_travel_status(conn, user_id):
+    profile = fetch_profile(conn, user_id)
+    if profile is None:
+        return None, None
+
+    changed = False
+    if profile["travel_status"] == "cooldown" and parse_time(profile["cooldown_until"]) <= datetime.now():
+        conn.execute(
+            """
+            UPDATE pet_profile
+            SET travel_status = 'home',
+                cooldown_until = NULL,
+                updated_at = ?
+            WHERE user_id = ?
+            """,
+            (now_text(), user_id),
+        )
+        changed = True
+
+    travel = fetch_current_travel(conn, user_id)
+    if travel and travel["status"] == "traveling" and parse_time(travel["expected_return_at"]) <= datetime.now():
+        conn.execute(
+            """
+            UPDATE pet_travel_event
+            SET status = 'returned',
+                returned_at = ?,
+                message = ?,
+                updated_at = ?
+            WHERE travel_id = ?
+            """,
+            (now_text(), theme_meta(travel["theme"])["return"], now_text(), travel["travel_id"]),
+        )
+        conn.execute(
+            """
+            UPDATE pet_profile
+            SET travel_status = 'returned',
+                current_travel_id = ?,
+                updated_at = ?
+            WHERE user_id = ?
+            """,
+            (travel["travel_id"], now_text(), user_id),
+        )
+        changed = True
+        travel = fetch_travel(conn, travel["travel_id"])
+
+    if changed:
+        profile = fetch_profile(conn, user_id)
+    return profile, travel
+
+
+def travel_block_reason(profile, active_travel):
+    if profile is None or not profile["adopted"]:
+        return "请先领养刘看山"
+    if active_travel and active_travel["status"] == "traveling":
+        return "刘看山正在游历中"
+    if active_travel and active_travel["status"] == "returned":
+        return "刘看山已经归来，先领取带回的内容"
+    if profile["travel_status"] == "cooldown" and parse_time(profile["cooldown_until"]) > datetime.now():
+        return "刘看山刚旅行回来，正在休息冷却"
+    if profile["level"] < 2:
+        return "Lv.2 后可以出门游历"
+    if profile["satiety"] < TRAVEL_MIN_SATIETY:
+        return f"饱食度达到 {TRAVEL_MIN_SATIETY} 后可以出门"
+    if profile["travel_energy"] < TRAVEL_DEFAULT_ENERGY_COST:
+        return f"游历精力达到 {TRAVEL_DEFAULT_ENERGY_COST} 后可以出门"
+    return None
+
+
+def recent_user_tags(conn, user_id, limit=20):
+    tags = []
+    rows = conn.execute(
+        """
+        SELECT content_tags
+        FROM pet_content_event
+        WHERE user_id = ? AND content_tags IS NOT NULL
+        ORDER BY occurred_at DESC, id DESC
+        LIMIT ?
+        """,
+        (user_id, limit),
+    ).fetchall()
+    for row in rows:
+        tags.extend(parse_json_array(row["content_tags"]))
+    return tags
+
+
+def choose_travel_theme(conn, user_id, requested):
+    if requested in TRAVEL_THEME_MESSAGES:
+        return requested
+    user_tags = recent_user_tags(conn, user_id)
+    best_theme = "arctic"
+    best_score = -1
+    for row in conn.execute("SELECT * FROM pet_travel_theme_config").fetchall():
+        preferred = set(parse_json_array(row["preferred_tags"]))
+        score = sum(1 for tag in user_tags if tag in preferred)
+        if score > best_score:
+            best_score = score
+            best_theme = row["theme"]
+    return best_theme
+
+
+def select_travel_contents(conn, user_id, theme, limit):
+    theme_row = fetch_theme_config(conn, theme)
+    preferred = set(parse_json_array(theme_row["preferred_tags"] if theme_row else "[]"))
+    consumed = {
+        row["content_id"]
+        for row in conn.execute(
+            """
+            SELECT DISTINCT content_id
+            FROM pet_content_event
+            WHERE user_id = ?
+            ORDER BY occurred_at DESC
+            LIMIT 50
+            """,
+            (user_id,),
+        ).fetchall()
+    }
+    rows = conn.execute(
+        """
+        SELECT *
+        FROM zhihu_content_pool
+        WHERE status = 'published'
+        ORDER BY hot_score DESC, published_at DESC, id DESC
+        """
+    ).fetchall()
+    scored = []
+    fallback = []
+    for row in rows:
+        tags = set(parse_json_array(row["tags"]))
+        score = len(tags & preferred)
+        target = scored if score > 0 and row["content_id"] not in consumed else fallback
+        target.append((score, row))
+    ranked = [row for _, row in sorted(scored, key=lambda item: item[0], reverse=True)]
+    if len(ranked) < limit:
+        ranked.extend(row for _, row in fallback if row["content_id"] not in {item["content_id"] for item in ranked})
+    return ranked[:limit]
+
+
+def travel_status_payload(conn, user_id):
+    profile, travel = refresh_travel_status(conn, user_id)
+    reason = travel_block_reason(profile, travel)
+    handbook_count = conn.execute(
+        "SELECT COUNT(*) FROM pet_travel_handbook WHERE user_id = ?",
+        (user_id,),
+    ).fetchone()[0]
+    return {
+        "profile": camel_profile(profile, user_id),
+        "activeTravel": camel_travel(travel, conn, include_contents=travel is not None and travel["status"] in ("returned", "claimed")),
+        "canTravel": reason is None,
+        "blockReason": reason,
+        "handbookCount": handbook_count,
+    }
+
+
+def start_travel(user_id, requested_theme="auto"):
+    with connect_db() as conn:
+        conn.execute("BEGIN")
+        profile, active_travel = refresh_travel_status(conn, user_id)
+        reason = travel_block_reason(profile, active_travel)
+        if reason:
+            conn.rollback()
+            return 409, {
+                "error": "TRAVEL_NOT_READY",
+                "message": reason,
+                **travel_status_payload(conn, user_id),
+            }
+
+        theme = choose_travel_theme(conn, user_id, requested_theme)
+        theme_row = fetch_theme_config(conn, theme)
+        meta = theme_meta(theme)
+        energy_cost = theme_row["energy_cost"] if theme_row else TRAVEL_DEFAULT_ENERGY_COST
+        duration_sec = theme_row["duration_sec"] if theme_row else 60
+        return_count = 2 if profile["level"] >= 5 else (theme_row["return_count"] if theme_row else 1)
+        contents = select_travel_contents(conn, user_id, theme, return_count)
+        if not contents:
+            conn.rollback()
+            return 409, {
+                "error": "TRAVEL_CONTENT_EMPTY",
+                "message": "内容池里暂时没有可带回的内容",
+                **travel_status_payload(conn, user_id),
+            }
+
+        travel_id = f"travel_{user_id}_{int(datetime.now().timestamp() * 1000)}"
+        started_at = now_text()
+        expected_return_at = future_text(seconds=duration_sec)
+        conn.execute(
+            """
+            INSERT INTO pet_travel_event
+              (travel_id, user_id, theme, status, energy_cost, started_at,
+               expected_return_at, message, created_at, updated_at)
+            VALUES
+              (?, ?, ?, 'traveling', ?, ?, ?, ?, ?, ?)
+            """,
+            (travel_id, user_id, theme, energy_cost, started_at, expected_return_at, meta["start"], now_text(), now_text()),
+        )
+        for index, content in enumerate(contents, start=1):
+            conn.execute(
+                """
+                INSERT INTO pet_travel_return_content
+                  (travel_id, content_id, rank, match_reason,
+                   reward_exp, reward_mood, reward_energy, created_at, updated_at)
+                VALUES
+                  (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    travel_id,
+                    content["content_id"],
+                    index,
+                    f"{meta['title']}带回：命中内容兴趣标签",
+                    TRAVEL_CLAIM_EXP,
+                    TRAVEL_CLAIM_MOOD,
+                    TRAVEL_CLAIM_ENERGY,
+                    now_text(),
+                    now_text(),
+                ),
+            )
+        conn.execute(
+            """
+            INSERT INTO pet_travel_handbook
+              (travel_id, user_id, theme_title, route_text, pet_quote, cover_style, created_at, updated_at)
+            VALUES
+              (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (travel_id, user_id, meta["title"], meta["route"], meta["quote"], meta["cover"], now_text(), now_text()),
+        )
+        conn.execute(
+            """
+            UPDATE pet_profile
+            SET travel_energy = travel_energy - ?,
+                travel_status = 'traveling',
+                current_travel_id = ?,
+                cooldown_until = NULL,
+                last_travel_at = ?,
+                updated_at = ?
+            WHERE user_id = ?
+            """,
+            (energy_cost, travel_id, started_at, now_text(), user_id),
+        )
+        conn.commit()
+        travel = fetch_travel(conn, travel_id)
+        return 200, {
+            "travel": camel_travel(travel, conn, include_contents=False),
+            "profile": camel_profile(fetch_profile(conn, user_id), user_id),
+            "message": meta["start"],
+        }
+
+
+def return_travel(user_id, force=True):
+    with connect_db() as conn:
+        conn.execute("BEGIN")
+        profile, travel = refresh_travel_status(conn, user_id)
+        if travel is None or travel["status"] not in ("traveling", "returned"):
+            conn.rollback()
+            return 409, {"error": "NO_ACTIVE_TRAVEL", "message": "当前没有进行中的游历"}
+        if travel["status"] == "traveling":
+            if not force and parse_time(travel["expected_return_at"]) > datetime.now():
+                conn.rollback()
+                return 409, {"error": "TRAVEL_NOT_FINISHED", "message": "刘看山还在路上"}
+            meta = theme_meta(travel["theme"])
+            conn.execute(
+                """
+                UPDATE pet_travel_event
+                SET status = 'returned',
+                    returned_at = ?,
+                    message = ?,
+                    updated_at = ?
+                WHERE travel_id = ?
+                """,
+                (now_text(), meta["return"], now_text(), travel["travel_id"]),
+            )
+            conn.execute(
+                """
+                UPDATE pet_profile
+                SET travel_status = 'returned',
+                    current_travel_id = ?,
+                    updated_at = ?
+                WHERE user_id = ?
+                """,
+                (travel["travel_id"], now_text(), user_id),
+            )
+        conn.commit()
+        travel = fetch_current_travel(conn, user_id)
+        return 200, {
+            "travel": camel_travel(travel, conn, include_contents=True),
+            "profile": camel_profile(fetch_profile(conn, user_id), user_id),
+        }
+
+
+def claim_travel(user_id, travel_id=None):
+    with connect_db() as conn:
+        conn.execute("BEGIN")
+        profile, travel = refresh_travel_status(conn, user_id)
+        if travel_id:
+            travel = fetch_travel(conn, travel_id)
+        if travel is None or travel["user_id"] != user_id:
+            conn.rollback()
+            return 404, {"error": "TRAVEL_NOT_FOUND"}
+        if travel["status"] == "traveling":
+            conn.rollback()
+            return 409, {"error": "TRAVEL_NOT_RETURNED", "message": "刘看山还没回来"}
+        if travel["status"] == "claimed":
+            conn.rollback()
+            return 200, {
+                "duplicate": True,
+                "travel": camel_travel(travel, conn, include_contents=True),
+                "profile": camel_profile(profile, user_id),
+            }
+        if travel["status"] != "returned":
+            conn.rollback()
+            return 409, {"error": "TRAVEL_CANNOT_CLAIM", "message": "当前游历不能领取"}
+
+        rewards = conn.execute(
+            """
+            SELECT
+              COALESCE(SUM(reward_exp), 0) AS exp,
+              COALESCE(SUM(reward_mood), 0) AS mood,
+              COALESCE(SUM(reward_energy), 0) AS travel_energy
+            FROM pet_travel_return_content
+            WHERE travel_id = ? AND claimed = 0
+            """,
+            (travel["travel_id"],),
+        ).fetchone()
+        old = profile
+        exp_reward = int(rewards["exp"] or 0)
+        mood_reward = int(rewards["mood"] or 0)
+        energy_reward = int(rewards["travel_energy"] or 0)
+        new_total_exp = old["total_exp"] + exp_reward
+        new_mood = min(100, old["mood"] + mood_reward)
+        new_travel_energy = old["travel_energy"] + energy_reward
+        level_row = fetch_level(conn, new_total_exp)
+        new_level = level_row["level"] if level_row else old["level"]
+        new_stage = level_row["stage"] if level_row else old["stage"]
+        cooldown_until = future_text(minutes=TRAVEL_COOLDOWN_MINUTES)
+
+        conn.execute(
+            """
+            UPDATE pet_travel_return_content
+            SET claimed = 1,
+                updated_at = ?
+            WHERE travel_id = ?
+            """,
+            (now_text(), travel["travel_id"]),
+        )
+        conn.execute(
+            """
+            UPDATE pet_travel_event
+            SET status = 'claimed',
+                claimed_at = ?,
+                updated_at = ?
+            WHERE travel_id = ?
+            """,
+            (now_text(), now_text(), travel["travel_id"]),
+        )
+        conn.execute(
+            """
+            UPDATE pet_profile
+            SET total_exp = ?,
+                mood = ?,
+                travel_energy = ?,
+                level = ?,
+                stage = ?,
+                travel_status = 'cooldown',
+                current_travel_id = NULL,
+                cooldown_until = ?,
+                last_growth_at = ?,
+                updated_at = ?
+            WHERE user_id = ?
+            """,
+            (
+                new_total_exp,
+                new_mood,
+                new_travel_energy,
+                new_level,
+                new_stage,
+                cooldown_until,
+                now_text(),
+                now_text(),
+                user_id,
+            ),
+        )
+        source_id = travel["travel_id"]
+        write_growth_log(conn, user_id, source_id, "total_exp", exp_reward, old["total_exp"], new_total_exp, "领取游历带回内容获得经验", "manual")
+        write_growth_log(conn, user_id, source_id, "mood", mood_reward, old["mood"], new_mood, "领取游历带回内容提升心情", "manual")
+        if new_level != old["level"]:
+            write_growth_log(conn, user_id, source_id, "level", new_level - old["level"], old["level"], new_level, "游历奖励触发升级", "manual")
+        if new_stage != old["stage"]:
+            write_growth_log(conn, user_id, source_id, "stage", 0, old["stage"], new_stage, "等级变化触发阶段切换", "manual")
+        conn.commit()
+
+        claimed_travel = fetch_travel(conn, travel["travel_id"])
+        return 200, {
+            "travel": camel_travel(claimed_travel, conn, include_contents=True),
+            "profile": camel_profile(fetch_profile(conn, user_id), user_id),
+            "reward": {
+                "exp": exp_reward,
+                "satiety": 0,
+                "mood": mood_reward,
+                "travelEnergy": energy_reward,
+                "levelUp": new_level != old["level"],
+                "fromLevel": old["level"],
+                "toLevel": new_level,
+                "stageChanged": new_stage != old["stage"],
+                "fromStage": old["stage"],
+                "toStage": new_stage,
+            },
+            "cooldownUntil": cooldown_until,
         }
 
 
@@ -1277,6 +1852,54 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(200, {"moments": [camel_follow_moment(row) for row in rows]})
             return
 
+        if path == "/api/p1/travel/status":
+            session = self.require_auth_json()
+            if session is None:
+                return
+            with connect_db() as conn:
+                self.send_json(200, travel_status_payload(conn, session["user_id"]))
+            return
+
+        if path == "/api/p1/travel/handbook":
+            session = self.require_auth_json()
+            if session is None:
+                return
+            qs = parse_qs(parsed.query)
+            limit = max(1, min(int((qs.get("limit") or [20])[0]), 50))
+            with connect_db() as conn:
+                rows = conn.execute(
+                    """
+                    SELECT *
+                    FROM pet_travel_handbook
+                    WHERE user_id = ?
+                    ORDER BY created_at DESC, id DESC
+                    LIMIT ?
+                    """,
+                    (session["user_id"], limit),
+                ).fetchall()
+                self.send_json(200, {"handbook": [camel_handbook(row, conn, include_contents=True) for row in rows]})
+            return
+
+        if path.startswith("/api/p1/travel/handbook/"):
+            session = self.require_auth_json()
+            if session is None:
+                return
+            travel_id = unquote(path.removeprefix("/api/p1/travel/handbook/"))
+            with connect_db() as conn:
+                row = conn.execute(
+                    """
+                    SELECT *
+                    FROM pet_travel_handbook
+                    WHERE user_id = ? AND travel_id = ?
+                    """,
+                    (session["user_id"], travel_id),
+                ).fetchone()
+                if row is None:
+                    self.send_json(404, {"error": "HANDBOOK_NOT_FOUND"})
+                else:
+                    self.send_json(200, {"entry": camel_handbook(row, conn, include_contents=True)})
+            return
+
         if path.startswith("/api/p0/contents/"):
             content_id = unquote(path.removeprefix("/api/p0/contents/"))
             with connect_db() as conn:
@@ -1362,6 +1985,12 @@ class Handler(BaseHTTPRequestHandler):
                 return
             user_id = session["user_id"]
             with connect_db() as conn:
+                travel_ids = [row["travel_id"] for row in conn.execute("SELECT travel_id FROM pet_travel_event WHERE user_id = ?", (user_id,)).fetchall()]
+                if travel_ids:
+                    placeholders = ",".join("?" for _ in travel_ids)
+                    conn.execute(f"DELETE FROM pet_travel_return_content WHERE travel_id IN ({placeholders})", travel_ids)
+                    conn.execute(f"DELETE FROM pet_travel_handbook WHERE travel_id IN ({placeholders})", travel_ids)
+                conn.execute("DELETE FROM pet_travel_event WHERE user_id = ?", (user_id,))
                 conn.execute("DELETE FROM pet_growth_log WHERE user_id = ?", (user_id,))
                 conn.execute("DELETE FROM pet_content_event WHERE user_id = ?", (user_id,))
                 conn.execute("DELETE FROM pet_daily_stat WHERE user_id = ?", (user_id,))
@@ -1392,6 +2021,30 @@ class Handler(BaseHTTPRequestHandler):
             if session is None:
                 return
             status, response = mark_follow_moments_notified(session["user_id"])
+            self.send_json(status, response)
+            return
+
+        if path == "/api/p1/travel/start":
+            session = self.require_auth_json()
+            if session is None:
+                return
+            status, response = start_travel(session["user_id"], str(body.get("theme") or "auto"))
+            self.send_json(status, response)
+            return
+
+        if path == "/api/p1/travel/return":
+            session = self.require_auth_json()
+            if session is None:
+                return
+            status, response = return_travel(session["user_id"], force=bool(body.get("force", True)))
+            self.send_json(status, response)
+            return
+
+        if path == "/api/p1/travel/claim":
+            session = self.require_auth_json()
+            if session is None:
+                return
+            status, response = claim_travel(session["user_id"], body.get("travelId"))
             self.send_json(status, response)
             return
 

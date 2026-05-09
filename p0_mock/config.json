@@ -3,7 +3,7 @@
   "zhihu_openapi_base": "https://openapi.zhihu.com",
   "zhihu_app_id": "202",
   "zhihu_app_key": "73b90f3367334630ac53381986c8ba04",
-  "zhihu_auth_redirect_uri": "https://382b6552.r1.cpolar.top/auth/callback",
+  "zhihu_auth_redirect_uri": "https://ahipkiokdnvl.sealosbja.site/auth/callback",
   "session_ttl_hours": 24,
   "state_ttl_minutes": 10,
   "local_auth_bypass": true,

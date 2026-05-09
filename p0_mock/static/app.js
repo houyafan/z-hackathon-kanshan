@@ -1,10 +1,11 @@
-import { initRoamingCharacter } from "/3d-liukanshan-roaming/roaming-character.js?v=30";
+import { initRoamingCharacter } from "/3d-liukanshan-roaming/roaming-character.js?v=31";
 
 const app = document.getElementById("app");
 const toast = document.getElementById("toast");
 
 let currentUser = null;
 let profile = null;
+let travelState = null;
 let character = null;
 let feedItems = [];
 let modelPreloadPromise = null;
@@ -122,6 +123,7 @@ function rewardText(reward) {
   if (reward.exp) parts.push(`经验 +${reward.exp}`);
   if (reward.satiety) parts.push(`饱食度 +${reward.satiety}`);
   if (reward.mood) parts.push(`心情 +${reward.mood}`);
+  if (reward.travelEnergy) parts.push(`精力 +${reward.travelEnergy}`);
   return parts.join("，");
 }
 
@@ -328,6 +330,31 @@ function stageText(stage) {
   }[stage] || stage || "-";
 }
 
+function travelStatusText(status) {
+  return {
+    home: "留守",
+    traveling: "游历中",
+    returned: "已归来",
+    cooldown: "冷却中",
+    sleeping: "休眠",
+  }[status] || status || "留守";
+}
+
+function travelThemeText(theme) {
+  return {
+    arctic: "北极远行",
+    mountain: "山海漫游",
+  }[theme] || theme || "游历";
+}
+
+function formatCountdown(target) {
+  const time = target ? new Date(target).getTime() : 0;
+  const diff = Math.max(0, time - Date.now());
+  const minutes = Math.floor(diff / 60000);
+  const seconds = Math.ceil((diff % 60000) / 1000);
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
 function escapeHTML(value = "") {
   return String(value).replace(/[&<>"']/g, (char) => ({
     "&": "&amp;",
@@ -354,7 +381,39 @@ function mergeUpdatedContent(content) {
 }
 
 function bindPetHoverCard() {
-  document.querySelectorAll("[data-hover-reward-walk]").forEach((input) => {
+  const bindOnce = (selector, bind) => {
+    document.querySelectorAll(selector).forEach((element) => {
+      if (element.dataset.petBound) return;
+      element.dataset.petBound = "1";
+      bind(element);
+    });
+  };
+
+  bindOnce("[data-hover-travel-start]", (button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      startTravel();
+    });
+  });
+  bindOnce("[data-hover-travel-return]", (button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      completeTravel(true);
+    });
+  });
+  bindOnce("[data-hover-travel-claim]", (button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      claimTravel(button.dataset.hoverTravelClaim || "");
+    });
+  });
+  bindOnce("[data-hover-handbook]", (button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openTravelHandbook();
+    });
+  });
+  bindOnce("[data-hover-reward-walk]", (input) => {
     input.addEventListener("click", (event) => event.stopPropagation());
     input.addEventListener("change", (event) => {
       rewardWalkEnabled = event.currentTarget.checked;
@@ -363,7 +422,7 @@ function bindPetHoverCard() {
       renderPetHoverCard();
     });
   });
-  document.querySelectorAll("[data-hover-reset]").forEach((button) => {
+  bindOnce("[data-hover-reset]", (button) => {
     button.addEventListener("click", (event) => {
       event.stopPropagation();
       resetPet();
@@ -378,6 +437,18 @@ function renderPetHoverCard() {
     card.innerHTML = "";
     return;
   }
+  const activeTravel = travelState?.activeTravel;
+  const canTravel = travelState?.canTravel;
+  const travelAction = activeTravel?.status === "traveling"
+    ? `<button data-hover-travel-return>立即归来</button>`
+    : activeTravel?.status === "returned"
+      ? `<button data-hover-travel-claim="${escapeHTML(activeTravel.travelId)}">领取内容</button>`
+      : `<button data-hover-travel-start ${canTravel === false ? "disabled" : ""}>出门游历</button>`;
+  const travelHint = activeTravel?.status === "traveling"
+    ? `${travelThemeText(activeTravel.theme)} · ${formatCountdown(activeTravel.expectedReturnAt)}`
+    : activeTravel?.status === "returned"
+      ? `${travelThemeText(activeTravel.theme)} · 已带回内容`
+      : travelState?.blockReason || "阅读内容积攒精力后出门";
   card.innerHTML = `
     <div class="pet-hover-head">
       <span class="pet-mini">山</span>
@@ -390,10 +461,16 @@ function renderPetHoverCard() {
       <div><small>经验</small><strong>${profile.totalExp}</strong></div>
       <div><small>心情</small><strong>${profile.mood}</strong></div>
       <div><small>饱食</small><strong>${profile.satiety}</strong></div>
-      <div><small>互动</small><strong>${profile.totalInteractionCount}</strong></div>
+      <div><small>精力</small><strong>${profile.travelEnergy ?? 0}</strong></div>
+    </div>
+    <div class="pet-hover-travel">
+      <small>${escapeHTML(travelStatusText(profile.travelStatus))}</small>
+      <strong>${escapeHTML(travelHint)}</strong>
     </div>
     <div class="pet-hover-actions">
       <a href="/people/p2wcex">个人页</a>
+      ${travelAction}
+      <button data-hover-handbook>旅行手账</button>
       <button data-hover-reset>重置</button>
     </div>
     <label class="pet-hover-toggle">
@@ -489,6 +566,19 @@ async function loadProfile() {
   profile = data.profile;
   syncCharacter();
   return profile;
+}
+
+async function loadTravelStatus() {
+  if (!profile?.adopted) {
+    travelState = null;
+    return null;
+  }
+  const data = await api("/api/p1/travel/status");
+  profile = data.profile || profile;
+  travelState = data;
+  scheduleTravelReturnCheck();
+  syncCharacter();
+  return travelState;
 }
 
 async function loadContents() {
@@ -723,6 +813,12 @@ function petPanel() {
     `;
   }
 
+  const activeTravel = travelState?.activeTravel;
+  const travelAction = activeTravel?.status === "traveling"
+    ? `<button class="outline-btn" data-hover-travel-return>立即归来</button>`
+    : activeTravel?.status === "returned"
+      ? `<button class="outline-btn" data-hover-travel-claim="${escapeHTML(activeTravel.travelId)}">领取带回内容</button>`
+      : `<button class="outline-btn" data-hover-travel-start ${travelState?.canTravel === false ? "disabled" : ""}>出门游历</button>`;
   return `
     <section class="card side-card pet-panel">
       <div class="pet-title">
@@ -735,6 +831,12 @@ function petPanel() {
         <div class="stat-box"><small>累计经验</small><strong>${profile.totalExp}</strong></div>
         <div class="stat-box"><small>饱食度</small><strong>${profile.satiety}</strong></div>
         <div class="stat-box"><small>心情值</small><strong>${profile.mood}</strong></div>
+        <div class="stat-box"><small>游历精力</small><strong>${profile.travelEnergy ?? 0}</strong></div>
+        <div class="stat-box"><small>游历状态</small><strong>${travelStatusText(profile.travelStatus)}</strong></div>
+      </div>
+      <div class="travel-panel-actions">
+        ${travelAction}
+        <button class="outline-btn" data-hover-handbook>旅行手账</button>
       </div>
       <button class="reset-pet-btn" data-reset-pet>重置刘看山</button>
     </section>
@@ -913,6 +1015,7 @@ function bindCommon() {
   document.querySelectorAll("[data-reset-pet]").forEach((button) => {
     button.addEventListener("click", resetPet);
   });
+  bindPetHoverCard();
 }
 
 function bindRecommend() {
@@ -974,6 +1077,192 @@ function renderContentModal(content) {
   });
 }
 
+let travelReturnTimer = null;
+
+function scheduleTravelReturnCheck() {
+  window.clearTimeout(travelReturnTimer);
+  const activeTravel = travelState?.activeTravel;
+  if (!activeTravel || activeTravel.status !== "traveling") return;
+  const delay = Math.max(800, new Date(activeTravel.expectedReturnAt).getTime() - Date.now() + 500);
+  travelReturnTimer = window.setTimeout(() => completeTravel(false), delay);
+}
+
+function playTravelDeparture(travel) {
+  const centerX = window.innerWidth / 2;
+  const centerY = window.innerHeight * 0.58;
+  character?.setPosition?.(centerX, centerY);
+  window.setTimeout(() => {
+    character?.startGoTravel?.({
+      message: travel.message || "出发旅行！",
+      autoHide: 2400,
+    });
+  }, 80);
+}
+
+function playTravelReturn(travel) {
+  const centerX = window.innerWidth / 2;
+  const centerY = window.innerHeight * 0.58;
+  character?.setPosition?.(centerX, centerY);
+  character?.startBackHome?.({
+    message: travel.message || "旅行回来啦！",
+    autoHide: 2800,
+  });
+  window.setTimeout(() => {
+    character?.setPosition?.(window.innerWidth - 150, window.innerHeight - 200);
+  }, 3300);
+}
+
+async function startTravel() {
+  if (!profile?.adopted) {
+    showToast("先领养刘看山");
+    return;
+  }
+  try {
+    const pet = await ensureEffectCharacter();
+    const data = await api("/api/p1/travel/start", {
+      method: "POST",
+      body: JSON.stringify({ theme: "auto" }),
+    });
+    profile = data.profile;
+    travelState = {
+      ...(travelState || {}),
+      activeTravel: data.travel,
+      canTravel: false,
+      blockReason: "刘看山正在游历中",
+    };
+    syncCharacter();
+    renderCurrentRoute();
+    pet?.setMessage?.(data.message || "看山出发啦", { autoHide: 2200 });
+    playTravelDeparture(data.travel);
+    showToast(`${travelThemeText(data.travel.theme)}出发`);
+    scheduleTravelReturnCheck();
+  } catch (error) {
+    if (error.profile) profile = error.profile;
+    if (error.activeTravel || error.blockReason) travelState = error;
+    syncCharacter();
+    renderCurrentRoute();
+    showToast(error.message || "暂时不能出门游历");
+  }
+}
+
+async function completeTravel(force = true) {
+  try {
+    const data = await api("/api/p1/travel/return", {
+      method: "POST",
+      body: JSON.stringify({ force }),
+    });
+    profile = data.profile;
+    travelState = {
+      ...(travelState || {}),
+      activeTravel: data.travel,
+      canTravel: false,
+      blockReason: "刘看山已经归来，先领取带回的内容",
+    };
+    syncCharacter();
+    renderCurrentRoute();
+    playTravelReturn(data.travel);
+    showTravelReturnCard(data.travel);
+    showToast("刘看山旅行回来啦");
+  } catch (error) {
+    if (!["TRAVEL_NOT_FINISHED"].includes(error.error)) {
+      console.warn("travel return failed", error);
+    }
+  }
+}
+
+async function claimTravel(travelId = "") {
+  try {
+    const data = await api("/api/p1/travel/claim", {
+      method: "POST",
+      body: JSON.stringify({ travelId }),
+    });
+    profile = data.profile;
+    await loadTravelStatus();
+    renderCurrentRoute();
+    if (data.reward) showReward(data.reward, characterElement());
+    showToast("游历内容已领取，进入冷却");
+    document.querySelector(".travel-return-card")?.remove();
+  } catch (error) {
+    showToast(error.message || "领取失败");
+  }
+}
+
+function showTravelReturnCard(travel) {
+  document.querySelector(".travel-return-card")?.remove();
+  const first = travel.contents?.[0];
+  const card = document.createElement("div");
+  card.className = "travel-return-card";
+  card.innerHTML = `
+    <div class="travel-return-head">
+      <span>${escapeHTML(travelThemeText(travel.theme))}</span>
+      <button aria-label="关闭">×</button>
+    </div>
+    <strong>${escapeHTML(travel.message || "刘看山带回了好内容")}</strong>
+    ${first ? `<p>${escapeHTML(first.title)}</p>` : ""}
+    <div class="travel-return-actions">
+      ${first ? `<button data-open-travel-content="${escapeHTML(first.id)}">查看内容</button>` : ""}
+      <button data-claim-travel="${escapeHTML(travel.travelId)}">领取奖励</button>
+    </div>
+  `;
+  document.body.appendChild(card);
+  card.querySelector("[aria-label='关闭']").addEventListener("click", () => card.remove());
+  card.querySelector("[data-claim-travel]")?.addEventListener("click", () => claimTravel(travel.travelId));
+  card.querySelector("[data-open-travel-content]")?.addEventListener("click", async (event) => {
+    const contentId = event.currentTarget.dataset.openTravelContent;
+    const data = await api(`/api/p0/contents/${encodeURIComponent(contentId)}`);
+    renderContentModal(data.content);
+  });
+}
+
+async function openTravelHandbook() {
+  try {
+    const data = await api("/api/p1/travel/handbook?limit=20");
+    renderTravelHandbook(data.handbook || []);
+  } catch (error) {
+    showToast(error.message || "旅行手账加载失败");
+  }
+}
+
+function renderTravelHandbook(entries) {
+  document.querySelector(".travel-handbook-modal")?.remove();
+  const modal = document.createElement("div");
+  modal.className = "travel-handbook-modal";
+  modal.innerHTML = `
+    <div class="travel-handbook-dialog" role="dialog" aria-modal="true" aria-label="旅行手账">
+      <button class="content-close" aria-label="关闭">×</button>
+      <div class="content-type">看山旅行手账</div>
+      <h1>刘看山带回的路上风景</h1>
+      <div class="travel-handbook-list">
+        ${entries.length ? entries.map((entry) => `
+          <article class="travel-handbook-entry ${escapeHTML(entry.coverStyle)}">
+            <div>
+              <small>${escapeHTML(entry.themeTitle)}</small>
+              <strong>${escapeHTML(entry.routeText)}</strong>
+              <p>${escapeHTML(entry.petQuote)}</p>
+            </div>
+            <div class="travel-handbook-contents">
+              ${(entry.contents || []).map((content) => `
+                <button data-open-travel-content="${escapeHTML(content.id)}">${escapeHTML(content.title)}</button>
+              `).join("")}
+            </div>
+          </article>
+        `).join("") : `<p class="empty-handbook">还没有旅行记录，攒够精力后让看山出门吧。</p>`}
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  modal.querySelector(".content-close").addEventListener("click", () => modal.remove());
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal) modal.remove();
+  });
+  modal.querySelectorAll("[data-open-travel-content]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const data = await api(`/api/p0/contents/${encodeURIComponent(button.dataset.openTravelContent)}`);
+      renderContentModal(data.content);
+    });
+  });
+}
+
 async function adoptPet() {
   try {
     const data = await api("/api/p0/pet/adopt", {
@@ -981,6 +1270,7 @@ async function adoptPet() {
       body: JSON.stringify({ petName: "刘看山" }),
     });
     profile = data.profile;
+    await loadTravelStatus();
     syncCharacter();
     renderCurrentRoute();
     showToast("刘看山已到家");
@@ -998,6 +1288,7 @@ async function resetPet() {
       body: JSON.stringify({}),
     });
     profile = data.profile;
+    travelState = null;
     const element = characterElement();
     if (element) {
       element.style.display = "none";
@@ -1038,6 +1329,7 @@ async function submitContentEvent(item, actionType, sourceElement) {
     });
     profile = data.profile;
     mergeUpdatedContent(data.content);
+    await loadTravelStatus();
     syncCharacter();
     showReward(data.reward, sourceElement);
     renderCurrentRoute();
@@ -1122,6 +1414,7 @@ document.addEventListener("click", (event) => {
 const authUser = await loadAuth();
 if (authUser) {
   await loadProfile();
+  await loadTravelStatus();
   await loadContents();
   renderCurrentRoute();
   syncFollowMoments();
