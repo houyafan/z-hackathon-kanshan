@@ -15,7 +15,7 @@ env:
   ALIYUN_CR_REGISTRY: crpi-4fx5gjh2gg6qrzgj.cn-beijing.personal.cr.aliyuncs.com
   ALIYUN_CR_NAMESPACE: sunnynh
   K8S_NAMESPACE: ns-z8o8d2sw
-  K8S_DEPLOYMENT: z-hackathon-kanshan
+  K8S_STATEFULSET: z-hackathon-kanshan
   WECOM_WEBHOOK: https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=c390c29b-490a-42dc-9488-86b2315f990c
 
 jobs:
@@ -61,14 +61,14 @@ jobs:
         if: github.event_name != 'pull_request'
         run: |
           IMAGE="${{ env.ALIYUN_CR_REGISTRY }}/${{ env.ALIYUN_CR_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
-          kubectl set image -n "${{ env.K8S_NAMESPACE }}" "deployment/${{ env.K8S_DEPLOYMENT }}" "${{ env.IMAGE_NAME }}=$IMAGE"
+          kubectl set image -n "${{ env.K8S_NAMESPACE }}" "statefulset/${{ env.K8S_STATEFULSET }}" "${{ env.IMAGE_NAME }}=$IMAGE"
 
       - name: 等待部署完成
         if: github.event_name != 'pull_request'
         run: |
           for i in 1 2 3; do
             echo "尝试第 $i 次检查部署状态..."
-            if kubectl rollout status -n "${{ env.K8S_NAMESPACE }}" "deployment/${{ env.K8S_DEPLOYMENT }}" --timeout=180s; then
+            if kubectl rollout status -n "${{ env.K8S_NAMESPACE }}" "statefulset/${{ env.K8S_STATEFULSET }}" --timeout=180s; then
               echo "部署状态检查成功！"
               exit 0
             fi
