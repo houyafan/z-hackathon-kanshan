@@ -8,6 +8,9 @@ let profile = null;
 let travelState = null;
 let character = null;
 let feedItems = [];
+let hotItems = [];
+let hotItemsPromise = null;
+let hotItemsLoaded = false;
 let modelPreloadPromise = null;
 let noticeTimer = null;
 let noticeRemaining = 0;
@@ -294,7 +297,15 @@ async function runEffectTest(action) {
 
 function renderEffectTestPanel() {
   const panel = document.getElementById("effectTestPanel");
-  if (!panel || !isLocalDebugHost()) return;
+  const debugEnabled = new URLSearchParams(window.location.search).has("effectTest")
+    || localStorage.getItem("liukanshan_effect_test_panel") === "1";
+  if (!panel || !isLocalDebugHost() || !debugEnabled) {
+    if (panel) {
+      panel.hidden = true;
+      panel.innerHTML = "";
+    }
+    return;
+  }
   panel.hidden = false;
   panel.innerHTML = `
     <div class="effect-test-head">
@@ -587,6 +598,23 @@ async function loadContents() {
   return feedItems;
 }
 
+async function loadHotItems() {
+  if (hotItemsPromise) return hotItemsPromise;
+  hotItemsPromise = api("/api/p0/hot?limit=30")
+    .then((data) => {
+      hotItems = data.items || [];
+      hotItemsLoaded = true;
+      return hotItems;
+    })
+    .catch((error) => {
+      hotItemsPromise = null;
+      hotItemsLoaded = true;
+      console.warn("Hot list load failed", error);
+      throw error;
+    });
+  return hotItemsPromise;
+}
+
 function syncCharacter() {
   const container = document.getElementById("roamingCharacter");
   if (!container) return;
@@ -703,7 +731,7 @@ function shell(active) {
       <nav class="nav">
         <a href="#" data-follow-tab>关注</a>
         <a class="${active === "recommend" ? "active" : ""}" href="/">推荐</a>
-        <a href="#">热榜</a>
+        <a class="${active === "hot" ? "active" : ""}" href="/hot">热榜</a>
         <a href="#">专栏</a>
         <a class="new-badge" href="#">圈子</a>
         <a href="#">付费咨询</a>
@@ -711,14 +739,14 @@ function shell(active) {
       </nav>
       <div class="search">
         <input value="${active === "people" ? "中国女子在西班牙被刺身亡" : "朋友圈文案"}" aria-label="搜索">
-        <button>⌕</button>
+        <button aria-label="搜索">${headerIcon("search")}</button>
       </div>
       <div class="header-actions">
-        <button class="purple-btn">直答</button>
-        <button class="round-btn">+</button>
-        <div class="action-icon"><strong>♟</strong>消息<span class="dot">10</span></div>
-        <div class="action-icon"><strong>♞</strong>私信<span class="dot">7</span></div>
-        <div class="action-icon"><strong>♟</strong>创作中心</div>
+        <button class="purple-btn">${headerIcon("zhida")}<span>直答</span></button>
+        <button class="round-btn" aria-label="创作">${headerIcon("plus")}</button>
+        <div class="action-icon">${headerIcon("bell")}<span>消息</span><span class="dot">10</span></div>
+        <div class="action-icon">${headerIcon("chat")}<span>私信</span><span class="dot">7</span></div>
+        <div class="action-icon">${headerIcon("creator")}<span>创作中心</span></div>
         <a class="avatar ${currentUser?.avatarPath ? "user-avatar-image" : ""}" href="/people/p2wcex" aria-label="个人页" ${avatarStyle}></a>
       </div>
     </header>
@@ -923,6 +951,32 @@ function svgIcon(className, body, viewBox = "0 0 24 24") {
   return `<svg class="${className}" viewBox="${viewBox}" aria-hidden="true" focusable="false">${body}</svg>`;
 }
 
+function headerIcon(name) {
+  const icons = {
+    search: {
+      viewBox: "0 0 16 16",
+      body: `<path fill-rule="evenodd" d="M10.218 11.632a5.5 5.5 0 1 1 1.414-1.414l2.075 2.075a1 1 0 0 1-1.414 1.414l-2.075-2.075ZM10.6 7.1a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Z" clip-rule="evenodd"></path>`,
+    },
+    zhida: {
+      body: `<path d="M21.37.96a.245.245 0 0 1 .46 0l.413 1.115c.082.223.259.4.483.483l1.114.412a.245.245 0 0 1 0 .46l-1.114.412a.817.817 0 0 0-.483.483L21.83 5.44a.245.245 0 0 1-.46 0l-.412-1.115a.818.818 0 0 0-.483-.483L19.36 3.43a.245.245 0 0 1 0-.46l1.115-.412c.223-.083.4-.26.483-.483L21.37.96ZM14.675 14.738a2.02 2.02 0 0 0 .05-.127l1.584-4.46a1.59 1.59 0 0 0-1.499-2.122h-3.05c-.715 0-1.363.381-1.715.981l.01-.021c.392-.887 1.223-2.766 2.625-4.07 1.648-1.531 4.286-1.28 6.035.136 2.507 2.029 3.717 5.515 2.525 8.895-1.434 4.068-5.478 6.79-9.792 6.79h-.143c1.805-1.424 2.818-4.207 3.37-6.002Z"></path><path d="M.752 7.655.167 9.317.2 9.312C1.104 8.017 2.6 8.02 5.302 8.024H5.534L1.05 20.74H7.275c.264-.027.607-.043 1.041-.043 3.86 0 5.464-3.838 6.138-5.452.063-.15.118-.282.166-.39a1.988 1.988 0 0 1-1.768 1.08H11.56c-.592 0-1.171.176-1.663.506l-.776.521a.124.124 0 0 1-.185-.143l.25-.716a.127.127 0 0 0-.12-.169 1.07 1.07 0 0 1-1.01-1.428l1.83-5.153c.017-.047.035-.093.055-.138.061-.184.122-.376.185-.572.591-1.851 1.333-4.173 3.756-5.354H6.726c-3.923 0-5.018 1.767-5.584 3.256l-.237.673c-.052.155-.102.302-.153.438Z"></path>`,
+    },
+    plus: {
+      body: `<path fill-rule="evenodd" d="M13.25 3.25a1.25 1.25 0 1 0-2.5 0v7.5h-7.5a1.25 1.25 0 1 0 0 2.5h7.5v7.5a1.25 1.25 0 1 0 2.5 0v-7.5h7.5a1.25 1.25 0 0 0 0-2.5h-7.5v-7.5Z" clip-rule="evenodd"></path>`,
+    },
+    bell: {
+      body: `<path fill-rule="evenodd" d="M9.723 21.271c0-.42.34-.76.76-.76h3.043a.76.76 0 0 1 0 1.521h-3.043a.76.76 0 0 1-.76-.76Z" clip-rule="evenodd"></path><path d="M11.153 3.115c0-.618.376-1.115.844-1.115.469 0 .845.499.845 1.115v.183c3.997.369 7.012 4.117 7.024 8.515V17.468h.253a.76.76 0 1 1 0 1.521H3.891a.76.76 0 0 1 0-1.521h.253V11.813c.011-4.392 3.02-8.137 7.009-8.514v-.184Z"></path>`,
+    },
+    chat: {
+      body: `<path fill-rule="evenodd" d="M2 11c0 1.79.553 3.45 1.498 4.82L2.6 18.667a.6.6 0 0 0 .751.753l3.07-.96A8.5 8.5 0 1 0 2 11Zm11.46 9.414c-.457.16-.506.794-.034.904A6.96 6.96 0 0 0 15 21.5c1.148 0 2.422-.31 3.444-.912.357-.217.658-.378 1.043-.252l1.414.42c.357.112.679-.168.574-.546l-.47-1.57a.736.736 0 0 1 .05-.632c.602-1.108.945-2.32.945-3.498 0-1.07-.248-2.11-.7-3.046-.21-.435-.815-.25-.872.23-.47 3.954-3.211 7.394-6.968 8.72Z" clip-rule="evenodd"></path>`,
+    },
+    creator: {
+      body: `<path fill-rule="evenodd" d="M6.5 7.5A5.5 5.5 0 0 1 12 2a5.5 5.5 0 0 1 5.5 5.5A5.5 5.5 0 0 1 12 13a5.5 5.5 0 0 1-5.5-5.5Zm8.11 9.498c.404-.408.91-1 1.17-1.51.067-.133.13-.284.165-.442.034-.15.058-.373-.033-.602a.872.872 0 0 0-.545-.509 1.37 1.37 0 0 0-.604-.043c-.657.082-1.518.184-2.373.24-.867.055-1.68.058-2.254-.041-1.189-.204-2.045-.19-2.781.087-.722.272-1.25.773-1.804 1.302-1.533 1.462-2.434 3.311-2.65 4.831-.11.78.535 1.339 1.199 1.339h8.1a.96.96 0 0 0 .955-.929c.06-1.767.7-2.96 1.456-3.723Zm6.504-1.568a.75.75 0 1 0-1.228-.86l-2.903 4.146a.75.75 0 0 0 1.229.86l2.902-4.146Zm-4.227 6.099a.75.75 0 1 0-1.241-.842l-.267.392a.75.75 0 0 0 1.242.842l.266-.392Z" clip-rule="evenodd"></path>`,
+    },
+  };
+  const icon = icons[name];
+  return svgIcon(`header-svg header-svg-${name}`, icon.body, icon.viewBox || "0 0 24 24");
+}
+
 function composerToolIcons() {
   return [
     svgIcon("composer-tool-icon", `
@@ -948,6 +1002,25 @@ function composerToolIcons() {
 
 function composerActionIcon(src) {
   return `<img class="square-url-icon" src="${src}" alt="" aria-hidden="true">`;
+}
+
+function feedActionIcon(name) {
+  const icons = {
+    up: `<svg class="vote-icon" width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path fill-rule="evenodd" d="M13.792 3.681c-.781-1.406-2.803-1.406-3.584 0l-7.79 14.023c-.76 1.367.228 3.046 1.791 3.046h15.582c1.563 0 2.55-1.68 1.791-3.046l-7.79-14.023Z" clip-rule="evenodd"></path></svg>`,
+    down: `<svg class="vote-icon" width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path fill-rule="evenodd" d="M13.792 20.319c-.781 1.406-2.803 1.406-3.584 0L2.418 6.296c-.76-1.367.228-3.046 1.791-3.046h15.582c1.563 0 2.55 1.68 1.791 3.046l-7.79 14.023Z" clip-rule="evenodd"></path></svg>`,
+    comment: `<svg class="feed-action-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M12 2.37c5.67 0 10.266 4.085 10.267 9.125 0 2.08-.786 3.997-2.105 5.532a1.064 1.064 0 0 0-.247.91l.644 3.056c.24 1.157-.66 1.58-1.444 1.157l-2.925-1.584c-.53-.287-1.153-.338-1.743-.21-.784.172-1.604.265-2.447.265-5.67 0-10.268-4.087-10.268-9.126C1.732 6.455 6.33 2.37 12 2.37Z"></path></svg>`,
+    collect: `<svg class="feed-action-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M10.424 2.828c.7-1.213 2.452-1.213 3.152 0l2.47 4.285c.038.064.1.109.172.124l4.839 1.027c1.37.29 1.912 1.956.974 2.997l-3.312 3.674a.26.26 0 0 0-.065.201l.52 4.92c.146 1.393-1.27 2.422-2.55 1.852l-4.518-2.014a.26.26 0 0 0-.212 0l-4.518 2.014c-1.28.57-2.696-.46-2.55-1.853l.52-4.919a.26.26 0 0 0-.065-.2L1.969 11.26c-.938-1.041-.396-2.707.974-2.997l4.839-1.027a.26.26 0 0 0 .171-.124l2.471-4.285Z"></path></svg>`,
+    like: `<svg class="feed-action-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path fill-rule="evenodd" d="M16.984 3.324c1.73.315 3.125 1.472 4.04 2.978 1.893 3.116.758 6.989-1.384 9.556a23.241 23.241 0 0 1-3.96 3.737c-.66.486-1.308.895-1.902 1.196-.579.294-1.166.517-1.695.57a.845.845 0 0 1-.145.002c-.529-.038-1.127-.267-1.708-.564a14.407 14.407 0 0 1-1.947-1.232 23.512 23.512 0 0 1-4.081-3.88C2.165 13.207 1.139 9.536 2.85 6.514 3.742 4.94 5.14 3.71 6.896 3.348c1.606-.332 3.363.094 5.103 1.394 1.696-1.267 3.409-1.704 4.985-1.418Z" clip-rule="evenodd"></path></svg>`,
+    share: `<svg class="feed-action-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M13.338 3.855c0-1.37 1.676-2.036 2.616-1.038l7.146 7.586a2.33 2.33 0 0 1 0 3.194l-7.146 7.586c-.94.998-2.616.333-2.616-1.038v-3.633a.815.815 0 0 0-.695-.807l-1.368-.205a11.65 11.65 0 0 0-7.657 1.494L1.452 18.29a.946.946 0 0 1-.555.115c-.426-.065-.686-.4-.62-.896.066-.496.22-1.37.22-1.37 1.354-4.63 5.21-8.006 10.006-8.005h2.02c.45 0 .815-.365.815-.816V3.855Z"></path></svg>`,
+    more: `<svg class="feed-action-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M6 10.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3ZM10.5 12a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0ZM16.5 12a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0Z"></path></svg>`,
+  };
+  return `<span class="feed-icon-wrap">${icons[name]}</span>`;
+}
+
+function hotFireIcon() {
+  return svgIcon("zh-hot-fire", `
+    <path fill-rule="evenodd" d="M14.602 21.118a8.89 8.89 0 0 0 3.72-2.232 8.85 8.85 0 0 0 2.618-6.31c0-.928-.14-1.836-.418-2.697a8.093 8.093 0 0 0-1.204-2.356s.025.035-.045-.055-.1-.115-.1-.115c-.955-1.078-1.504-1.984-1.726-2.854-.06-.232-.138-.88-.22-1.824L17.171 2l-.681.02c-.654.018-1.089.049-1.366.096a7.212 7.212 0 0 0-3.77 1.863 6.728 6.728 0 0 0-1.993 3.544l-.088.431-.182-.4a5.032 5.032 0 0 1-.326-.946 71.054 71.054 0 0 1-.204-.916l-.199-.909-.833.42c-.52.263-.862.462-1.076.624a8.588 8.588 0 0 0-2.5 2.976 8.211 8.211 0 0 0-.888 3.723c0 2.402.928 4.657 2.616 6.35a8.87 8.87 0 0 0 3.093 2.027c-.919-.74-1.593-1.799-1.76-3.051-.186-.703.05-2.352.849-2.79 0 1.938 2.202 3.198 4.131 2.62 2.07-.62 3.07-2.182 2.773-5.688 1.245 1.402 1.65 2.562 1.838 3.264.603 2.269-.357 4.606-2.003 5.86Z" clip-rule="evenodd"></path>
+  `);
 }
 
 function composer() {
@@ -987,14 +1060,45 @@ function feedCard(item) {
         </p>
       </div>
       <div class="feed-actions">
-        <button class="vote-btn" data-interact="${escapeHTML(item.id)}" data-action="like">▲ 赞同 ${item.counts.like}</button>
-        <button class="vote-btn small-vote">▼</button>
-        <button class="feed-action" data-interact="${escapeHTML(item.id)}" data-action="comment">● ${item.counts.comment} 条评论</button>
-        <button class="feed-action" data-interact="${escapeHTML(item.id)}" data-action="collect">★ ${item.counts.collect}</button>
-        <button class="feed-action">❤ 103</button>
-        <button class="feed-action">↗ 分享</button>
-        <button class="feed-action">…</button>
+        <button class="vote-btn" data-interact="${escapeHTML(item.id)}" data-action="like">${feedActionIcon("up")}<span>赞同 ${item.counts.like}</span></button>
+        <button class="vote-btn vote-btn-down" aria-label="反对">${feedActionIcon("down")}</button>
+        <button class="feed-action feed-action-comment" data-interact="${escapeHTML(item.id)}" data-action="comment">${feedActionIcon("comment")}<span>${item.counts.comment} 条评论</span></button>
+        <button class="feed-action" data-interact="${escapeHTML(item.id)}" data-action="collect">${feedActionIcon("collect")}<span>${item.counts.collect}</span></button>
+        <button class="feed-action">${feedActionIcon("like")}<span>103</span></button>
+        <button class="feed-action feed-action-share">${feedActionIcon("share")}<span>分享</span></button>
+        <button class="feed-action feed-action-more" aria-label="更多">${feedActionIcon("more")}</button>
       </div>
+    </article>
+  `;
+}
+
+function hotListItem(item, index) {
+  const rank = item.rank || index + 1;
+  const url = item.url || "https://www.zhihu.com/hot";
+  const thumbnail = item.thumbnailUrl
+    ? `<a class="zh-hot-img" href="${escapeHTML(url)}"><img src="${escapeHTML(item.thumbnailUrl)}" alt=""></a>`
+    : "";
+  const summary = item.summary
+    ? `<p class="zh-hot-excerpt">${escapeHTML(item.summary)}</p>`
+    : "";
+  const heatMetric = item.heatText
+    ? `<span class="zh-hot-heat">${hotFireIcon()}${escapeHTML(item.heatText)}</span>`
+    : "";
+  return `
+    <article class="zh-hot-item">
+      <div class="zh-hot-index">
+        <span class="zh-hot-rank ${rank <= 3 ? "is-hot" : ""}">${rank}</span>
+        ${item.debut ? `<span class="zh-hot-new">新</span>` : ""}
+      </div>
+      <div class="zh-hot-content">
+        <a class="zh-hot-title" href="${escapeHTML(url)}">${escapeHTML(item.title)}</a>
+        ${summary}
+        <div class="zh-hot-metrics">
+          ${heatMetric}
+          <button class="zh-hot-share">${feedActionIcon("share")}<span>分享</span></button>
+        </div>
+      </div>
+      ${thumbnail}
     </article>
   `;
 }
@@ -1018,6 +1122,37 @@ function renderRecommend() {
   `;
   bindCommon();
   bindRecommend();
+}
+
+function renderHot() {
+  if (!hotItems.length && !hotItemsLoaded) {
+    const pendingHotItems = loadHotItems();
+    pendingHotItems
+      .then(() => {
+        if (window.location.pathname === "/hot") renderHot();
+      })
+      .catch(() => {
+        if (window.location.pathname === "/hot") showToast("热榜加载失败");
+      });
+  }
+  app.innerHTML = `
+    ${shell("hot")}
+    <main class="page hot-page">
+      <section class="zh-hot-list-card">
+        ${hotItems.length
+          ? hotItems.map(hotListItem).join("")
+          : `<div class="zh-hot-empty">${hotItemsLoaded ? "暂无热榜" : "热榜加载中"}</div>`}
+      </section>
+      <aside class="side-stack">
+        ${creatorCard()}
+        ${petPanel()}
+        ${hotCard()}
+        ${authorPlatformCard()}
+        ${recommendFollowCard()}
+      </aside>
+    </main>
+  `;
+  bindCommon();
 }
 
 function renderPeople() {
@@ -1467,6 +1602,8 @@ function renderCurrentRoute() {
   const path = window.location.pathname;
   if (path === "/people/p2wcex") {
     renderPeople();
+  } else if (path === "/hot") {
+    renderHot();
   } else {
     renderRecommend();
   }
@@ -1478,7 +1615,7 @@ document.addEventListener("click", (event) => {
   const link = event.target.closest("a");
   if (!link) return;
   const url = new URL(link.href);
-  if (url.origin === window.location.origin && ["/", "/people/p2wcex"].includes(url.pathname)) {
+  if (url.origin === window.location.origin && ["/", "/people/p2wcex", "/hot"].includes(url.pathname)) {
     event.preventDefault();
     window.history.pushState({}, "", url.pathname);
     renderCurrentRoute();
@@ -1490,6 +1627,11 @@ if (authUser) {
   await loadProfile();
   await loadTravelStatus();
   await loadContents();
+  if (window.location.pathname === "/hot") {
+    await loadHotItems();
+  } else {
+    loadHotItems().catch(() => {});
+  }
   renderCurrentRoute();
   syncFollowMoments();
 } else {

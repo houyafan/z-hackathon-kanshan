@@ -10,6 +10,7 @@ import mimetypes
 import os
 import secrets
 import sqlite3
+import time
 from datetime import datetime, timedelta
 
 
@@ -35,6 +36,8 @@ def apply_env_overrides(config):
     string_overrides = {
         "auth_mode": "AUTH_MODE",
         "zhihu_openapi_base": "ZH_OPENAPI_BASE",
+        "zhihu_hot_list_api_url": "ZH_HOT_LIST_API_URL",
+        "zhihu_access_secret": "ZH_ACCESS_SECRET",
         "zhihu_app_id": "ZH_APP_ID",
         "zhihu_app_key": "ZH_APP_KEY",
         "zhihu_auth_redirect_uri": "ZH_AUTH_REDIRECT_URI",
@@ -68,6 +71,8 @@ def load_config():
     default_config = {
         "auth_mode": "mock",
         "zhihu_openapi_base": "https://openapi.zhihu.com",
+        "zhihu_hot_list_api_url": "https://developer.zhihu.com/api/v1/content/hot_list",
+        "zhihu_access_secret": "",
         "zhihu_app_id": "",
         "zhihu_app_key": "",
         "zhihu_auth_redirect_uri": "http://127.0.0.1:5173/auth/callback",
@@ -111,6 +116,20 @@ def load_config():
 
 CONFIG = load_config()
 ZH_OPENAPI_BASE = CONFIG["zhihu_openapi_base"].rstrip("/")
+ZH_HOT_LIST_API_URL = str(
+    os.environ.get("ZH_DATA_PLATFORM_HOT_URL")
+    or CONFIG.get("zhihu_hot_list_api_url")
+    or "https://developer.zhihu.com/api/v1/content/hot_list"
+)
+ZH_ACCESS_SECRET = str(
+    os.environ.get("ZH_ACCESS_SECRET")
+    or os.environ.get("ZH_DEVELOPER_ACCESS_SECRET")
+    or os.environ.get("ZH_HOT_LIST_ACCESS_SECRET")
+    or os.environ.get("ZH_DATA_PLATFORM_ACCESS_SECRET")
+    or os.environ.get("ZH_DATA_PLATFORM_TOKEN")
+    or CONFIG.get("zhihu_access_secret")
+    or ""
+)
 ZH_APP_ID = str(CONFIG.get("zhihu_app_id") or "")
 ZH_APP_KEY = str(CONFIG.get("zhihu_app_key") or "")
 ZH_AUTH_REDIRECT_URI = str(CONFIG.get("zhihu_auth_redirect_uri") or "http://127.0.0.1:5173/auth/callback")
@@ -547,6 +566,215 @@ def fetch_zhihu_moments(access_token, page=0, per_page=10):
     if payload.get("code") and payload.get("code") not in (0, 20000):
         raise RuntimeError(str(payload.get("data") or payload))
     return []
+
+
+def append_query_param(url, key, value):
+    parsed = urlparse(url)
+    query = parse_qs(parsed.query)
+    query[key] = [str(value)]
+    return parsed._replace(query=urlencode(query, doseq=True)).geturl()
+
+
+def normalize_zhihu_web_url(url):
+    if not url:
+        return ""
+    parsed = urlparse(str(url))
+    if parsed.netloc == "api.zhihu.com" and parsed.path.startswith("/questions/"):
+        question_id = parsed.path.rsplit("/", 1)[-1]
+        return f"https://www.zhihu.com/question/{question_id}"
+    return str(url)
+
+
+def first_non_empty(*values):
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, str) and value.strip() == "":
+            continue
+        return value
+    return ""
+
+
+def pick_hot_thumbnail(item):
+    thumbnail = first_non_empty(
+        item.get("ThumbnailUrl"),
+        item.get("thumbnailUrl"),
+        item.get("thumbnail_url"),
+        item.get("thumbnail"),
+        item.get("ImageUrl"),
+        item.get("imageUrl"),
+        item.get("image_url"),
+        item.get("image"),
+    )
+    if thumbnail:
+        return str(thumbnail)
+    children = item.get("children") if isinstance(item.get("children"), list) else []
+    for child in children:
+        if not isinstance(child, dict):
+            continue
+        thumbnail = first_non_empty(child.get("thumbnail"), child.get("ThumbnailUrl"), child.get("thumbnailUrl"))
+        if thumbnail:
+            return str(thumbnail)
+    return ""
+
+
+def normalize_hot_payload(payload, limit):
+    data = payload.get("Data") if isinstance(payload, dict) else None
+    if data is None and isinstance(payload, dict):
+        data = payload.get("data")
+    if data is None:
+        data = payload
+
+    if isinstance(data, dict):
+        raw_items = first_non_empty(data.get("Items"), data.get("items"), data.get("data"))
+    else:
+        raw_items = data
+    if not isinstance(raw_items, list):
+        raw_items = []
+
+    items = []
+    for index, raw in enumerate(raw_items[:limit], start=1):
+        if not isinstance(raw, dict):
+            continue
+        target = raw.get("target") if isinstance(raw.get("target"), dict) else {}
+        title = first_non_empty(raw.get("Title"), raw.get("title"), target.get("title"))
+        if not title:
+            continue
+        url = first_non_empty(raw.get("Url"), raw.get("url"), raw.get("link"), target.get("url"))
+        summary = first_non_empty(
+            raw.get("Summary"),
+            raw.get("summary"),
+            raw.get("excerpt"),
+            raw.get("Description"),
+            raw.get("description"),
+            target.get("excerpt"),
+        )
+        heat = first_non_empty(
+            raw.get("DetailText"),
+            raw.get("detailText"),
+            raw.get("detail_text"),
+            raw.get("hotText"),
+            raw.get("hot_text"),
+            raw.get("heat"),
+        )
+        if isinstance(heat, (int, float)):
+            heat = f"{int(heat)} 热度"
+        debut = bool(first_non_empty(raw.get("Debut"), raw.get("debut"), raw.get("isNew"), raw.get("is_new")))
+        items.append({
+            "rank": index,
+            "title": str(title),
+            "url": normalize_zhihu_web_url(url),
+            "thumbnailUrl": pick_hot_thumbnail(raw),
+            "summary": str(summary or ""),
+            "heatText": str(heat or ""),
+            "debut": debut,
+            "contentType": str(first_non_empty(raw.get("Type"), raw.get("type"), target.get("type")) or ""),
+        })
+    return items
+
+
+def fallback_hot_items(limit):
+    items = [
+        {
+            "rank": 1,
+            "title": "如何评价知乎热榜开放接口？",
+            "url": "https://www.zhihu.com/hot",
+            "thumbnailUrl": "https://pic1.zhimg.com/v2-d4b0f8158e064dbcc71eb6ce970230a9.jpg",
+            "summary": "这是本地兜底数据。配置 Access Secret 后会切换为知乎开放平台热榜实时内容。",
+            "heatText": "849 万热度",
+            "debut": False,
+            "contentType": "question",
+        },
+        {
+            "rank": 2,
+            "title": "开放平台 hot_list 接口如何返回标题、链接、缩略图和摘要？",
+            "url": "https://developer.zhihu.com/docs?key=hot_list",
+            "thumbnailUrl": "https://pic2.zhimg.com/v2-2b4d3f56dd3d87d006ff2827eb6d0a2d.jpg",
+            "summary": "接口响应包含 Total 与 Items，单条内容包含 Title、Url、ThumbnailUrl、Summary 等字段。",
+            "heatText": "612 万热度",
+            "debut": True,
+            "contentType": "article",
+        },
+        {
+            "rank": 3,
+            "title": "为什么热榜页面的排行、热度和分享按钮需要保持统一视觉？",
+            "url": "https://www.zhihu.com/hot",
+            "thumbnailUrl": "https://pic3.zhimg.com/v2-34b5a45f74d4a8b8c36f0fb42e60f5f2.jpg",
+            "summary": "热榜是强扫描型页面，数字排行、标题层级、摘要与封面比例会直接影响阅读效率。",
+            "heatText": "506 万热度",
+            "debut": False,
+            "contentType": "question",
+        },
+        {
+            "rank": 4,
+            "title": "当接口未配置 Access Secret 时，本地开发应该如何降级？",
+            "url": "https://developer.zhihu.com/docs?key=hot_list",
+            "thumbnailUrl": "",
+            "summary": "开发环境可以使用同字段结构的兜底数据，避免 UI 验证被鉴权配置阻塞。",
+            "heatText": "388 万热度",
+            "debut": False,
+            "contentType": "question",
+        },
+        {
+            "rank": 5,
+            "title": "知乎热榜列表为什么常用 190x105 的右侧封面？",
+            "url": "https://www.zhihu.com/hot",
+            "thumbnailUrl": "https://pic1.zhimg.com/v2-7ad7f6936b9a75e6bb7d94f20d06f9f5.jpg",
+            "summary": "右侧缩略图在信息密度和视觉识别之间做了折中，能让用户快速判断热点类型。",
+            "heatText": "297 万热度",
+            "debut": False,
+            "contentType": "question",
+        },
+    ]
+    return items[:limit]
+
+
+def fetch_hot_items(limit=30):
+    limit = max(1, min(int(limit), 30))
+    if not ZH_ACCESS_SECRET:
+        return {
+            "source": "fallback",
+            "configured": False,
+            "total": min(limit, len(fallback_hot_items(limit))),
+            "items": fallback_hot_items(limit),
+        }
+
+    api_url = ZH_HOT_LIST_API_URL.format(limit=limit, Limit=limit)
+    if "{limit}" not in ZH_HOT_LIST_API_URL and "{Limit}" not in ZH_HOT_LIST_API_URL:
+        api_url = append_query_param(api_url, "Limit", limit)
+    request = Request(
+        api_url,
+        headers={
+            "Authorization": f"Bearer {ZH_ACCESS_SECRET}",
+            "X-Request-Timestamp": str(int(time.time())),
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "z-hackathon-kanshan/1.0",
+        },
+        method="GET",
+    )
+    try:
+        with urlopen(request, timeout=10) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        if isinstance(payload, dict):
+            code = payload.get("Code", payload.get("code", 0))
+            if code not in (0, "0", None, 20000, "20000"):
+                raise RuntimeError(str(payload.get("Message") or payload.get("message") or payload))
+        items = normalize_hot_payload(payload, limit)
+        return {
+            "source": "zhihu_public_api",
+            "configured": True,
+            "total": len(items),
+            "items": items,
+        }
+    except Exception as error:
+        return {
+            "source": "fallback",
+            "configured": True,
+            "error": str(error),
+            "total": min(limit, len(fallback_hot_items(limit))),
+            "items": fallback_hot_items(limit),
+        }
 
 
 def mock_zhihu_user():
@@ -1818,7 +2046,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, {"authenticated": True, "user": camel_user(user)})
             return
 
-        if path in ("/", "/people/p2wcex"):
+        if path in ("/", "/people/p2wcex", "/hot"):
             session = self.require_auth_page(self.path)
             if session is None:
                 return
@@ -1855,6 +2083,12 @@ class Handler(BaseHTTPRequestHandler):
             with connect_db() as conn:
                 contents = [camel_content(row) for row in fetch_contents(conn, limit)]
                 self.send_json(200, {"contents": contents})
+            return
+
+        if path in ("/api/p0/hot", "/api/p0/hot-list"):
+            qs = parse_qs(parsed.query)
+            limit = max(1, min(int((qs.get("limit") or qs.get("Limit") or [30])[0]), 30))
+            self.send_json(200, fetch_hot_items(limit))
             return
 
         if path == "/api/p0/follow-moments":
@@ -1940,7 +2174,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_HEAD(self):
         parsed = urlparse(self.path)
         path = parsed.path
-        if path in ("/", "/people/p2wcex"):
+        if path in ("/", "/people/p2wcex", "/hot"):
             session = self.require_auth_page(self.path)
             if session is None:
                 return
@@ -2086,5 +2320,6 @@ if __name__ == "__main__":
     server = ThreadingHTTPServer((host, port), Handler)
     print(f"P0 mock server running at http://{host}:{port}")
     print(f"推荐页: http://{host}:{port}/")
+    print(f"热榜页: http://{host}:{port}/hot")
     print(f"个人页: http://{host}:{port}/people/p2wcex")
     server.serve_forever()
