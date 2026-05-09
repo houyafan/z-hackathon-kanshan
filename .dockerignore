@@ -24,7 +24,6 @@ mobeohg5.png
 低面数.glb
 
 db/sqlite/*.sqlite
-p0_mock/config.json
 
 .env
 .env.*
