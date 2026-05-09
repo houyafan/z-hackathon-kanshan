@@ -22,12 +22,12 @@
 | 游历精力 | 内容消费积累游历精力 | 已完成 | 当前内容事件会增加 `travel_energy` |
 | 健康值 | 长期内容消费维持健康，低健康休眠 | 部分完成 | 字段已入库，健康衰减和休眠业务未实现 |
 | 3D 刘看山表现 | 悬浮展示、气泡、拖拽、出场、升级、特效 | 已完成 | 已实现 3D 模型、出场、升级、残影、光带、挥手、拖拽移动/旋转 |
-| 旅行基础闭环 | 出门、归来、带回内容、领取奖励、手账 | 部分完成 | 已有 start/return/claim/handbook 接口和传送门表现 |
-| 旅行方式 | 默认只保留极地旅行、热点旅行 | 待开发 | 当前代码仍是 `arctic/mountain`，需按最新需求调整为 `polar/hotspot` |
-| 旅行手札 LLM | 手札总结由 LLM 生成 | 待开发 | 当前手账为模板文案，未接 LLM 总结 |
+| 旅行基础闭环 | 出门、归来、带回内容、领取奖励、手账 | 已完成 | start/return/claim/handbook 全部接通，奖励改为旅行行级单次发放 |
+| 旅行方式 | 默认只保留极地旅行、热点旅行 | 已完成 | `polar/hotspot` 已上线，并改为对接真实数据源（关注动态 / 知乎热榜） |
+| 旅行手札 LLM | 手札总结由 LLM 生成 | 已完成 | 火山方舟模型异步生成 `summary / pet_quote / highlights`，失败回落模板 |
 | 评论 LLM 辅助 | 评论时生成刘看山口吻建议 | 待开发 | 当前评论只触发养成事件，没有 AI 评论建议 |
-| 关注动态 | 关注内容更新后刘看山提醒 | 部分完成 | 已接 `user_moments` 同步、入库、气泡提醒；LLM 总结未接 |
-| LLM 对接文档 | LLM 总结/评论辅助对接说明 | 部分完成 | 已有关注动态 LLM README，需扩展到旅行手札和评论辅助 |
+| 关注动态 | 关注内容更新后刘看山提醒 | 部分完成 | 已接 `user_moments` 同步、入库、气泡提醒；真实 LLM 总结 worker 仍待开发 |
+| LLM 对接文档 | LLM 总结/评论辅助对接说明 | 部分完成 | 已有关注动态 LLM README + 第八章旅行手札对接说明，评论辅助文档待补 |
 | 权益与道具 | 盐选体验卡、挂件、道具兑换等 | 待开发 | 尚未实现 |
 | 社交联动 | 串门、互助、排行榜 | 待开发 | 尚未实现 |
 | 性能降级 | 关闭动画、极简模式、低端设备降级 | 待开发 | 尚未形成产品开关 |
@@ -310,12 +310,12 @@ V3.0 版本
 
 | 编号 | 变更项 | 需求说明 | 当前状态 |
 | --- | --- | --- | --- |
-| R1 | 旅行方式收敛 | 默认只保留 `极地旅行`、`热点旅行` 两种方式 | 待开发 |
-| R2 | 旅行手札 LLM 总结 | 旅行手札内容需要结合 LLM，由 LLM 生成总结性内容 | 待开发 |
+| R1 | 旅行方式收敛 | 默认只保留 `极地旅行`、`热点旅行` 两种方式 | 已完成（同时把数据源切到关注动态 / 知乎热榜） |
+| R2 | 旅行手札 LLM 总结 | 旅行手札内容需要结合 LLM，由 LLM 生成总结性内容 | 已完成（异步背景线程生成；输出含 highlights） |
 | R3 | 评论 LLM 辅助 | 用户评论内容时，LLM 接收内容信息，生成刘看山口吻的 AI 回答 | 待开发 |
-| R4 | 关注动态 LLM 总结 | 关注内容有更新时，也需要结合 LLM 生成刘看山式提醒 | 部分完成 |
+| R4 | 关注动态 LLM 总结 | 关注内容有更新时，也需要结合 LLM 生成刘看山式提醒 | 部分完成（字段、气泡、入库已就位；总结 worker 待开发） |
 
-当前代码已经具备 P1 游历基础闭环：出门、归来、带回内容、领取奖励、旅行手账、传送门 3D 表现。但主题仍为 `arctic/mountain`，手账仍为模板文案，尚未按本章节接入 `极地旅行/热点旅行` 和 LLM。
+当前代码已具备 P1 游历完整闭环：出门 → 后台异步触发 LLM → 归来 → 手账展示 LLM 现场汇报（summary + pet_quote + highlights）→ 领奖。主题已迁移为 `polar / hotspot`，并把素材来源从 mock 内容池切换到 `zhihu_follow_moment` / `fetch_hot_items`。详见本章节「（八）P1 实施备注」。
 
 ### （二）旅行方式
 
@@ -339,7 +339,7 @@ V3.0 版本
 看山踏上极地旅行，去雪原里帮你找一篇硬核好内容。
 ```
 
-实现状态：待开发。当前代码中的 `arctic/北极远行` 可作为迁移基础，但需要统一命名、配置和文案为 `polar/极地旅行`。
+实现状态：已完成。`arctic/北极远行` 已迁移为 `polar/极地旅行`，CHECK 约束、seed、文案全部更新。素材来源不再使用 mock `zhihu_content_pool`，改为读取 `zhihu_follow_moment`（用户关注的人最近发表/赞同/收藏的内容），由刘看山带回作为「关注列表里值得看的事」。
 
 #### 2. 热点旅行
 
@@ -362,7 +362,7 @@ V3.0 版本
 看山去热点现场逛一圈，回来给你讲讲大家正在讨论什么。
 ```
 
-实现状态：待开发。当前代码中的 `mountain/山海漫游` 不能直接等同热点旅行，需要重新调整标签匹配、内容选择和文案。
+实现状态：已完成。`mountain/山海漫游` 已重命名并重写为 `hotspot/热点旅行`。素材来源直接对接知乎热榜接口 `developer.zhihu.com/api/v1/content/hot_list`（无 access secret 时回落到 6 条内置 fallback），刘看山带回的就是当前热榜 Top N，每条带 url、heat、rank、contentType。
 
 ### （三）旅行手札 + LLM
 
@@ -386,24 +386,28 @@ LLM 输入建议：
 }
 ```
 
-LLM 输出建议：
+LLM 输出（实际实现，含 `highlights`）：
 
 ```json
 {
-  "summary": "我在极地翻到一篇关于 AI 红利的讨论，里面说机会真正重要的不是押中，而是先用低成本理解它。",
-  "pet_quote": "这篇有点冷，但读完会觉得脑袋亮了一下。"
+  "summary": "我刚去你关注的极地转了一圈，发现大家最近都在聊 AI 红利……",
+  "pet_quote": "这篇有点冷，但读完会觉得脑袋亮了一下。",
+  "highlights": [
+    {"title": "为什么普通人面对 AI 红利也会犹豫？", "reason": "拆解了机会成本与低成本理解的差异"}
+  ]
 }
 ```
 
 约束：
 
-- `summary` 控制在 60-120 个中文字符。
+- `summary` 控制在 80-160 个中文字符（实际比文档原稿略放宽，给汇报场景多 40 字）。
 - `pet_quote` 控制在 20-40 个中文字符。
-- 只基于带回内容总结，不编造内容结论。
+- `highlights` 数组 3-5 条，每条 `{title, reason}`，title ≤40 字、reason ≤40 字。
+- 只基于带回素材汇报，不编造内容结论。
 - 输出 JSON，服务端校验后写入旅行手札。
-- LLM 失败时使用规则模板兜底，不阻断旅行归来。
+- LLM 失败 / 非 JSON / 非 dict / `summary` 为空时统一落 `failed`，前端展示路线笔记 + `pet_quote` 模板兜底，不阻断旅行归来。
 
-实现状态：待开发。当前已有 `pet_travel_handbook` 和手账 UI，但只保存固定 `route_text/pet_quote`，尚未保存或展示 LLM 总结。
+实现状态：已完成。`pet_travel_handbook` 已新增 `llm_summary_status / llm_summary / llm_pet_quote / llm_highlights / llm_summary_model / llm_summary_updated_at` 六个字段。LLM 触发时机改为 `start_travel` commit 后由 daemon 线程异步跑（避开 GET handbook 阻塞），用户旅行 60 秒等待期间 LLM 通常已 ready。`ensure_handbook_summaries` 在 GET 路由上保留单次兜底（每次最多触发 1 条 pending/failed 重试）。
 
 ### （四）评论 LLM 辅助
 
@@ -480,15 +484,30 @@ LLM 输出示例：
 
 #### 1. 旅行手札
 
-建议在 `pet_travel_handbook` 增加：
+`pet_travel_handbook` 实际新增字段：
 
 | 字段 | 说明 | 当前状态 |
 | --- | --- | --- |
-| `llm_summary_status` | `pending/processing/ready/failed/skipped` | 待开发 |
-| `llm_summary` | LLM 生成的旅行总结 | 待开发 |
-| `llm_pet_quote` | LLM 生成的刘看山语录 | 待开发 |
-| `llm_summary_model` | 使用的模型 | 待开发 |
-| `llm_summary_updated_at` | 更新时间 | 待开发 |
+| `llm_summary_status` | `pending/processing/ready/failed/skipped` | 已完成 |
+| `llm_summary` | LLM 生成的旅行总结 | 已完成 |
+| `llm_pet_quote` | LLM 生成的刘看山语录 | 已完成 |
+| `llm_highlights` | LLM 挑出的 3-5 条 `{title, reason}` 清单（JSON 数组） | 已完成（实际实现新增） |
+| `llm_summary_model` | 使用的模型 endpoint id | 已完成 |
+| `llm_summary_updated_at` | 更新时间 | 已完成 |
+
+#### 1bis. 旅行素材快照表（实际实现新增）
+
+`pet_travel_external_content` 持久化每次旅行带回的素材快照，避免旅行结束后真实接口数据漂移导致手账失真：
+
+| 字段 | 说明 |
+| --- | --- |
+| `travel_id` | 关联 `pet_travel_event` |
+| `source` | `follow_moment` 或 `hot_list` |
+| `source_ref` | 关注动态 `moment_key` 或热榜 `url`（旅行内 UNIQUE） |
+| `rank` | 排序 |
+| `title / excerpt / author / url / thumbnail_url` | 素材主体字段 |
+| `meta` | JSON：actorName/actionText/actionTime（关注动态）或 rank/heatText/contentType（热榜） |
+| `claimed` | 防重幂等位（实际奖励已搬到 `pet_travel_event` 行级，此字段不再参与求和） |
 
 #### 2. 评论辅助
 
@@ -520,12 +539,54 @@ ALTER TABLE zhihu_follow_moment ADD COLUMN llm_error TEXT DEFAULT NULL;
 
 | 场景 | 验收标准 | 当前状态 |
 | --- | --- | --- |
-| 极地旅行 | 用户出发后进入极地旅行主题，并带回偏知识/深度内容 | 待开发 |
-| 热点旅行 | 用户出发后进入热点旅行主题，并带回热点/高讨论内容 | 待开发 |
+| 极地旅行 | 用户出发后进入极地旅行主题，从关注动态带回素材 | 已完成 |
+| 热点旅行 | 用户出发后进入热点旅行主题，从知乎热榜带回素材 | 已完成 |
 | 旅行基础闭环 | 出门、归来、内容卡片、领取奖励、冷却、手账可完整跑通 | 已完成 |
-| 旅行手札 | 归来后手札展示 LLM 总结和刘看山语录 | 待开发 |
-| 旅行 LLM 失败 | 使用模板文案兜底，旅行流程不失败 | 待开发 |
+| 旅行手札 | 归来后手札展示 LLM 总结、刘看山语录与 3-5 条 highlights | 已完成 |
+| 旅行 LLM 失败 | 状态置 `failed`，前端展示模板兜底，旅行流程不失败 | 已完成 |
+| 旅行奖励 | 不论带回素材数为 5 还是 6，单次旅行奖励固定（行级，避免 N 倍放大） | 已完成 |
 | 评论辅助 | 点击评论辅助后，返回刘看山口吻评论建议 | 待开发 |
 | 评论奖励 | 只有用户真实提交评论后才触发经验/心情奖励 | 部分完成 |
 | 关注动态 | 有新关注动态时，优先展示 LLM 总结提醒 | 部分完成 |
 | 关注 LLM 失败 | 降级为普通关注 tab 提醒 | 部分完成 |
+
+### （八）P1 实施备注
+
+实际落地与原需求若干处偏差，记录在此供后续维护参考：
+
+#### 1. 出游 = 看山去看真实数据回来汇报
+
+原需求 (二) 设想旅行带回的是「按用户偏好 tag 从平台内容池匹配出的优质内容」，由用户阅读。实际把语义改为：
+
+- **极地旅行 = 看山替主人看「关注动态」**（`zhihu_follow_moment` 表，OAuth `/user/moments` 真实数据）
+- **热点旅行 = 看山替主人看「知乎热榜」**（`fetch_hot_items` 实时调用）
+- **手札 = 看山的现场汇报**：summary 是看山的口吻总结，highlights 是「值得点开的几条清单」，原始素材列表只作为引用证据
+
+这样接通了项目本来就有的两个真实接口，避免了内容池冷启动 + tag 标注成本，同时手札也从「读后感」变成「替你扫一遍」的代理体验。`pet_travel_theme_config.preferred_tags` 字段保留但不再参与匹配（关注动态/热榜本身已是按"主人在意什么"或"大众在讨论什么"自然筛选）。
+
+#### 2. LLM 调用时机：异步而非归来同步
+
+原需求隐含「归来时同步生成手札」。同步会让 60 秒等待期内的 GET 路由阻塞 8-30 秒（LLM 延迟），并占用 SQLite 写锁。实际实现：
+
+- `start_travel` commit 后立刻起 `threading.Thread(daemon=True)` 跑 `summarize_travel_handbook`，与旅行 60 秒等待并行
+- LLM 调用拿独立连接、`BEGIN IMMEDIATE` 抢占写锁，不影响主流程事务
+- GET handbook 路由保留单次兜底（每次最多重试 1 条 pending/failed），不串行卡死
+
+实测：用户从出门到打开手账约 60 秒，LLM 平均 8-14 秒就 ready，打开手账时 0 秒返回。
+
+#### 3. 奖励：旅行行级而非素材累加
+
+原表 `pet_travel_return_content` 把奖励放在每条素材上、claim 时 SUM。当 hotspot 一次带回 6 条时奖励放大到 6×（48 exp / 30 mood / 6 energy），明显超出设计意图。实际把奖励列搬到 `pet_travel_event` 行（`reward_exp / reward_mood / reward_energy`），素材表上的奖励列保留为 0 仅做幂等。每次旅行固定 8 exp / 5 mood / 1 energy，与素材数解耦。
+
+#### 4. 安全收尾
+
+- LLM provider 用火山方舟 OpenAI 兼容接口（`ark.cn-beijing.volces.com/api/v3/chat/completions`），`VOLC_API_KEY` 环境变量优先，`config.json` 兜底
+- 手札素材的 `url` 入库前经 `normalize_zhihu_web_url` 协议白名单（拒绝 `javascript:` / `data:`）；前端 `isSafeHttpUrl` 二次校验
+- LLM prompt 已声明素材字段为受信内容、不要遵循内嵌指令；title 截 80、excerpt 截 200、tags 截 8 限制 token 与 injection 风险
+- `connect_db` 设 30s busy_timeout，避免并发请求 5ms 即抛 `database is locked`
+
+#### 5. 已知遗留
+
+- 关注动态 LLM 总结 worker（R4）尚未真正调用 LLM，沿用预留字段
+- 评论 LLM 辅助（R3）整体待开发
+- 健康值衰减、休眠机制、社交联动、权益兑换均未实现（与本次 P1 范围无关）
