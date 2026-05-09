@@ -923,16 +923,16 @@ function composer() {
   return `
     <section class="card composer">
       <div class="composer-top">
-        <span class="avatar"></span>
-        <span>分享此刻的想法…</span>
-        <div class="composer-tools"><span>#</span><span>☺</span><span>▧</span><span>▣</span><span>▥</span></div>
+        <span class="composer-avatar avatar"></span>
+        <span class="composer-placeholder">分享此刻的想法...</span>
+        <div class="composer-tools" aria-hidden="true"><span>#</span><span>☺</span><span>▧</span><span>▣</span><span>▥</span></div>
         <div class="composer-submit"><span>同步到圈子⌄</span><button class="blue-btn">发想法</button></div>
       </div>
       <div class="composer-bottom">
-        <span><i class="square-icon green">?</i>提问题</span>
-        <span><i class="square-icon blue">■</i>写回答</span>
-        <span><i class="square-icon orange">✎</i>写文章</span>
-        <span><i class="square-icon pink">▶</i>发视频</span>
+        <button><i class="square-icon green">?</i><span>提问题</span></button>
+        <button><i class="square-icon blue">■</i><span>写回答</span></button>
+        <button><i class="square-icon orange">✎</i><span>写文章</span></button>
+        <button><i class="square-icon pink">▶</i><span>发视频</span></button>
       </div>
     </section>
   `;

@@ -309,42 +309,72 @@ button {
 
 .composer {
   margin-bottom: 10px;
+  overflow: hidden;
 }
 
 .composer-top {
   height: 108px;
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 20px 22px 0;
+  position: relative;
+  padding: 0 22px;
   border-bottom: 1px solid #edf0f5;
+  color: #2f3338;
+}
+
+.composer-avatar {
+  position: absolute;
+  left: 22px;
+  top: 18px;
+  width: 28px;
+  height: 28px;
+}
+
+.composer-placeholder {
+  position: absolute;
+  left: 62px;
+  top: 18px;
+  max-width: 220px;
   color: #2f3338;
   font-size: 15px;
   font-weight: 600;
+  line-height: 28px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .composer-tools {
-  margin-top: 48px;
+  position: absolute;
+  left: 205px;
+  top: 68px;
   display: flex;
-  gap: 28px;
-  color: #3b4149;
-  font-size: 20px;
+  align-items: center;
+  gap: 30px;
+  color: #3f4650;
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .composer-submit {
-  margin-left: auto;
-  align-self: center;
+  position: absolute;
+  right: 22px;
+  top: 45px;
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 16px;
   color: #7f8b9d;
+  font-size: 14px;
+  font-weight: 700;
 }
 
 .composer-submit .blue-btn {
-  height: 38px;
-  padding: 0 18px;
+  width: 82px;
+  height: 50px;
+  padding: 0;
+  border-radius: 12px;
   color: #1677ff;
   background: #edf4ff;
+  font-size: 15px;
   font-weight: 700;
 }
 
@@ -353,26 +383,38 @@ button {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   align-items: center;
-  padding: 0 42px;
+  padding: 0 44px;
   font-size: 15px;
   font-weight: 700;
 }
 
-.composer-bottom span {
+.composer-bottom button {
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: center;
+  gap: 10px;
+  min-width: 0;
+  height: 48px;
+  border: 0;
+  background: transparent;
+  color: #121212;
+  font-weight: 700;
+}
+
+.composer-bottom button:hover {
+  background: #f7f8fa;
 }
 
 .square-icon {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
+  border-radius: 5px;
   color: #fff;
-  font-size: 14px;
+  font-size: 13px;
+  line-height: 1;
 }
 
 .green {
@@ -1930,6 +1972,55 @@ button {
   .feed-actions {
     flex-wrap: wrap;
     gap: 8px;
+  }
+
+  .composer-top {
+    height: 96px;
+    padding: 0 16px;
+  }
+
+  .composer-avatar {
+    left: 16px;
+    top: 16px;
+  }
+
+  .composer-placeholder {
+    left: 54px;
+    top: 16px;
+    max-width: calc(100% - 150px);
+  }
+
+  .composer-tools {
+    left: 54px;
+    right: 16px;
+    top: 62px;
+    justify-content: space-between;
+    gap: 0;
+    font-size: 19px;
+  }
+
+  .composer-submit {
+    right: 16px;
+    top: 14px;
+  }
+
+  .composer-submit > span {
+    display: none;
+  }
+
+  .composer-submit .blue-btn {
+    width: 70px;
+    height: 38px;
+    border-radius: 10px;
+  }
+
+  .composer-bottom {
+    padding: 0 10px;
+    font-size: 14px;
+  }
+
+  .composer-bottom button {
+    gap: 6px;
   }
 
   .search {
