@@ -421,6 +421,12 @@ def fetch_session(conn, session_id):
     if parse_time(row["expires_at"]) <= datetime.now():
         conn.execute("DELETE FROM auth_session WHERE session_id = ?", (session_id,))
         return None
+    if AUTH_MODE == "oauth" and int(row["user_id"]) == DEFAULT_USER_ID:
+        conn.execute("DELETE FROM auth_session WHERE session_id = ?", (session_id,))
+        return None
+    if AUTH_MODE == "oauth" and fetch_oauth_token(conn, row["user_id"]) is None:
+        conn.execute("DELETE FROM auth_session WHERE session_id = ?", (session_id,))
+        return None
     return row
 
 
@@ -1737,7 +1743,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/auth/login":
             qs = parse_qs(parsed.query)
             next_url = safe_next_url((qs.get("next") or ["/"])[0])
-            if AUTH_MODE == "mock":
+            if AUTH_MODE == "mock" and self.is_local_request():
                 with connect_db() as conn:
                     user = upsert_zhihu_user(conn, mock_zhihu_user())
                     session_id = create_session(conn, user["uid"])

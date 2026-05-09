@@ -948,7 +948,7 @@ function renderRecommend() {
 
 function renderPeople() {
   const displayName = escapeHTML(currentUser?.fullname || "知乎用户");
-  const headline = escapeHTML(currentUser?.headline || "让复杂讨论被看见结构，而非淹没在情绪中。");
+  const headline = escapeHTML(currentUser?.headline || "这个人还没有填写个人简介。");
   const avatarStyle = currentUser?.avatarPath
     ? `style="background-image:url('${escapeHTML(currentUser.avatarPath)}');background-size:cover;background-position:center;"`
     : "";
