@@ -1,0 +1,106 @@
+name: 构建 Docker 镜像并部署到 Sealos
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  IMAGE_NAME: z-hackathon-kanshan
+  ALIYUN_CR_REGISTRY: crpi-4fx5gjh2gg6qrzgj.cn-beijing.personal.cr.aliyuncs.com
+  ALIYUN_CR_NAMESPACE: sunnynh
+  K8S_NAMESPACE: ns-z8o8d2sw
+  K8S_DEPLOYMENT: z-hackathon-kanshan
+  WECOM_WEBHOOK: https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=c390c29b-490a-42dc-9488-86b2315f990c
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 登录阿里云容器镜像服务
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ALIYUN_CR_REGISTRY }}
+          username: ${{ secrets.ALIYUN_USERNAME }}
+          password: ${{ secrets.ALIYUN_PASSWORD }}
+
+      - name: 构建并推送 Docker 镜像
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.ALIYUN_CR_REGISTRY }}/${{ env.ALIYUN_CR_NAMESPACE }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.ALIYUN_CR_REGISTRY }}/${{ env.ALIYUN_CR_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      - name: 安装 kubectl
+        if: github.event_name != 'pull_request'
+        uses: azure/setup-kubectl@v4
+
+      - name: 设置 Kubernetes Context
+        if: github.event_name != 'pull_request'
+        uses: azure/k8s-set-context@v4
+        with:
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBE_CONFIG }}
+
+      - name: 部署到 Sealos 集群
+        if: github.event_name != 'pull_request'
+        run: |
+          IMAGE="${{ env.ALIYUN_CR_REGISTRY }}/${{ env.ALIYUN_CR_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          kubectl set image -n "${{ env.K8S_NAMESPACE }}" "deployment/${{ env.K8S_DEPLOYMENT }}" "${{ env.IMAGE_NAME }}=$IMAGE"
+
+      - name: 等待部署完成
+        if: github.event_name != 'pull_request'
+        run: |
+          for i in 1 2 3; do
+            echo "尝试第 $i 次检查部署状态..."
+            if kubectl rollout status -n "${{ env.K8S_NAMESPACE }}" "deployment/${{ env.K8S_DEPLOYMENT }}" --timeout=180s; then
+              echo "部署状态检查成功！"
+              exit 0
+            fi
+            echo "等待 10 秒后重试..."
+            sleep 10
+          done
+          echo "部署状态检查失败，已重试 3 次"
+          exit 1
+
+      - name: 发送部署通知（企业微信）
+        if: always() && github.event_name != 'pull_request'
+        run: |
+          STATUS="${{ job.status }}"
+          FORMATTED_TIME=$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')
+
+          if [ "$STATUS" = "success" ]; then
+            TITLE="z-hackathon-kanshan 部署成功"
+            COLOR="info"
+          else
+            TITLE="z-hackathon-kanshan 部署失败"
+            COLOR="warning"
+          fi
+
+          RAW_COMMIT_MSG="${{ github.event.head_commit.message }}"
+          if [ -z "$RAW_COMMIT_MSG" ]; then
+            RAW_COMMIT_MSG="${{ github.event.pull_request.title }}"
+          fi
+          if [ -z "$RAW_COMMIT_MSG" ]; then
+            RAW_COMMIT_MSG="N/A"
+          fi
+          COMMIT_MSG=$(printf '%s' "$RAW_COMMIT_MSG" | tr '\n' ' ' | sed 's/\\/\\\\/g; s/"/\\"/g')
+
+          curl -sS -X POST "${{ env.WECOM_WEBHOOK }}" \
+            -H 'Content-Type: application/json' \
+            -d "{\"msgtype\":\"markdown\",\"markdown\":{\"content\":\"### $TITLE\n> 项目：z-hackathon-kanshan\n> 状态：<font color=\\\"$COLOR\\\">$STATUS</font>\n> 时间：$FORMATTED_TIME\n> 分支：${{ github.ref_name }}\n> 提交者：${{ github.actor }}\n> 提交信息：$COMMIT_MSG\n> [查看详情](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})\"}}"

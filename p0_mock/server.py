@@ -7,19 +7,60 @@ from urllib.request import Request, urlopen
 import hashlib
 import json
 import mimetypes
+import os
 import secrets
 import sqlite3
 from datetime import datetime, timedelta
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DB_PATH = ROOT / "db" / "sqlite" / "liukanshan_p0.sqlite"
+DB_PATH = Path(os.environ.get("DB_PATH") or ROOT / "db" / "sqlite" / "liukanshan_p0.sqlite")
 INIT_SQL = ROOT / "db" / "sqlite" / "init_p0.sql"
 STATIC_DIR = ROOT / "p0_mock" / "static"
 ROAMING_DIR = ROOT / "3d-liukanshan-roaming"
-CONFIG_PATH = ROOT / "p0_mock" / "config.json"
+CONFIG_PATH = Path(os.environ.get("CONFIG_PATH") or ROOT / "p0_mock" / "config.json")
 DEFAULT_USER_ID = 10001
 SESSION_COOKIE_NAME = "lks_session"
+
+
+def env_bool(name):
+    value = os.environ.get(name)
+    if value is None:
+        return None
+    return value.strip().lower() in ("1", "true", "yes", "on")
+
+
+def apply_env_overrides(config):
+    string_overrides = {
+        "auth_mode": "AUTH_MODE",
+        "zhihu_openapi_base": "ZH_OPENAPI_BASE",
+        "zhihu_app_id": "ZH_APP_ID",
+        "zhihu_app_key": "ZH_APP_KEY",
+        "zhihu_auth_redirect_uri": "ZH_AUTH_REDIRECT_URI",
+    }
+    for key, env_name in string_overrides.items():
+        value = os.environ.get(env_name)
+        if value:
+            config[key] = value
+
+    public_base_url = os.environ.get("PUBLIC_BASE_URL")
+    if public_base_url and not os.environ.get("ZH_AUTH_REDIRECT_URI"):
+        config["zhihu_auth_redirect_uri"] = f"{public_base_url.rstrip('/')}/auth/callback"
+
+    int_overrides = {
+        "session_ttl_hours": "SESSION_TTL_HOURS",
+        "state_ttl_minutes": "STATE_TTL_MINUTES",
+    }
+    for key, env_name in int_overrides.items():
+        value = os.environ.get(env_name)
+        if value:
+            config[key] = int(value)
+
+    local_auth_bypass = env_bool("LOCAL_AUTH_BYPASS")
+    if local_auth_bypass is not None:
+        config["local_auth_bypass"] = local_auth_bypass
+
+    return config
 
 
 def load_config():
@@ -44,12 +85,12 @@ def load_config():
         },
     }
     if not CONFIG_PATH.exists():
-        return default_config
+        return apply_env_overrides(default_config)
     with CONFIG_PATH.open("r", encoding="utf-8") as file:
         user_config = json.load(file)
     merged = {**default_config, **user_config}
     merged["mock_user"] = {**default_config["mock_user"], **user_config.get("mock_user", {})}
-    return merged
+    return apply_env_overrides(merged)
 
 
 CONFIG = load_config()
@@ -1359,8 +1400,10 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     init_db()
-    server = ThreadingHTTPServer(("127.0.0.1", 5173), Handler)
-    print("P0 mock server running at http://127.0.0.1:5173")
-    print("推荐页: http://127.0.0.1:5173/")
-    print("个人页: http://127.0.0.1:5173/people/p2wcex")
+    host = os.environ.get("HOST") or "127.0.0.1"
+    port = int(os.environ.get("PORT") or 5173)
+    server = ThreadingHTTPServer((host, port), Handler)
+    print(f"P0 mock server running at http://{host}:{port}")
+    print(f"推荐页: http://{host}:{port}/")
+    print(f"个人页: http://{host}:{port}/people/p2wcex")
     server.serve_forever()
