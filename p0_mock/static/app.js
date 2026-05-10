@@ -18,6 +18,18 @@ let followMoments = [];
 let followMomentsPromise = null;
 let followMomentsLoaded = false;
 let followSyncError = null;
+let communityRing = null;
+let communityContents = [];
+let communityPromise = null;
+let communityLoaded = false;
+let communityError = null;
+let communityFallbackReason = "";
+let leaderboardType = "pet_level";
+let leaderboardData = null;
+let leaderboardLoaded = false;
+let leaderboardError = null;
+let leaderboardPanelOpen = false;
+let leaderboardPositionTimer = null;
 let modelPreloadPromise = null;
 let _activeCommentAssist = null;
 let noticeTimer = null;
@@ -134,10 +146,21 @@ function playHomecomingEffect() {
 function rewardText(reward) {
   const parts = [];
   if (reward.exp) parts.push(`经验 +${reward.exp}`);
-  if (reward.satiety) parts.push(`饱食度 +${reward.satiety}`);
+  if (reward.satiety) parts.push(`学识值 +${reward.satiety}`);
   if (reward.mood) parts.push(`心情 +${reward.mood}`);
   if (reward.travelEnergy) parts.push(`精力 +${reward.travelEnergy}`);
   return parts.join("，");
+}
+
+function handleDecayNotice(decayNotice) {
+  if (!decayNotice?.applied) return;
+  const parts = [];
+  if (decayNotice.totalSatietyDelta) parts.push(`学识值 ${decayNotice.totalSatietyDelta}`);
+  if (decayNotice.totalMoodDelta) parts.push(`心情 ${decayNotice.totalMoodDelta}`);
+  const suffix = parts.length ? `（${parts.join("，")}）` : "";
+  const message = `${decayNotice.message || "看山想和你一起补充新知识"}${suffix}`;
+  showToast(message);
+  character?.setMessage?.(message, { autoHide: 5200 });
 }
 
 function showToast(message) {
@@ -420,6 +443,25 @@ function renderParagraphs(value = "") {
     .join("");
 }
 
+function stripHTML(value = "") {
+  const element = document.createElement("div");
+  element.innerHTML = String(value);
+  return element.textContent || element.innerText || "";
+}
+
+function formatCount(value = 0) {
+  const number = Number(value) || 0;
+  if (number >= 10000) return `${(number / 10000).toFixed(number >= 100000 ? 0 : 1)} 万`;
+  return String(number);
+}
+
+function formatUnixTime(value = 0) {
+  const timestamp = Number(value) || 0;
+  if (!timestamp) return "";
+  const date = new Date(timestamp * 1000);
+  return `${date.getMonth() + 1}-${String(date.getDate()).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
 function mergeUpdatedContent(content) {
   if (!content) return;
   feedItems = feedItems.map((item) => (item.id === content.id ? { ...item, ...content } : item));
@@ -456,6 +498,18 @@ function bindPetHoverCard() {
     button.addEventListener("click", (event) => {
       event.stopPropagation();
       openTravelHandbook();
+    });
+  });
+  bindOnce("[data-hover-leaderboard]", (button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openLeaderboardPanel();
+    });
+  });
+  bindOnce("[data-hover-growth-log]", (button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openGrowthLog();
     });
   });
   bindOnce("[data-hover-reward-walk]", (input) => {
@@ -502,7 +556,7 @@ function renderPetHoverCard() {
     ? `${travelThemeText(activeTravel.theme)} · ${formatCountdown(activeTravel.expectedReturnAt)}`
     : activeTravel?.status === "returned"
       ? `${travelThemeText(activeTravel.theme)} · 已带回内容`
-      : travelState?.blockReason || "阅读内容积攒精力后出门";
+      : travelState?.blockReason || "阅读内容积攒学识和精力后出门";
   card.innerHTML = `
     <div class="pet-hover-head">
       <span class="pet-mini">山</span>
@@ -514,7 +568,7 @@ function renderPetHoverCard() {
     <div class="pet-hover-stats">
       <div><small>经验</small><strong>${profile.totalExp}</strong></div>
       <div><small>心情</small><strong>${profile.mood}</strong></div>
-      <div><small>饱食</small><strong>${profile.satiety}</strong></div>
+      <div><small>学识</small><strong>${profile.satiety}</strong></div>
       <div><small>精力</small><strong>${profile.travelEnergy ?? 0}</strong></div>
     </div>
     <div class="pet-hover-travel">
@@ -522,9 +576,10 @@ function renderPetHoverCard() {
       <strong>${escapeHTML(travelHint)}</strong>
     </div>
     <div class="pet-hover-actions">
-      <a href="/people/p2wcex">个人页</a>
       ${travelAction}
       <button data-hover-handbook>旅行手账</button>
+      <button data-hover-growth-log>成长日志</button>
+      <button data-hover-leaderboard>排行榜</button>
       <button data-hover-reset>重置</button>
     </div>
     <label class="pet-hover-toggle">
@@ -657,6 +712,7 @@ async function loadAuth() {
 async function loadProfile() {
   const data = await api("/api/p0/pet/profile");
   profile = data.profile;
+  handleDecayNotice(data.decayNotice);
   syncCharacter();
   return profile;
 }
@@ -669,6 +725,7 @@ async function loadTravelStatus() {
   const data = await api("/api/p1/travel/status");
   profile = data.profile || profile;
   travelState = data;
+  handleDecayNotice(data.decayNotice);
   scheduleTravelReturnCheck();
   syncCharacter();
   return travelState;
@@ -711,15 +768,6 @@ async function loadHotItems() {
   return hotItemsPromise;
 }
 
-async function loadLeaderboard(limit = 50) {
-  try {
-    const data = await api(`/api/p1/leaderboard?limit=${limit}`);
-    return data;
-  } catch (err) {
-    return null;
-  }
-}
-
 async function loadFollowMoments({ sync = false } = {}) {
   if (followMomentsPromise) return followMomentsPromise;
   followMomentsPromise = (async () => {
@@ -750,12 +798,305 @@ async function loadFollowMoments({ sync = false } = {}) {
   return followMomentsPromise;
 }
 
+async function loadCommunity({ refresh = false } = {}) {
+  if (communityPromise && !refresh) return communityPromise;
+  if (refresh) communityPromise = null;
+  communityPromise = api("/api/p1/community/ring?pageNum=1&pageSize=20")
+    .then((data) => {
+      communityRing = data.ring || null;
+      communityContents = data.contents || [];
+      communityLoaded = true;
+      communityError = null;
+      communityFallbackReason = data.fallback ? (data.fallbackReason || "目标圈子暂不可读，已展示可读开放圈子内容") : "";
+      return data;
+    })
+    .catch((error) => {
+      communityPromise = null;
+      communityLoaded = true;
+      communityError = error;
+      communityFallbackReason = "";
+      console.warn("Community load failed", error);
+      throw error;
+  });
+  return communityPromise;
+}
+
+async function loadLeaderboard(type = leaderboardType, { refresh = false } = {}) {
+  leaderboardType = type === "travel_count" ? "travel_count" : "pet_level";
+  if (leaderboardData?.rankType === leaderboardType && leaderboardLoaded && !refresh) {
+    return leaderboardData;
+  }
+  leaderboardLoaded = false;
+  leaderboardError = null;
+  const endpoint = leaderboardType === "travel_count"
+    ? "/api/p1/leaderboard/travel-count?limit=50"
+    : "/api/p1/leaderboard/pet-level?limit=50";
+  try {
+    leaderboardData = await api(endpoint);
+    leaderboardLoaded = true;
+    return leaderboardData;
+  } catch (error) {
+    leaderboardLoaded = true;
+    leaderboardError = error;
+    throw error;
+  }
+}
+
+function leaderboardTitle(type = leaderboardType) {
+  return type === "travel_count" ? "游历榜" : "等级榜";
+}
+
+function leaderboardEmptyText(type = leaderboardType) {
+  return type === "travel_count"
+    ? "还没有完成游历的看山，攒够精力让它出门吧。"
+    : "还没有看山上榜，领养后阅读和互动就能成长。";
+}
+
+function growthChangeText(changeType) {
+  return {
+    total_exp: "经验",
+    satiety: "学识值",
+    mood: "心情",
+    level: "等级",
+    stage: "阶段",
+  }[changeType] || changeType || "状态";
+}
+
+function growthSourceText(sourceType) {
+  return {
+    content_event: "内容消费",
+    daily_task: "每日任务",
+    manual: "系统奖励",
+    decay: "自然衰减",
+  }[sourceType] || sourceType || "成长事件";
+}
+
+function formatGrowthTime(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return `${date.getMonth() + 1}-${String(date.getDate()).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+function growthLogItem(log) {
+  const delta = Number(log.delta || 0);
+  const positive = delta > 0;
+  const neutral = delta === 0;
+  const sign = positive ? "+" : "";
+  const valueChange = `${escapeHTML(String(log.beforeValue))} → ${escapeHTML(String(log.afterValue))}`;
+  return `
+    <article class="growth-log-item ${positive ? "positive" : neutral ? "neutral" : "negative"}">
+      <div class="growth-log-main">
+        <span>${escapeHTML(growthSourceText(log.sourceType))}</span>
+        <strong>${escapeHTML(growthChangeText(log.changeType))} ${sign}${escapeHTML(String(delta))}</strong>
+        ${log.reason ? `<p>${escapeHTML(log.reason)}</p>` : ""}
+      </div>
+      <div class="growth-log-side">
+        <small>${escapeHTML(formatGrowthTime(log.createdAt))}</small>
+        <em>${valueChange}</em>
+      </div>
+    </article>
+  `;
+}
+
+function renderGrowthLogModal(logs = []) {
+  document.querySelector(".growth-log-modal")?.remove();
+  const modal = document.createElement("div");
+  modal.className = "growth-log-modal";
+  modal.innerHTML = `
+    <div class="growth-log-dialog" role="dialog" aria-modal="true" aria-label="看山成长日志">
+      <button class="content-close" aria-label="关闭">×</button>
+      <div class="content-type">看山成长日志</div>
+      <h1>成长与衰减记录</h1>
+      <div class="growth-log-summary">
+        <div><small>当前等级</small><strong>Lv.${profile?.level || 1}</strong></div>
+        <div><small>学识值</small><strong>${profile?.satiety ?? "-"}</strong></div>
+        <div><small>心情值</small><strong>${profile?.mood ?? "-"}</strong></div>
+      </div>
+      <div class="growth-log-list">
+        ${logs.length ? logs.map(growthLogItem).join("") : `<p class="empty-growth-log">还没有成长记录，阅读、点赞或评论后会出现在这里。</p>`}
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  modal.querySelector(".content-close").addEventListener("click", () => modal.remove());
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal) modal.remove();
+  });
+}
+
+async function openGrowthLog() {
+  if (!profile?.adopted) {
+    showToast("领养刘看山后查看成长日志");
+    return;
+  }
+  renderGrowthLogModal([]);
+  try {
+    const data = await api("/api/p0/pet/growth-logs?limit=80");
+    profile = data.profile || profile;
+    handleDecayNotice(data.decayNotice);
+    renderGrowthLogModal(data.logs || []);
+  } catch (error) {
+    showToast(error.message || "成长日志加载失败");
+    document.querySelector(".growth-log-modal")?.remove();
+  }
+}
+
+function leaderboardVisual(item) {
+  const level = Number(item?.level || 1);
+  return `
+    <div class="leaderboard-visual level-${Math.min(level, 10)}">
+      <span>山</span>
+      <small>Lv.${level}</small>
+    </div>
+  `;
+}
+
+function leaderboardItem(item) {
+  const isTravel = leaderboardType === "travel_count";
+  const metric = isTravel
+    ? `<strong>${formatCount(item.travelCount)} 次</strong><small>已领取 ${formatCount(item.claimedTravelCount)} 次</small>`
+    : `<strong>Lv.${item.level}</strong><small>${formatCount(item.totalExp)} 经验</small>`;
+  return `
+    <article class="leaderboard-item ${item.isCurrentUser ? "is-current" : ""} rank-${item.rank <= 3 ? item.rank : "normal"}">
+      <div class="leaderboard-rank">${item.rank}</div>
+      ${leaderboardVisual(item)}
+      <div class="leaderboard-user">
+        <strong>${escapeHTML(item.fullname || "知乎用户")}</strong>
+        <small>${escapeHTML(item.petName || "刘看山")} · ${escapeHTML(stageText(item.stage))}</small>
+      </div>
+      <div class="leaderboard-metric">
+        ${metric}
+      </div>
+    </article>
+  `;
+}
+
+function currentUserRankCard(data = leaderboardData) {
+  const item = data?.currentUserItem;
+  if (!profile?.adopted) {
+    return `<div class="leaderboard-my-card muted">领养刘看山后即可参与排行榜</div>`;
+  }
+  if (!item) {
+    return `<div class="leaderboard-my-card muted">${leaderboardType === "travel_count" ? "你还没有完成游历" : "你暂未进入榜单"}</div>`;
+  }
+  return `
+    <div class="leaderboard-my-card">
+      <span>我的名次</span>
+      <strong>No.${item.rank}</strong>
+      <small>Lv.${item.level} · ${formatCount(item.totalExp)} 经验 · 游历 ${formatCount(item.travelCount)} 次</small>
+    </div>
+  `;
+}
+
+function renderLeaderboardPanel() {
+  let panel = document.getElementById("leaderboardPanel");
+  if (!panel) {
+    panel = document.createElement("section");
+    panel.id = "leaderboardPanel";
+    panel.className = "leaderboard-panel";
+    document.body.appendChild(panel);
+  }
+  const items = leaderboardData?.rankType === leaderboardType ? (leaderboardData.items || []) : [];
+  const body = !leaderboardLoaded
+    ? `<div class="leaderboard-empty">榜单加载中</div>`
+    : leaderboardError
+      ? `<div class="leaderboard-empty">${escapeHTML(leaderboardError.message || "榜单加载失败")}</div>`
+      : items.length
+        ? `<div class="leaderboard-list">${items.map(leaderboardItem).join("")}</div>`
+        : `<div class="leaderboard-empty">${escapeHTML(leaderboardEmptyText())}</div>`;
+  panel.innerHTML = `
+    <div class="leaderboard-head">
+      <div>
+        <small>刘看山排行榜</small>
+        <strong>${leaderboardTitle()}</strong>
+      </div>
+      <button aria-label="关闭排行榜" data-leaderboard-close>×</button>
+    </div>
+    <div class="leaderboard-tabs">
+      <button class="${leaderboardType === "pet_level" ? "active" : ""}" data-leaderboard-type="pet_level">等级榜</button>
+      <button class="${leaderboardType === "travel_count" ? "active" : ""}" data-leaderboard-type="travel_count">游历榜</button>
+    </div>
+    ${currentUserRankCard()}
+    ${body}
+  `;
+  panel.querySelector("[data-leaderboard-close]").addEventListener("click", closeLeaderboardPanel);
+  panel.querySelectorAll("[data-leaderboard-type]").forEach((button) => {
+    button.addEventListener("click", () => switchLeaderboard(button.dataset.leaderboardType));
+  });
+  positionLeaderboardPanel();
+}
+
+function positionLeaderboardPanel() {
+  const panel = document.getElementById("leaderboardPanel");
+  const pet = characterElement();
+  if (!panel || !pet) return;
+  if (window.innerWidth <= 720) {
+    panel.style.left = "12px";
+    panel.style.right = "12px";
+    panel.style.top = "auto";
+    panel.style.bottom = "14px";
+    return;
+  }
+  const rect = pet.getBoundingClientRect();
+  const panelWidth = 360;
+  const gap = 14;
+  const left = rect.left >= panelWidth + gap
+    ? rect.left - panelWidth - gap
+    : Math.min(window.innerWidth - panelWidth - 16, rect.right + gap);
+  const top = Math.max(78, Math.min(window.innerHeight - 520, rect.top + 12));
+  panel.style.left = `${Math.max(16, left)}px`;
+  panel.style.right = "auto";
+  panel.style.top = `${top}px`;
+  panel.style.bottom = "auto";
+}
+
+async function openLeaderboardPanel(type = leaderboardType) {
+  if (!profile?.adopted) {
+    showToast("领养刘看山后查看排行榜");
+    return;
+  }
+  leaderboardPanelOpen = true;
+  leaderboardType = type === "travel_count" ? "travel_count" : "pet_level";
+  renderLeaderboardPanel();
+  character?.setMessage?.("看看大家的看山都长到哪儿啦", { autoHide: 2200 });
+  window.clearInterval(leaderboardPositionTimer);
+  leaderboardPositionTimer = window.setInterval(positionLeaderboardPanel, 500);
+  try {
+    await loadLeaderboard(leaderboardType, { refresh: true });
+  } catch (error) {
+    showToast(error.message || "排行榜加载失败");
+  }
+  if (leaderboardPanelOpen) renderLeaderboardPanel();
+}
+
+function closeLeaderboardPanel() {
+  leaderboardPanelOpen = false;
+  window.clearInterval(leaderboardPositionTimer);
+  leaderboardPositionTimer = null;
+  document.getElementById("leaderboardPanel")?.remove();
+}
+
+async function switchLeaderboard(type) {
+  const nextType = type === "travel_count" ? "travel_count" : "pet_level";
+  if (leaderboardType === nextType && leaderboardLoaded) return;
+  leaderboardType = nextType;
+  renderLeaderboardPanel();
+  try {
+    await loadLeaderboard(leaderboardType, { refresh: true });
+  } catch (error) {
+    showToast(error.message || "排行榜加载失败");
+  }
+  if (leaderboardPanelOpen) renderLeaderboardPanel();
+}
+
 function syncCharacter() {
   const container = document.getElementById("roamingCharacter");
   if (!container) return;
 
   if (!profile?.adopted) {
     container.style.display = "none";
+    closeLeaderboardPanel();
     renderPetHoverCard();
     return;
   }
@@ -763,6 +1104,7 @@ function syncCharacter() {
   container.style.display = "block";
   renderPetHoverCard();
   ensurePatHandler();
+  if (leaderboardPanelOpen) window.requestAnimationFrame(positionLeaderboardPanel);
   const idleMessage = `Lv.${profile.level} ${stageText(profile.stage)}`;
   if (!character) {
     try {
@@ -842,7 +1184,7 @@ function syncCharacter() {
           fadeOutDuration: 1.6,
           gateCloseDuration: 0.7,
         },
-        messages: ["读到好内容啦", "收到", "看山也在学习"],
+        messages: ["读到好内容啦", "学识值补充中", "看山也在学习"],
       });
     } catch (error) {
       container.classList.add("character-fallback-visible");
@@ -869,10 +1211,7 @@ function shell(active) {
         <a class="${active === "follow" ? "active" : ""}" href="/follow" data-follow-tab>关注</a>
         <a class="${active === "recommend" ? "active" : ""}" href="/">推荐</a>
         <a class="${active === "hot" ? "active" : ""}" href="/hot">热榜</a>
-        <a href="#">专栏</a>
-        <a class="new-badge" href="#">圈子</a>
-        <a href="#">付费咨询</a>
-        <a href="#">知学堂</a>
+        <a class="new-badge ${active === "community" ? "active" : ""}" href="/community">黑客松脑洞补给站</a>
       </nav>
       <div class="search">
         <input value="${active === "people" ? "中国女子在西班牙被刺身亡" : "朋友圈文案"}" aria-label="搜索">
@@ -983,7 +1322,6 @@ function renderLoginGate() {
       <nav class="nav">
         <a class="active" href="/">推荐</a>
         <a href="#">热榜</a>
-        <a href="#">专栏</a>
       </nav>
       <div class="search">
         <input value="登录后领养刘看山" aria-label="搜索">
@@ -1114,7 +1452,7 @@ function petPanel() {
       <div class="pet-stats">
         <div class="stat-box"><small>阶段</small><strong>${stageText(profile.stage)}</strong></div>
         <div class="stat-box"><small>累计经验</small><strong>${profile.totalExp}</strong></div>
-        <div class="stat-box"><small>饱食度</small><strong>${profile.satiety}</strong></div>
+        <div class="stat-box"><small>学识值</small><strong>${profile.satiety}</strong></div>
         <div class="stat-box"><small>心情值</small><strong>${profile.mood}</strong></div>
         <div class="stat-box"><small>游历精力</small><strong>${profile.travelEnergy ?? 0}</strong></div>
         <div class="stat-box"><small>游历状态</small><strong>${travelStatusText(profile.travelStatus)}</strong></div>
@@ -1122,6 +1460,7 @@ function petPanel() {
       <div class="travel-panel-actions">
         ${travelAction}
         <button class="outline-btn" data-hover-handbook>旅行手账</button>
+        <button class="outline-btn" data-hover-growth-log>成长日志</button>
       </div>
       <button class="reset-pet-btn" data-reset-pet>重置刘看山</button>
     </section>
@@ -1418,6 +1757,103 @@ function hotListItem(item, index) {
   `;
 }
 
+function communityHero() {
+  const ring = communityRing || {};
+  const avatar = ring.ringAvatar
+    ? `<img src="${escapeHTML(ring.ringAvatar)}" alt="">`
+    : `<span>圈</span>`;
+  const fallbackNotice = communityFallbackReason
+    ? `<div class="community-notice">目标圈子暂未开放读取权限，当前展示可读开放圈子内容。</div>`
+    : "";
+  return `
+    <section class="card community-hero">
+      <div class="community-avatar">${avatar}</div>
+      <div class="community-info">
+        <h1>${escapeHTML(ring.ringName || "黑客松脑洞补给站")}</h1>
+        <p>${escapeHTML(ring.ringDesc || "真实圈子数据加载中")}</p>
+        <div class="community-metrics">
+          <span>${formatCount(ring.membershipNum)} 成员</span>
+          <span>${formatCount(ring.discussionNum)} 讨论</span>
+        </div>
+        ${fallbackNotice}
+      </div>
+      <button class="outline-btn" data-refresh-community>刷新</button>
+    </section>
+  `;
+}
+
+function communityPinCard(pin) {
+  const text = stripHTML(pin.content || "");
+  const images = (pin.images || []).slice(0, 3);
+  const imageBlock = images.length
+    ? `<div class="community-images">${images.map((url) => `<img src="${escapeHTML(url)}" alt="">`).join("")}</div>`
+    : "";
+  const title = pin.title || truncateText(text, 42) || "圈子动态";
+  const comments = (pin.comments || []).slice(0, 2);
+  return `
+    <article class="card community-card" data-community-pin="${escapeHTML(pin.pinId)}">
+      <div class="community-card-head">
+        <span class="follow-moment-avatar avatar"></span>
+        <span><strong>${escapeHTML(pin.authorName || "知乎用户")}</strong><small>${escapeHTML(formatUnixTime(pin.publishTime))}</small></span>
+      </div>
+      <h2><button class="content-open-title" data-open-community="${escapeHTML(pin.pinId)}">${escapeHTML(title)}</button></h2>
+      <p>${escapeHTML(truncateText(text, 180))}<button class="read-link" data-open-community="${escapeHTML(pin.pinId)}">阅读全文⌄</button></p>
+      ${imageBlock}
+      ${comments.length ? `
+        <div class="community-comments-preview">
+          ${comments.map((comment) => `<p><strong>${escapeHTML(comment.authorName)}</strong>：${escapeHTML(truncateText(stripHTML(comment.content), 68))}</p>`).join("")}
+        </div>
+      ` : ""}
+      <div class="feed-actions community-actions">
+        <button class="vote-btn" data-community-like="${escapeHTML(pin.pinId)}">${feedActionIcon("up")}<span>赞同 ${formatCount(pin.likeNum)}</span></button>
+        <button class="feed-action feed-action-comment" data-open-community="${escapeHTML(pin.pinId)}">${feedActionIcon("comment")}<span>${formatCount(pin.commentNum)} 条评论</span></button>
+        <button class="feed-action">${feedActionIcon("collect")}<span>${formatCount(pin.favNum)}</span></button>
+        <button class="feed-action feed-action-share">${feedActionIcon("share")}<span>分享</span></button>
+      </div>
+    </article>
+  `;
+}
+
+function renderCommunity() {
+  if (!communityContents.length && !communityLoaded) {
+    const pendingCommunity = loadCommunity();
+    pendingCommunity
+      .then(() => {
+        if (window.location.pathname === "/community") renderCommunity();
+      })
+      .catch(() => {
+        if (window.location.pathname !== "/community") return;
+        // loadCommunity 已经把 communityLoaded=true / communityError 写好，
+        // 必须重绘一次让兜底文案 (communityError.message) 取代"加载中"。
+        renderCommunity();
+        showToast("圈子数据加载失败");
+      });
+  }
+  const emptyText = communityError
+    ? (communityError.message || "圈子数据加载失败")
+    : "圈子数据加载中";
+  app.innerHTML = `
+    ${shell("community")}
+    <main class="page community-page">
+      <section class="community-main">
+        ${communityHero()}
+        ${communityContents.length
+          ? communityContents.map(communityPinCard).join("")
+          : `<section class="card follow-empty">${escapeHTML(emptyText)}</section>`}
+      </section>
+      <aside class="side-stack">
+        ${creatorCard()}
+        ${petPanel()}
+        ${hotCard()}
+        ${authorPlatformCard()}
+        ${recommendFollowCard()}
+      </aside>
+    </main>
+  `;
+  bindCommon();
+  bindCommunity();
+}
+
 function renderRecommend() {
   app.innerHTML = `
     ${shell("recommend")}
@@ -1432,16 +1868,11 @@ function renderRecommend() {
         ${hotCard()}
         ${authorPlatformCard()}
         ${recommendFollowCard()}
-        <div data-leaderboard-slot="recommend"></div>
       </aside>
     </main>
   `;
   bindCommon();
   bindRecommend();
-  loadLeaderboard(20).then((data) => {
-    const slot = document.querySelector('[data-leaderboard-slot="recommend"]');
-    if (slot) slot.outerHTML = renderLeaderboard(data, { variant: "mini" });
-  });
 }
 
 function renderFollow() {
@@ -1509,50 +1940,6 @@ function renderHot() {
   bindCommon();
 }
 
-function renderLeaderboard(data, { variant = "full" } = {}) {
-  if (!data) return "";
-  const top = (data.topEntries || []).slice(0, variant === "mini" ? 3 : 10);
-  const showSelfFooter = data.selfEntry && !top.some(e => e.isSelf);
-  if (top.length === 0) {
-    return `
-      <section class="leaderboard ${variant === "mini" ? "leaderboard-mini" : ""}">
-        <header class="leaderboard-title">看山榜单</header>
-        <div class="leaderboard-empty">在等更多伙伴一起来养看山～</div>
-      </section>
-    `;
-  }
-  const renderRow = (e) => `
-    <li class="leaderboard-row ${e.isSelf ? "is-self" : ""}">
-      <span class="leaderboard-rank">${e.rank <= 3 ? ["🥇", "🥈", "🥉"][e.rank - 1] : "#" + e.rank}</span>
-      <span class="leaderboard-avatar">${e.avatarPath
-        ? `<img src="${escapeHTML(e.avatarPath)}" alt="">`
-        : `<span class="leaderboard-avatar-fallback">${escapeHTML((e.fullname || "?")[0])}</span>`}</span>
-      <span class="leaderboard-info">
-        <span class="leaderboard-name">${escapeHTML(e.fullname)}${e.isSelf ? " · 我" : ""}</span>
-        <span class="leaderboard-meta">${escapeHTML(e.petName)} · L${e.level} · ${escapeHTML(stageLabel(e.stage))}</span>
-      </span>
-      <span class="leaderboard-exp">${e.totalExp.toLocaleString()} 经验</span>
-    </li>
-  `;
-  return `
-    <section class="leaderboard ${variant === "mini" ? "leaderboard-mini" : ""}">
-      <header class="leaderboard-title">
-        看山榜单
-        <span class="leaderboard-total">共 ${data.totalAdopters || 0} 位</span>
-      </header>
-      <ol class="leaderboard-list">
-        ${top.map(renderRow).join("")}
-      </ol>
-      ${showSelfFooter ? `
-        <div class="leaderboard-self-footer">
-          <span>你的排名</span>
-          ${renderRow(data.selfEntry)}
-        </div>
-      ` : ""}
-    </section>
-  `;
-}
-
 function stageLabel(stage) {
   return ({ cub: "幼崽", growing: "成长", adult: "成年", advanced: "进阶" })[stage] || stage || "";
 }
@@ -1613,16 +2000,11 @@ function renderPeople() {
               <li>获得 22 次喜欢，2 次收藏</li>
             </ul>
           </section>
-          <div data-leaderboard-slot="people"></div>
         </aside>
       </section>
     </main>
   `;
   bindCommon();
-  loadLeaderboard(50).then((data) => {
-    const slot = document.querySelector('[data-leaderboard-slot="people"]');
-    if (slot) slot.outerHTML = renderLeaderboard(data, { variant: "full" });
-  });
   if (profile?.adopted && !dailyStat) {
     loadDailyStat().then(() => {
       const aside = document.querySelector(".profile-grid .side-stack");
@@ -1682,6 +2064,133 @@ function bindRecommend() {
       button.classList.add("active");
     });
   });
+}
+
+function bindCommunity() {
+  document.querySelector("[data-refresh-community]")?.addEventListener("click", async () => {
+    try {
+      communityLoaded = false;
+      await loadCommunity({ refresh: true });
+      renderCommunity();
+      showToast("圈子已刷新");
+    } catch (error) {
+      showToast(error.message || "圈子刷新失败");
+    }
+  });
+  document.querySelectorAll("[data-open-community]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const pin = communityContents.find((entry) => entry.pinId === button.dataset.openCommunity);
+      openCommunityPin(pin, button);
+    });
+  });
+  document.querySelectorAll("[data-community-like]").forEach((button) => {
+    button.addEventListener("click", () => likeCommunityPin(button.dataset.communityLike, button));
+  });
+}
+
+async function likeCommunityPin(pinId, sourceElement) {
+  try {
+    const data = await api("/api/p1/community/reaction", {
+      method: "POST",
+      body: JSON.stringify({ contentToken: pinId, contentType: "pin", actionValue: 1 }),
+    });
+    if (data.profile) profile = data.profile;
+    syncCharacter();
+    if (data.reward) showReward(data.reward, sourceElement);
+    sourceElement?.classList.add("active");
+    showToast("已同步点赞到圈子");
+  } catch (error) {
+    showToast(error.message || "圈子点赞失败");
+  }
+}
+
+async function openCommunityPin(pin, sourceElement) {
+  if (!pin) return;
+  renderCommunityModal(pin, pin.comments || [], true);
+  try {
+    const data = await api(`/api/p1/community/comments?contentToken=${encodeURIComponent(pin.pinId)}&contentType=pin&pageNum=1&pageSize=30`);
+    renderCommunityModal(pin, data.comments || [], false);
+    if (profile?.adopted) {
+      const synthetic = {
+        id: `community_${pin.pinId}`,
+        type: "pin",
+        action: "read",
+        tags: ["community", "circle"],
+      };
+      submitContentEvent(synthetic, "read", sourceElement);
+    }
+  } catch (error) {
+    showToast(error.message || "评论加载失败");
+  }
+}
+
+function renderCommunityModal(pin, comments = [], loading = false) {
+  document.querySelector(".community-modal")?.remove();
+  const modal = document.createElement("div");
+  modal.className = "content-modal community-modal";
+  const title = pin.title || truncateText(stripHTML(pin.content), 42) || "圈子动态";
+  const images = (pin.images || []).slice(0, 6);
+  modal.innerHTML = `
+    <div class="content-dialog community-dialog" role="dialog" aria-modal="true" aria-label="圈子内容">
+      <button class="content-close" aria-label="关闭">×</button>
+      <div class="content-type">圈子动态</div>
+      <h1>${escapeHTML(title)}</h1>
+      <div class="content-author">${escapeHTML(pin.authorName || "知乎用户")} ${formatUnixTime(pin.publishTime) ? ` · ${escapeHTML(formatUnixTime(pin.publishTime))}` : ""}</div>
+      <div class="content-full">${renderParagraphs(stripHTML(pin.content || ""))}</div>
+      ${images.length ? `<div class="community-modal-images">${images.map((url) => `<img src="${escapeHTML(url)}" alt="">`).join("")}</div>` : ""}
+      <form class="community-comment-form">
+        <input name="content" maxlength="240" placeholder="用刘看山的好奇心聊一句">
+        <button class="blue-btn" type="submit">评论</button>
+      </form>
+      <div class="community-modal-comments">
+        <h2>评论</h2>
+        ${loading ? `<p class="community-muted">评论加载中</p>` : ""}
+        ${comments.length
+          ? comments.map((comment) => `
+            <article>
+              <strong>${escapeHTML(comment.authorName)}</strong>
+              <p>${escapeHTML(stripHTML(comment.content))}</p>
+              <small>${escapeHTML(formatUnixTime(comment.publishTime))} · ${formatCount(comment.likeCount)} 赞</small>
+            </article>
+          `).join("")
+          : (!loading ? `<p class="community-muted">暂无评论</p>` : "")}
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  modal.querySelector(".content-close").addEventListener("click", () => modal.remove());
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal) modal.remove();
+  });
+  modal.querySelector(".community-comment-form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    submitCommunityComment(pin, event.target);
+  });
+}
+
+async function submitCommunityComment(pin, form) {
+  const input = form.elements.content;
+  const content = input.value.trim();
+  if (!content) return;
+  form.querySelector("button").disabled = true;
+  try {
+    const data = await api("/api/p1/community/comment", {
+      method: "POST",
+      body: JSON.stringify({ contentToken: pin.pinId, contentType: "pin", content }),
+    });
+    if (data.profile) profile = data.profile;
+    syncCharacter();
+    if (data.reward) showReward(data.reward, form.querySelector("button"));
+    showToast("评论已发布到圈子");
+    communityLoaded = false;
+    await loadCommunity({ refresh: true });
+    const freshPin = communityContents.find((entry) => entry.pinId === pin.pinId) || pin;
+    const commentsData = await api(`/api/p1/community/comments?contentToken=${encodeURIComponent(pin.pinId)}&contentType=pin&pageNum=1&pageSize=30`);
+    renderCommunityModal(freshPin, commentsData.comments || [], false);
+  } catch (error) {
+    showToast(error.message || "评论发布失败");
+    form.querySelector("button").disabled = false;
+  }
 }
 
 async function openContent(item, sourceElement) {
@@ -1925,6 +2434,7 @@ async function startTravel() {
       body: JSON.stringify({ theme: "auto" }),
     });
     profile = data.profile;
+    handleDecayNotice(data.decayNotice);
     travelState = {
       ...(travelState || {}),
       activeTravel: data.travel,
@@ -1939,6 +2449,7 @@ async function startTravel() {
     scheduleTravelReturnCheck();
   } catch (error) {
     if (error.profile) profile = error.profile;
+    handleDecayNotice(error.decayNotice);
     if (error.activeTravel || error.blockReason) travelState = error;
     syncCharacter();
     renderCurrentRoute();
@@ -2236,6 +2747,7 @@ async function resetPet() {
     });
     profile = data.profile;
     travelState = null;
+    closeLeaderboardPanel();
     const element = characterElement();
     if (element) {
       element.style.display = "none";
@@ -2275,6 +2787,7 @@ async function submitContentEvent(item, actionType, sourceElement) {
       body: JSON.stringify(payload),
     });
     profile = data.profile;
+    handleDecayNotice(data.decayNotice);
     mergeUpdatedContent(data.content);
     await loadTravelStatus();
     syncCharacter();
@@ -2344,6 +2857,8 @@ function renderCurrentRoute() {
     renderFollow();
   } else if (path === "/hot") {
     renderHot();
+  } else if (path === "/community") {
+    renderCommunity();
   } else {
     renderRecommend();
   }
@@ -2355,7 +2870,7 @@ document.addEventListener("click", (event) => {
   const link = event.target.closest("a");
   if (!link) return;
   const url = new URL(link.href);
-  if (url.origin === window.location.origin && ["/", "/people/p2wcex", "/hot", "/follow"].includes(url.pathname)) {
+  if (url.origin === window.location.origin && ["/", "/people/p2wcex", "/hot", "/follow", "/community"].includes(url.pathname)) {
     event.preventDefault();
     window.history.pushState({}, "", url.pathname);
     renderCurrentRoute();
@@ -2381,6 +2896,9 @@ if (authUser) {
   }
   if (window.location.pathname === "/follow") {
     await loadFollowMoments({ sync: true });
+  }
+  if (window.location.pathname === "/community") {
+    await loadCommunity();
   }
   renderCurrentRoute();
   syncFollowMoments();

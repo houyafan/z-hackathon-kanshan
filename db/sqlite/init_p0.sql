@@ -122,7 +122,7 @@ CREATE TABLE IF NOT EXISTS pet_growth_log (
   source_type TEXT NOT NULL CHECK (source_type IN ('content_event', 'daily_task', 'manual', 'decay', 'pat')),
   source_id TEXT NOT NULL,
 
-  change_type TEXT NOT NULL CHECK (change_type IN ('total_exp', 'satiety', 'mood', 'level', 'stage', 'travel_energy')),
+  change_type TEXT NOT NULL CHECK (change_type IN ('total_exp', 'satiety', 'mood', 'level', 'stage', 'travel_energy', 'health', 'wake_status')),
   delta INTEGER NOT NULL,
   before_value INTEGER NOT NULL,
   after_value INTEGER NOT NULL,
@@ -166,6 +166,42 @@ CREATE TABLE IF NOT EXISTS pet_daily_stat (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
   UNIQUE (user_id, stat_date)
+);
+
+CREATE TABLE IF NOT EXISTS pet_decay_config (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  decay_window TEXT NOT NULL,
+  inactive_hours INTEGER NOT NULL CHECK (inactive_hours > 0),
+  satiety_delta INTEGER NOT NULL CHECK (satiety_delta <= 0),
+  mood_delta INTEGER NOT NULL CHECK (mood_delta <= 0),
+  message TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+  UNIQUE (decay_window)
+);
+
+CREATE TABLE IF NOT EXISTS pet_state_decay_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  decay_window TEXT NOT NULL,
+  inactive_since TEXT NOT NULL,
+  checked_at TEXT NOT NULL,
+  inactive_hours INTEGER NOT NULL CHECK (inactive_hours >= 0),
+
+  satiety_delta INTEGER NOT NULL,
+  mood_delta INTEGER NOT NULL,
+
+  before_satiety INTEGER NOT NULL CHECK (before_satiety BETWEEN 0 AND 100),
+  after_satiety INTEGER NOT NULL CHECK (after_satiety BETWEEN 0 AND 100),
+  before_mood INTEGER NOT NULL CHECK (before_mood BETWEEN 0 AND 100),
+  after_mood INTEGER NOT NULL CHECK (after_mood BETWEEN 0 AND 100),
+
+  message TEXT DEFAULT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+  UNIQUE (user_id, decay_window, inactive_since)
 );
 
 CREATE TABLE IF NOT EXISTS zhihu_content_pool (
@@ -333,6 +369,12 @@ CREATE INDEX IF NOT EXISTS idx_pet_growth_log_source
 CREATE INDEX IF NOT EXISTS idx_pet_daily_stat_date
   ON pet_daily_stat (stat_date);
 
+CREATE INDEX IF NOT EXISTS idx_pet_decay_config_enabled_hours
+  ON pet_decay_config (enabled, inactive_hours);
+
+CREATE INDEX IF NOT EXISTS idx_pet_state_decay_log_user_time
+  ON pet_state_decay_log (user_id, created_at);
+
 CREATE INDEX IF NOT EXISTS idx_zhihu_content_pool_feed
   ON zhihu_content_pool (status, hot_score DESC, published_at DESC);
 
@@ -350,6 +392,12 @@ CREATE INDEX IF NOT EXISTS idx_zhihu_follow_moment_llm
 
 CREATE INDEX IF NOT EXISTS idx_pet_travel_event_user_status
   ON pet_travel_event (user_id, status, started_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_pet_profile_level_rank
+  ON pet_profile (adopted, level DESC, total_exp DESC, updated_at ASC);
+
+CREATE INDEX IF NOT EXISTS idx_pet_travel_event_rank
+  ON pet_travel_event (status, user_id, returned_at DESC, claimed_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_pet_travel_handbook_user
   ON pet_travel_handbook (user_id, created_at DESC);
@@ -379,6 +427,20 @@ INSERT OR IGNORE INTO pet_travel_theme_config
 VALUES
   ('polar', '极地旅行', 2, 10, 60, '["科技","科普","AI","学术","知识","冷知识","深度回答"]', 1),
   ('hotspot', '热点旅行', 2, 10, 60, '["热点","社会观察","体育","影视","职场","生活","情感","高赞讨论"]', 1);
+
+INSERT INTO pet_decay_config
+  (decay_window, inactive_hours, satiety_delta, mood_delta, message, enabled)
+VALUES
+  ('8h', 8, -3, -2, '今天还没一起看点内容呢', 1),
+  ('24h', 24, -8, -6, '看山的学识值有点低啦', 1),
+  ('48h', 48, -15, -12, '看山想和你一起补充新知识', 1)
+ON CONFLICT(decay_window) DO UPDATE SET
+  inactive_hours = excluded.inactive_hours,
+  satiety_delta = excluded.satiety_delta,
+  mood_delta = excluded.mood_delta,
+  message = excluded.message,
+  enabled = excluded.enabled,
+  updated_at = CURRENT_TIMESTAMP;
 
 INSERT OR IGNORE INTO zhihu_content_pool
   (content_id, content_type, title, author, excerpt, full_content, read_text, tags, media_type, media_label,

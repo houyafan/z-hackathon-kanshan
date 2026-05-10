@@ -104,7 +104,7 @@ zhihu_follow_moment_sync 关注动态同步水位
 | `level` | INTEGER | 当前等级 |
 | `stage` | TEXT | 当前成长阶段 |
 | `total_exp` | INTEGER | 累计总经验 |
-| `satiety` | INTEGER | 饱食度，0-100 |
+| `satiety` | INTEGER | 学识值，0-100 |
 | `mood` | INTEGER | 心情值，0-100 |
 | `total_read_count` | INTEGER | 累计有效阅读次数 |
 | `total_watch_count` | INTEGER | 累计有效观看次数 |
@@ -130,7 +130,7 @@ zhihu_follow_moment_sync 关注动态同步水位
 | `content_tags` | TEXT | 内容标签 JSON，可空 |
 | `reward_status` | TEXT | 奖励状态 |
 | `exp_reward` | INTEGER | 本次经验奖励 |
-| `satiety_reward` | INTEGER | 本次饱食度奖励 |
+| `satiety_reward` | INTEGER | 本次学识值奖励 |
 | `mood_reward` | INTEGER | 本次心情奖励 |
 | `occurred_at` | TEXT | 行为发生时间 |
 | `created_at` | TEXT | 入库时间 |
@@ -188,12 +188,55 @@ zhihu_follow_moment_sync 关注动态同步水位
 | `valid_watch_count` | INTEGER | 有效观看次数 |
 | `valid_interaction_count` | INTEGER | 有效互动次数 |
 | `exp_gained` | INTEGER | 当日获得经验 |
-| `satiety_gained` | INTEGER | 当日获得饱食度 |
+| `satiety_gained` | INTEGER | 当日获得学识值 |
 | `mood_gained` | INTEGER | 当日获得心情 |
 | `created_at` | TEXT | 创建时间 |
 | `updated_at` | TEXT | 更新时间 |
 
-### 4.6 zhihu_content_pool
+### 4.6 pet_decay_config
+
+长时间不互动衰减配置表。P0 当前限定在 48 小时内完成三档衰减：8h、24h、48h。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `id` | INTEGER | 主键 |
+| `decay_window` | TEXT | 衰减窗口：`8h/24h/48h` |
+| `inactive_hours` | INTEGER | 不活跃小时数 |
+| `satiety_delta` | INTEGER | 学识值变化，负数 |
+| `mood_delta` | INTEGER | 心情变化，负数 |
+| `message` | TEXT | 刘看山提醒文案 |
+| `enabled` | INTEGER | 是否启用，0/1 |
+| `created_at` | TEXT | 创建时间 |
+| `updated_at` | TEXT | 更新时间 |
+
+### 4.7 pet_state_decay_log
+
+记录每次状态衰减，避免同一不活跃周期内重复扣减。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `id` | INTEGER | 主键 |
+| `user_id` | INTEGER | 用户 ID |
+| `decay_window` | TEXT | 衰减窗口 |
+| `inactive_since` | TEXT | 本轮不活跃开始时间 |
+| `checked_at` | TEXT | 本次检查时间 |
+| `inactive_hours` | INTEGER | 检查时不活跃小时数 |
+| `satiety_delta` | INTEGER | 实际学识值变化 |
+| `mood_delta` | INTEGER | 实际心情变化 |
+| `before_satiety` | INTEGER | 衰减前学识值 |
+| `after_satiety` | INTEGER | 衰减后学识值 |
+| `before_mood` | INTEGER | 衰减前心情 |
+| `after_mood` | INTEGER | 衰减后心情 |
+| `message` | TEXT | 本次提醒文案 |
+| `created_at` | TEXT | 创建时间 |
+
+唯一约束：
+
+```sql
+UNIQUE(user_id, decay_window, inactive_since);
+```
+
+### 4.8 zhihu_content_pool
 
 推荐页内容池。推荐页列表不再硬编码，直接读取这张表。后续只要向该表插入 `status = published` 的内容，刷新推荐页即可扩充信息流。
 
@@ -311,7 +354,7 @@ zhihu_follow_moment.raw_payload
 
 ## 5. P0 奖励基线
 
-| 行为 | 内容/动作 | 经验 | 饱食度 | 心情 |
+| 行为 | 内容/动作 | 经验 | 学识值 | 心情 |
 | --- | --- | ---: | ---: | ---: |
 | 阅读文章 | `article/read` | +5 | +5 | 0 |
 | 阅读想法 | `pin/read` | +3 | +3 | 0 |

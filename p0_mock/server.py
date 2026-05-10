@@ -4,7 +4,9 @@ from http.cookies import SimpleCookie
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlencode, unquote, urlparse
 from urllib.request import Request, urlopen
+import base64
 import hashlib
+import hmac
 import json
 import mimetypes
 import os
@@ -80,6 +82,11 @@ def load_config():
         "zhihu_app_id": "",
         "zhihu_app_key": "",
         "zhihu_auth_redirect_uri": "http://127.0.0.1:5173/auth/callback",
+        "community_base_url": "https://openapi.zhihu.com",
+        "community_app_key": "",
+        "community_app_secret": "",
+        "community_ring_id": "",
+        "community_fallback_ring_ids": ["2001009660925334090", "2015023739549529606"],
         "session_ttl_hours": 24,
         "state_ttl_minutes": 10,
         "local_auth_bypass": False,
@@ -140,6 +147,15 @@ ZH_APP_KEY = str(CONFIG.get("zhihu_app_key") or "")
 ZH_AUTH_REDIRECT_URI = str(CONFIG.get("zhihu_auth_redirect_uri") or "http://127.0.0.1:5173/auth/callback")
 AUTH_MODE = str(CONFIG.get("auth_mode") or ("oauth" if ZH_APP_ID and ZH_APP_KEY else "mock")).lower()
 MOCK_USER = CONFIG["mock_user"]
+COMMUNITY_BASE_URL = str(CONFIG.get("community_base_url") or ZH_OPENAPI_BASE).rstrip("/")
+COMMUNITY_APP_KEY = str(CONFIG.get("community_app_key") or "")
+COMMUNITY_APP_SECRET = str(CONFIG.get("community_app_secret") or "")
+COMMUNITY_RING_ID = str(CONFIG.get("community_ring_id") or "")
+COMMUNITY_FALLBACK_RING_IDS = [
+    str(item)
+    for item in (CONFIG.get("community_fallback_ring_ids") or [])
+    if str(item).strip()
+]
 SESSION_TTL_HOURS = int(CONFIG.get("session_ttl_hours") or 24)
 STATE_TTL_MINUTES = int(CONFIG.get("state_ttl_minutes") or 10)
 LOCAL_AUTH_BYPASS = bool(CONFIG.get("local_auth_bypass"))
@@ -162,6 +178,7 @@ SLEEP_SATIETY_THRESHOLD = 20
 SLEEP_HEALTH_THRESHOLD = 30
 WAKE_REQUIRED_READS = 3
 TRAVEL_MIN_SATIETY = 60
+DECAY_ACTIVE_ACTIONS = ("read", "watch", "like", "comment", "collect")
 TRAVEL_DEFAULT_ENERGY_COST = 10
 TRAVEL_COOLDOWN_MINUTES = 10
 TRAVEL_CLAIM_EXP = 8
@@ -249,7 +266,10 @@ def parse_time(value):
     if not value:
         return datetime.min
     try:
-        return datetime.fromisoformat(value)
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if parsed.tzinfo is not None:
+            return parsed.astimezone().replace(tzinfo=None)
+        return parsed
     except ValueError:
         return datetime.min
 
@@ -272,7 +292,9 @@ def cache_control_for(path):
         return "no-store"
     if path.suffix == ".glb":
         return "public, max-age=31536000, immutable"
-    if path.suffix in (".js", ".css", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"):
+    if path.suffix in (".js", ".css"):
+        return "no-store"
+    if path.suffix in (".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"):
         return "public, max-age=86400"
     return "no-store"
 
@@ -301,6 +323,31 @@ def add_column_if_missing(conn, table_name, column_name, definition):
     conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
 
 
+def seed_decay_config(conn):
+    rules = [
+        ("8h", 8, -3, -2, "今天还没一起看点内容呢"),
+        ("24h", 24, -8, -6, "看山的学识值有点低啦"),
+        ("48h", 48, -15, -12, "看山想和你一起补充新知识"),
+    ]
+    for decay_window, inactive_hours, satiety_delta, mood_delta, message in rules:
+        conn.execute(
+            """
+            INSERT INTO pet_decay_config
+              (decay_window, inactive_hours, satiety_delta, mood_delta, message, enabled, created_at, updated_at)
+            VALUES
+              (?, ?, ?, ?, ?, 1, ?, ?)
+            ON CONFLICT(decay_window) DO UPDATE SET
+              inactive_hours = excluded.inactive_hours,
+              satiety_delta = excluded.satiety_delta,
+              mood_delta = excluded.mood_delta,
+              message = excluded.message,
+              enabled = 1,
+              updated_at = excluded.updated_at
+            """,
+            (decay_window, inactive_hours, satiety_delta, mood_delta, message, now_text(), now_text()),
+        )
+
+
 def migrate_db(conn):
     add_column_if_missing(conn, "pet_profile", "health", "INTEGER NOT NULL DEFAULT 100 CHECK (health BETWEEN 0 AND 100)")
     add_column_if_missing(conn, "pet_profile", "travel_energy", "INTEGER NOT NULL DEFAULT 0 CHECK (travel_energy >= 0)")
@@ -326,6 +373,56 @@ def migrate_db(conn):
     add_column_if_missing(conn, "pet_travel_handbook", "llm_highlights", "TEXT DEFAULT NULL")
     add_column_if_missing(conn, "pet_travel_handbook", "llm_summary_model", "TEXT DEFAULT NULL")
     add_column_if_missing(conn, "pet_travel_handbook", "llm_summary_updated_at", "TEXT DEFAULT NULL")
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pet_decay_config (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          decay_window TEXT NOT NULL,
+          inactive_hours INTEGER NOT NULL CHECK (inactive_hours > 0),
+          satiety_delta INTEGER NOT NULL CHECK (satiety_delta <= 0),
+          mood_delta INTEGER NOT NULL CHECK (mood_delta <= 0),
+          message TEXT NOT NULL,
+          enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE (decay_window)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pet_state_decay_log (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL,
+          decay_window TEXT NOT NULL,
+          inactive_since TEXT NOT NULL,
+          checked_at TEXT NOT NULL,
+          inactive_hours INTEGER NOT NULL CHECK (inactive_hours >= 0),
+          satiety_delta INTEGER NOT NULL,
+          mood_delta INTEGER NOT NULL,
+          before_satiety INTEGER NOT NULL CHECK (before_satiety BETWEEN 0 AND 100),
+          after_satiety INTEGER NOT NULL CHECK (after_satiety BETWEEN 0 AND 100),
+          before_mood INTEGER NOT NULL CHECK (before_mood BETWEEN 0 AND 100),
+          after_mood INTEGER NOT NULL CHECK (after_mood BETWEEN 0 AND 100),
+          message TEXT DEFAULT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE (user_id, decay_window, inactive_since)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_pet_decay_config_enabled_hours
+          ON pet_decay_config (enabled, inactive_hours)
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_pet_state_decay_log_user_time
+          ON pet_state_decay_log (user_id, created_at)
+        """
+    )
+    seed_decay_config(conn)
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS pet_travel_external_content (
@@ -634,7 +731,7 @@ def migrate_pet_growth_log_check_constraints(conn):
     if not row:
         return
     sql_text = row["sql"] or ""
-    if "'travel_energy'" in sql_text and "'pat'" in sql_text:
+    if all(token in sql_text for token in ("'travel_energy'", "'pat'", "'health'", "'wake_status'")):
         return  # already up to date
     # Commit any pending implicit transaction so we can start a fresh one for
     # the rebuild. Python's sqlite3 module auto-begins on DML during prior
@@ -651,7 +748,7 @@ def migrate_pet_growth_log_check_constraints(conn):
               user_id INTEGER NOT NULL,
               source_type TEXT NOT NULL CHECK (source_type IN ('content_event', 'daily_task', 'manual', 'decay', 'pat')),
               source_id TEXT NOT NULL,
-              change_type TEXT NOT NULL CHECK (change_type IN ('total_exp', 'satiety', 'mood', 'level', 'stage', 'travel_energy')),
+              change_type TEXT NOT NULL CHECK (change_type IN ('total_exp', 'satiety', 'mood', 'level', 'stage', 'travel_energy', 'health', 'wake_status')),
               delta INTEGER NOT NULL,
               before_value INTEGER NOT NULL,
               after_value INTEGER NOT NULL,
@@ -773,6 +870,23 @@ def camel_profile(row, user_id=DEFAULT_USER_ID):
     }
 
 
+def camel_growth_log(row):
+    if row is None:
+        return None
+    return {
+        "id": row["id"],
+        "userId": row["user_id"],
+        "sourceType": row["source_type"],
+        "sourceId": row["source_id"],
+        "changeType": row["change_type"],
+        "delta": row["delta"],
+        "beforeValue": row["before_value"],
+        "afterValue": row["after_value"],
+        "reason": row["reason"],
+        "createdAt": row["created_at"],
+    }
+
+
 def parse_json_array(value):
     if not value:
         return []
@@ -832,6 +946,106 @@ def camel_content(row, include_full=False):
     if include_full:
         content["fullContent"] = row["full_content"]
     return content
+
+
+def level_2d_image(level):
+    try:
+        safe_level = max(1, min(int(level), 99))
+    except (TypeError, ValueError):
+        safe_level = 1
+    return f"/static/assets/pet-level/level-{safe_level:02d}.png"
+
+
+def camel_leaderboard_item(row, rank, current_user_id):
+    return {
+        "rank": rank,
+        "userId": row["user_id"],
+        "fullname": row["fullname"] or f"知乎用户 {row['user_id']}",
+        "avatarPath": row["avatar_path"] or "",
+        "petName": row["pet_name"] or "刘看山",
+        "level": row["level"],
+        "stage": row["stage"],
+        "totalExp": row["total_exp"],
+        "travelCount": row["travel_count"] or 0,
+        "claimedTravelCount": row["claimed_travel_count"] or 0,
+        "lastTravelAt": row["last_travel_at"] if "last_travel_at" in row.keys() else None,
+        "level2dImage": level_2d_image(row["level"]),
+        "isCurrentUser": int(row["user_id"]) == int(current_user_id),
+    }
+
+
+def leaderboard_payload(conn, current_user_id, rank_type, limit=50):
+    limit = max(1, min(int(limit), 100))
+    if rank_type == "travel_count":
+        rows = conn.execute(
+            """
+            SELECT
+              p.user_id,
+              u.fullname,
+              u.avatar_path,
+              p.pet_name,
+              p.level,
+              p.stage,
+              p.total_exp,
+              COUNT(t.id) AS travel_count,
+              SUM(CASE WHEN t.status = 'claimed' THEN 1 ELSE 0 END) AS claimed_travel_count,
+              MAX(COALESCE(t.returned_at, t.claimed_at, t.started_at)) AS last_travel_at
+            FROM pet_profile p
+            JOIN pet_travel_event t ON t.user_id = p.user_id
+            LEFT JOIN zhihu_user u ON u.uid = p.user_id
+            WHERE p.adopted = 1
+              AND t.status IN ('returned', 'claimed')
+            GROUP BY p.user_id
+            ORDER BY
+              travel_count DESC,
+              claimed_travel_count DESC,
+              last_travel_at DESC,
+              p.level DESC,
+              p.user_id ASC
+            """
+        ).fetchall()
+    else:
+        rank_type = "pet_level"
+        rows = conn.execute(
+            """
+            SELECT
+              p.user_id,
+              u.fullname,
+              u.avatar_path,
+              p.pet_name,
+              p.level,
+              p.stage,
+              p.total_exp,
+              COALESCE(t.travel_count, 0) AS travel_count,
+              COALESCE(t.claimed_travel_count, 0) AS claimed_travel_count,
+              t.last_travel_at AS last_travel_at
+            FROM pet_profile p
+            LEFT JOIN zhihu_user u ON u.uid = p.user_id
+            LEFT JOIN (
+              SELECT
+                user_id,
+                COUNT(*) AS travel_count,
+                SUM(CASE WHEN status = 'claimed' THEN 1 ELSE 0 END) AS claimed_travel_count,
+                MAX(COALESCE(returned_at, claimed_at, started_at)) AS last_travel_at
+              FROM pet_travel_event
+              WHERE status IN ('returned', 'claimed')
+              GROUP BY user_id
+            ) t ON t.user_id = p.user_id
+            WHERE p.adopted = 1
+            ORDER BY p.level DESC, p.total_exp DESC, p.updated_at ASC, p.user_id ASC
+            """
+        ).fetchall()
+
+    ranked_items = [camel_leaderboard_item(row, index + 1, current_user_id) for index, row in enumerate(rows)]
+    current_item = next((item for item in ranked_items if item["isCurrentUser"]), None)
+    return {
+        "rankType": rank_type,
+        "scope": "global",
+        "limit": limit,
+        "items": ranked_items[:limit],
+        "currentUserRank": current_item["rank"] if current_item else None,
+        "currentUserItem": current_item,
+    }
 
 
 def camel_follow_moment(row):
@@ -1103,6 +1317,196 @@ def append_query_param(url, key, value):
     return parsed._replace(query=urlencode(query, doseq=True)).geturl()
 
 
+def community_configured():
+    return bool(COMMUNITY_APP_KEY and COMMUNITY_APP_SECRET and COMMUNITY_RING_ID)
+
+
+def community_headers():
+    timestamp = str(int(time.time()))
+    log_id = f"lks_{int(time.time() * 1000)}_{secrets.token_hex(4)}"
+    extra_info = ""
+    sign_str = f"app_key:{COMMUNITY_APP_KEY}|ts:{timestamp}|logid:{log_id}|extra_info:{extra_info}"
+    digest = hmac.new(
+        COMMUNITY_APP_SECRET.encode("utf-8"),
+        sign_str.encode("utf-8"),
+        hashlib.sha256,
+    ).digest()
+    return {
+        "X-App-Key": COMMUNITY_APP_KEY,
+        "X-Timestamp": timestamp,
+        "X-Log-Id": log_id,
+        "X-Sign": base64.b64encode(digest).decode("utf-8"),
+        "X-Extra-Info": extra_info,
+        "Accept": "application/json",
+        "User-Agent": "z-hackathon-kanshan/1.0",
+    }
+
+
+def community_request(path, *, method="GET", params=None, body=None, timeout=10):
+    if not community_configured():
+        raise RuntimeError("COMMUNITY_CONFIG_MISSING")
+    url = f"{COMMUNITY_BASE_URL}{path}"
+    for key, value in (params or {}).items():
+        if value is not None:
+            url = append_query_param(url, key, value)
+    data = None
+    headers = community_headers()
+    if body is not None:
+        data = json.dumps(body, ensure_ascii=False).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    request = Request(url, data=data, method=method, headers=headers)
+    with urlopen(request, timeout=timeout) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    code = payload.get("status", payload.get("code", 0)) if isinstance(payload, dict) else 0
+    if code not in (0, "0", None, 20000, "20000"):
+        raise RuntimeError(str(payload.get("msg") or payload.get("message") or payload))
+    return payload
+
+
+def normalize_community_comment(comment):
+    if not isinstance(comment, dict):
+        return None
+    comment_id = str(comment.get("comment_id") or comment.get("commentId") or comment.get("id") or "")
+    if not comment_id:
+        return None
+    return {
+        "commentId": comment_id,
+        "content": str(comment.get("content") or ""),
+        "authorName": str(comment.get("author_name") or comment.get("authorName") or "知乎用户"),
+        "authorToken": str(comment.get("author_token") or comment.get("authorToken") or ""),
+        "likeCount": int(comment.get("like_count") or comment.get("likeCount") or 0),
+        "replyCount": int(comment.get("reply_count") or comment.get("replyCount") or 0),
+        "publishTime": int(comment.get("publish_time") or comment.get("publishTime") or 0),
+    }
+
+
+def normalize_community_pin(pin):
+    if not isinstance(pin, dict):
+        return None
+    pin_id = str(pin.get("pin_id") or pin.get("content_token") or pin.get("id") or "")
+    if not pin_id:
+        return None
+    return {
+        "pinId": pin_id,
+        "title": str(pin.get("title") or "").strip(),
+        "content": str(pin.get("content") or "").strip(),
+        "authorName": str(pin.get("author_name") or pin.get("authorName") or "知乎用户"),
+        "authorToken": str(pin.get("author_token") or pin.get("authorToken") or ""),
+        "images": pin.get("images") if isinstance(pin.get("images"), list) else [],
+        "publishTime": int(pin.get("publish_time") or pin.get("publishTime") or 0),
+        "likeNum": int(pin.get("like_num") or pin.get("likeNum") or 0),
+        "commentNum": int(pin.get("comment_num") or pin.get("commentNum") or 0),
+        "favNum": int(pin.get("fav_num") or pin.get("favNum") or 0),
+        "shareNum": int(pin.get("share_num") or pin.get("shareNum") or 0),
+        "comments": [item for item in (normalize_community_comment(comment) for comment in (pin.get("comments") or [])) if item],
+    }
+
+
+def fetch_community_ring_by_id(ring_id, page_num=1, page_size=20):
+    page_num = max(1, int(page_num))
+    page_size = max(1, min(int(page_size), 50))
+    payload = community_request(
+        "/openapi/ring/detail",
+        params={"ring_id": ring_id, "page_num": page_num, "page_size": page_size},
+    )
+    data = payload.get("data") or {}
+    ring = data.get("ring_info") or {}
+    return {
+        "source": "zhihu_community_api",
+        "configured": True,
+        "ring": {
+            "ringId": str(ring.get("ring_id") or ring_id),
+            "ringName": str(ring.get("ring_name") or "圈子"),
+            "ringDesc": str(ring.get("ring_desc") or ""),
+            "ringAvatar": str(ring.get("ring_avatar") or ""),
+            "membershipNum": int(ring.get("membership_num") or 0),
+            "discussionNum": int(ring.get("discussion_num") or 0),
+        },
+        "contents": [item for item in (normalize_community_pin(pin) for pin in (data.get("contents") or [])) if item],
+        "pageNum": page_num,
+        "pageSize": page_size,
+    }
+
+
+def fetch_community_ring(page_num=1, page_size=20):
+    try:
+        payload = fetch_community_ring_by_id(COMMUNITY_RING_ID, page_num, page_size)
+        payload["requestedRingId"] = COMMUNITY_RING_ID
+        payload["fallback"] = False
+        return payload
+    except Exception as error:
+        last_error = error
+        if "readable list" not in str(error):
+            raise
+        for fallback_ring_id in COMMUNITY_FALLBACK_RING_IDS:
+            if fallback_ring_id == COMMUNITY_RING_ID:
+                continue
+            try:
+                payload = fetch_community_ring_by_id(fallback_ring_id, page_num, page_size)
+                payload["requestedRingId"] = COMMUNITY_RING_ID
+                payload["fallback"] = True
+                payload["fallbackReason"] = str(error)
+                return payload
+            except Exception as fallback_error:
+                last_error = fallback_error
+        raise last_error
+
+
+def fetch_community_comments(content_token, content_type="pin", page_num=1, page_size=20):
+    payload = community_request(
+        "/openapi/comment/list",
+        params={
+            "content_token": content_token,
+            "content_type": content_type,
+            "page_num": max(1, int(page_num)),
+            "page_size": max(1, min(int(page_size), 50)),
+        },
+    )
+    data = payload.get("data") or {}
+    return {
+        "comments": [item for item in (normalize_community_comment(comment) for comment in (data.get("comments") or [])) if item],
+        "hasMore": bool(data.get("has_more")),
+    }
+
+
+def send_community_reaction(content_token, content_type, action_value):
+    return community_request(
+        "/openapi/reaction",
+        method="POST",
+        body={
+            "content_token": content_token,
+            "content_type": content_type,
+            "action_type": "like",
+            "action_value": 1 if int(action_value) else 0,
+        },
+    )
+
+
+def create_community_comment(content_token, content_type, content):
+    return community_request(
+        "/openapi/comment/create",
+        method="POST",
+        body={
+            "content_token": content_token,
+            "content_type": content_type,
+            "content": content,
+        },
+    )
+
+
+def publish_community_pin(title, content, image_urls=None):
+    return community_request(
+        "/openapi/publish/pin",
+        method="POST",
+        body={
+            "title": title,
+            "content": content,
+            "image_urls": image_urls or [],
+            "ring_id": COMMUNITY_RING_ID,
+        },
+    )
+
+
 def normalize_zhihu_web_url(url):
     if not url:
         return ""
@@ -1259,7 +1663,7 @@ def fallback_hot_items(limit):
         },
         {
             "rank": 6,
-            "title": "本地兜底数据：刘看山虚拟宠物每日喂养榜单",
+            "title": "本地兜底数据：刘看山虚拟宠物每日学识榜单",
             "url": "https://www.zhihu.com/hot",
             "thumbnailUrl": "",
             "summary": "示例条目，用于本地无 access_secret 时凑齐 6 条素材，不会出现在线上热榜。",
@@ -1339,18 +1743,20 @@ def fetch_profile(conn, user_id):
     ).fetchone()
     if row is None:
         return row
-    row = apply_decay_catchup(conn, row)
+    row = apply_health_decay(conn, row)
     row = maybe_enter_sleep(conn, row)
     return row
 
 
-def apply_decay_catchup(conn, profile):
-    """If pet_profile.last_growth_at is older than DECAY_THRESHOLD_HOURS, deduct
-    satiety/mood per elapsed hour. After DECAY_HEALTH_THRESHOLD_HOURS (7 days),
-    additionally deduct health at DECAY_HEALTH_PER_DAY/day. Idempotent: each
-    call advances last_growth_at by the hours actually decayed, so subsequent
-    calls won't re-decay the same window. Returns the (possibly updated)
-    profile dict-like row."""
+def apply_health_decay(conn, profile):
+    """长期不互动健康衰减。
+
+    Satiety/mood 衰减由队友的 `apply_pet_decay`（PRD v1.4 钦定的 8/24/48h 阶梯版）
+    单一负责；本函数只补健康值衰减——超过 DECAY_HEALTH_THRESHOLD_HOURS（默认 168h）
+    后每天 -DECAY_HEALTH_PER_DAY，下限 0。
+
+    幂等：每次调用按已扣的天数推进 `last_growth_at`，下次进来不会重扣同一窗口。
+    """
     if profile is None or not profile["adopted"]:
         return profile
     last_at = profile["last_growth_at"]
@@ -1364,65 +1770,40 @@ def apply_decay_catchup(conn, profile):
     elapsed_hours = (now - last_dt).total_seconds() / 3600.0
     if DECAY_SPEEDUP > 0:
         elapsed_hours *= DECAY_SPEEDUP
-    if elapsed_hours < DECAY_THRESHOLD_HOURS:
+    if elapsed_hours < DECAY_HEALTH_THRESHOLD_HOURS:
         return profile
-    decay_hours = int(min(elapsed_hours - DECAY_THRESHOLD_HOURS, DECAY_MAX_HOURS))
-    if decay_hours <= 0:
+    health_extra_hours = min(
+        elapsed_hours - DECAY_HEALTH_THRESHOLD_HOURS,
+        DECAY_MAX_HOURS,
+    )
+    decay_days = int(health_extra_hours / 24)
+    if decay_days <= 0:
         return profile
-    sat = int(profile["satiety"])
-    mood = int(profile["mood"])
-    sat_dec = min(sat, DECAY_SATIETY_PER_HOUR * decay_hours)
-    mood_dec = min(mood, DECAY_MOOD_PER_HOUR * decay_hours)
-    new_sat = sat - sat_dec
-    new_mood = mood - mood_dec
-    # Health decays only after a much longer threshold (7 days), at 5/day.
     health = int(profile["health"]) if profile["health"] is not None else 100
-    health_dec = 0
-    if elapsed_hours >= DECAY_HEALTH_THRESHOLD_HOURS:
-        health_extra_hours = min(
-            elapsed_hours - DECAY_HEALTH_THRESHOLD_HOURS,
-            DECAY_MAX_HOURS,
-        )
-        health_dec_days = int(health_extra_hours / 24)
-        health_dec = min(health, DECAY_HEALTH_PER_DAY * health_dec_days)
+    health_dec = min(health, DECAY_HEALTH_PER_DAY * decay_days)
+    if health_dec <= 0:
+        return profile
     new_health = health - health_dec
-    # Advance last_growth_at by decay_hours / DECAY_SPEEDUP wall-clock so the
-    # next catchup picks up from this point.
-    advance_seconds = (decay_hours * 3600.0) / max(DECAY_SPEEDUP, 1e-6)
+    # Advance last_growth_at by the *decayed* days only, so future calls keep
+    # the threshold offset and only re-decay the portion that hasn't been
+    # accounted for yet. Convert decayed days → wall-clock seconds via
+    # DECAY_SPEEDUP so demo acceleration stays consistent.
+    advance_seconds = (decay_days * 24 * 3600.0) / max(DECAY_SPEEDUP, 1e-6)
     new_last_dt = last_dt + timedelta(seconds=advance_seconds)
     new_last = new_last_dt.isoformat(timespec="seconds")
     user_id = profile["user_id"]
     conn.execute(
-        "UPDATE pet_profile SET satiety = ?, mood = ?, health = ?, last_growth_at = ?, updated_at = ? "
+        "UPDATE pet_profile SET health = ?, last_growth_at = ?, updated_at = ? "
         "WHERE user_id = ?",
-        (new_sat, new_mood, new_health, new_last, now_text(), user_id),
+        (new_health, new_last, now_text(), user_id),
     )
-    if sat_dec > 0:
-        write_growth_log(
-            conn, user_id, "decay-catchup", "satiety",
-            -sat_dec, sat, new_sat,
-            f"{decay_hours}h 不互动衰减",
-            source_type="decay",
-        )
-    if mood_dec > 0:
-        write_growth_log(
-            conn, user_id, "decay-catchup", "mood",
-            -mood_dec, mood, new_mood,
-            f"{decay_hours}h 不互动衰减",
-            source_type="decay",
-        )
-    if health_dec > 0:
-        write_growth_log(
-            conn, user_id, "decay-catchup", "health",
-            -health_dec, health, new_health,
-            f"长期未互动健康衰减",
-            source_type="decay",
-        )
-    # Return an updated row-like dict; callers may already use sqlite3.Row,
-    # so make a copy that supports __getitem__.
+    write_growth_log(
+        conn, user_id, "decay-health", "health",
+        -health_dec, health, new_health,
+        f"{decay_days}d 长期未互动健康衰减",
+        source_type="decay",
+    )
     updated = dict(profile)
-    updated["satiety"] = new_sat
-    updated["mood"] = new_mood
     updated["health"] = new_health
     updated["last_growth_at"] = new_last
     return updated
@@ -1463,10 +1844,13 @@ def maybe_enter_sleep(conn, profile):
         "WHERE user_id=?",
         (now_text(), user_id),
     )
-    write_growth_log(
-        conn, user_id, "decay-sleep", "wake_status",
-        0, 0, 0, "饱食度/健康过低进入休眠",
-        source_type="decay",
+    # write_growth_log skips delta==0 rows, but state-machine transitions
+    # legitimately have no numeric delta — log via direct INSERT.
+    conn.execute(
+        "INSERT INTO pet_growth_log "
+        "(user_id, source_type, source_id, change_type, delta, before_value, after_value, reason, created_at) "
+        "VALUES (?, 'decay', 'decay-sleep', 'wake_status', 0, 0, 0, '饱食度/健康过低进入休眠', ?)",
+        (user_id, now_text()),
     )
     schedule_wake_message(user_id, "sleep")
     updated = dict(profile)
@@ -1514,11 +1898,11 @@ def maybe_progress_wake(conn, profile, action_type):
         "satiety=?, mood=?, health=?, last_growth_at=?, updated_at=? WHERE user_id=?",
         (new_sat, new_mood, new_health, now_text(), now_text(), user_id),
     )
-    write_growth_log(
-        conn, user_id, "wake-up", "wake_status",
-        0, 0, 0,
-        f"消费 {WAKE_REQUIRED_READS} 条内容唤醒",
-        source_type="content_event",
+    conn.execute(
+        "INSERT INTO pet_growth_log "
+        "(user_id, source_type, source_id, change_type, delta, before_value, after_value, reason, created_at) "
+        "VALUES (?, 'content_event', 'wake-up', 'wake_status', 0, 0, 0, ?, ?)",
+        (user_id, f"消费 {WAKE_REQUIRED_READS} 条内容唤醒", now_text()),
     )
     schedule_wake_message(user_id, "wake")
     updated = dict(profile)
@@ -1809,6 +2193,173 @@ def grant_pat(conn, user_id):
         "reaction": _random.choice(reactions[mood_band]),
         "moodBand": mood_band,
     }
+
+
+def last_content_active_at(conn, user_id):
+    placeholders = ",".join("?" for _ in DECAY_ACTIVE_ACTIONS)
+    row = conn.execute(
+        f"""
+        SELECT MAX(occurred_at) AS last_active_at
+        FROM pet_content_event
+        WHERE user_id = ?
+          AND action_type IN ({placeholders})
+          AND reward_status = 'granted'
+        """,
+        (user_id, *DECAY_ACTIVE_ACTIONS),
+    ).fetchone()
+    return row["last_active_at"] if row and row["last_active_at"] else None
+
+
+def decay_notice_payload(logs, inactive_hours):
+    if not logs:
+        return None
+    total_satiety = sum(item["satietyDelta"] for item in logs)
+    total_mood = sum(item["moodDelta"] for item in logs)
+    latest_message = logs[-1]["message"]
+    return {
+        "applied": True,
+        "inactiveHours": inactive_hours,
+        "totalSatietyDelta": total_satiety,
+        "totalMoodDelta": total_mood,
+        "message": latest_message,
+        "logs": logs,
+    }
+
+
+def apply_pet_decay(conn, user_id, profile=None):
+    profile = profile or fetch_profile(conn, user_id)
+    if profile is None or not profile["adopted"]:
+        return None
+
+    last_active_at = last_content_active_at(conn, user_id)
+    inactive_since = last_active_at or profile["last_growth_at"] or profile["created_at"]
+    inactive_start = parse_time(inactive_since)
+    if inactive_start == datetime.min:
+        return None
+
+    inactive_seconds = max(0, (datetime.now() - inactive_start).total_seconds())
+    inactive_hours_exact = inactive_seconds / 3600
+    inactive_hours = int(inactive_hours_exact)
+    rules = conn.execute(
+        """
+        SELECT *
+        FROM pet_decay_config
+        WHERE enabled = 1
+        ORDER BY inactive_hours ASC, id ASC
+        """
+    ).fetchall()
+    if not rules:
+        return None
+
+    current_satiety = int(profile["satiety"])
+    current_mood = int(profile["mood"])
+    applied_logs = []
+    checked_at = now_text()
+
+    for rule in rules:
+        if inactive_hours_exact < int(rule["inactive_hours"]):
+            continue
+        exists = conn.execute(
+            """
+            SELECT 1
+            FROM pet_state_decay_log
+            WHERE user_id = ?
+              AND decay_window = ?
+              AND inactive_since = ?
+            LIMIT 1
+            """,
+            (user_id, rule["decay_window"], inactive_since),
+        ).fetchone()
+        if exists:
+            continue
+
+        before_satiety = current_satiety
+        before_mood = current_mood
+        after_satiety = max(0, min(100, before_satiety + int(rule["satiety_delta"])))
+        after_mood = max(0, min(100, before_mood + int(rule["mood_delta"])))
+        actual_satiety_delta = after_satiety - before_satiety
+        actual_mood_delta = after_mood - before_mood
+        if actual_satiety_delta == 0 and actual_mood_delta == 0:
+            continue
+
+        source_id = f"decay:{user_id}:{inactive_since}:{rule['decay_window']}"
+        cursor = conn.execute(
+            """
+            INSERT OR IGNORE INTO pet_state_decay_log
+              (user_id, decay_window, inactive_since, checked_at, inactive_hours,
+               satiety_delta, mood_delta, before_satiety, after_satiety,
+               before_mood, after_mood, message, created_at)
+            VALUES
+              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                user_id,
+                rule["decay_window"],
+                inactive_since,
+                checked_at,
+                inactive_hours,
+                actual_satiety_delta,
+                actual_mood_delta,
+                before_satiety,
+                after_satiety,
+                before_mood,
+                after_mood,
+                rule["message"],
+                checked_at,
+            ),
+        )
+        if cursor.rowcount:
+            write_growth_log(
+                conn,
+                user_id,
+                source_id,
+                "satiety",
+                actual_satiety_delta,
+                before_satiety,
+                after_satiety,
+                f"长时间未互动，学识值自然衰减：{rule['decay_window']}",
+                "decay",
+            )
+            write_growth_log(
+                conn,
+                user_id,
+                source_id,
+                "mood",
+                actual_mood_delta,
+                before_mood,
+                after_mood,
+                f"长时间未互动，心情自然衰减：{rule['decay_window']}",
+                "decay",
+            )
+            current_satiety = after_satiety
+            current_mood = after_mood
+            applied_logs.append(
+                {
+                    "decayWindow": rule["decay_window"],
+                    "inactiveSince": inactive_since,
+                    "inactiveHours": inactive_hours,
+                    "satietyDelta": actual_satiety_delta,
+                    "moodDelta": actual_mood_delta,
+                    "beforeSatiety": before_satiety,
+                    "afterSatiety": after_satiety,
+                    "beforeMood": before_mood,
+                    "afterMood": after_mood,
+                    "message": rule["message"],
+                }
+            )
+
+    if applied_logs:
+        conn.execute(
+            """
+            UPDATE pet_profile
+            SET satiety = ?,
+                mood = ?,
+                updated_at = ?
+            WHERE user_id = ?
+            """,
+            (current_satiety, current_mood, now_text(), user_id),
+        )
+    return decay_notice_payload(applied_logs, inactive_hours)
 
 
 def apply_follow_moment_reward(conn, user_id, new_count):
@@ -2215,23 +2766,27 @@ def apply_content_event(payload, user_id):
                 "profile": camel_profile(profile, user_id),
             }
 
-        # Halve rewards when pet is sleeping; the sleep state is set by
-        # maybe_enter_sleep inside fetch_profile (above).
-        was_sleeping = (
-            profile["wake_status"] == "sleeping"
-            if "wake_status" in (profile.keys() if hasattr(profile, "keys") else [])
-            else False
-        )
-        if was_sleeping:
-            reward = {
-                "exp": reward["exp"] // 2,
-                "satiety": reward["satiety"] // 2,
-                "mood": reward["mood"] // 2,
-                "travelEnergy": reward["travelEnergy"] // 2,
-            }
-
         try:
             conn.execute("BEGIN")
+            decay_notice = apply_pet_decay(conn, user_id, profile)
+            profile = fetch_profile(conn, user_id)
+            # Snapshot sleeping state AFTER apply_pet_decay so a tier that drops
+            # satiety/mood into the sleep threshold for the first time still
+            # halves THIS event's reward (consistent with maybe_progress_wake
+            # being called below).
+            was_sleeping = (
+                profile["wake_status"] == "sleeping"
+                if profile is not None
+                and "wake_status" in (profile.keys() if hasattr(profile, "keys") else [])
+                else False
+            )
+            if was_sleeping:
+                reward = {
+                    "exp": reward["exp"] // 2,
+                    "satiety": reward["satiety"] // 2,
+                    "mood": reward["mood"] // 2,
+                    "travelEnergy": reward["travelEnergy"] // 2,
+                }
             conn.execute(
                 """
                 INSERT INTO pet_content_event
@@ -2325,7 +2880,7 @@ def apply_content_event(payload, user_id):
         increment_content_counter(conn, content_id, action_type)
 
         write_growth_log(conn, user_id, event_id, "total_exp", reward["exp"], old["total_exp"], new_total_exp, "内容消费获得经验")
-        write_growth_log(conn, user_id, event_id, "satiety", reward["satiety"], old["satiety"], new_satiety, "内容消费提升饱食度")
+        write_growth_log(conn, user_id, event_id, "satiety", reward["satiety"], old["satiety"], new_satiety, "内容消费提升学识值")
         write_growth_log(conn, user_id, event_id, "mood", reward["mood"], old["mood"], new_mood, "互动提升心情")
         if new_level != old["level"]:
             write_growth_log(conn, user_id, event_id, "level", new_level - old["level"], old["level"], new_level, "累计经验触发升级")
@@ -2380,8 +2935,11 @@ def apply_content_event(payload, user_id):
                         "SELECT total_exp, travel_energy FROM pet_profile WHERE user_id = ?",
                         (user_id,),
                     ).fetchone()
-                    quest_new_exp = int(profile_now["total_exp"]) + DAILY_QUEST_3READS_EXP
-                    quest_new_energy = int(profile_now["travel_energy"]) + DAILY_QUEST_3READS_ENERGY
+                    # 跟正常奖励保持语义一致：sleeping 状态下 quest 奖励减半。
+                    quest_exp = DAILY_QUEST_3READS_EXP // 2 if was_sleeping else DAILY_QUEST_3READS_EXP
+                    quest_energy = DAILY_QUEST_3READS_ENERGY // 2 if was_sleeping else DAILY_QUEST_3READS_ENERGY
+                    quest_new_exp = int(profile_now["total_exp"]) + quest_exp
+                    quest_new_energy = int(profile_now["travel_energy"]) + quest_energy
                     conn.execute(
                         "UPDATE pet_profile SET total_exp=?, travel_energy=?, updated_at=? WHERE user_id=?",
                         (quest_new_exp, quest_new_energy, now_text(), user_id),
@@ -2392,16 +2950,16 @@ def apply_content_event(payload, user_id):
                         (now_text(), user_id, today_str),
                     )
                     write_growth_log(conn, user_id, "daily-quest-3reads", "total_exp",
-                                     DAILY_QUEST_3READS_EXP, profile_now["total_exp"], quest_new_exp,
+                                     quest_exp, profile_now["total_exp"], quest_new_exp,
                                      "每日浏览 3 条内容", source_type="daily_task")
                     write_growth_log(conn, user_id, "daily-quest-3reads", "travel_energy",
-                                     DAILY_QUEST_3READS_ENERGY, profile_now["travel_energy"], quest_new_energy,
+                                     quest_energy, profile_now["travel_energy"], quest_new_energy,
                                      "每日浏览 3 条内容", source_type="daily_task")
                     if isinstance(reward, dict):
                         reward["dailyQuestComplete"] = True
                         reward["dailyQuestExtra"] = {
-                            "exp": DAILY_QUEST_3READS_EXP,
-                            "travelEnergy": DAILY_QUEST_3READS_ENERGY,
+                            "exp": quest_exp,
+                            "travelEnergy": quest_energy,
                         }
 
         # Progress sleep→wake counter when pet is sleeping and the user
@@ -2436,6 +2994,7 @@ def apply_content_event(payload, user_id):
             },
             "profile": new_profile_payload,
             "content": camel_content(updated_content) if updated_content else None,
+            "decayNotice": decay_notice,
         }
 
 
@@ -2726,7 +3285,7 @@ def travel_block_reason(profile, active_travel):
     if profile["level"] < 2:
         return "Lv.2 后可以出门游历"
     if profile["satiety"] < TRAVEL_MIN_SATIETY:
-        return f"饱食度达到 {TRAVEL_MIN_SATIETY} 后可以出门"
+        return f"学识值达到 {TRAVEL_MIN_SATIETY} 后可以出门"
     if profile["travel_energy"] < TRAVEL_DEFAULT_ENERGY_COST:
         return f"游历精力达到 {TRAVEL_DEFAULT_ENERGY_COST} 后可以出门"
     return None
@@ -3079,6 +3638,7 @@ def schedule_travel_summary(user_id, travel_id, theme):
 
 
 def travel_status_payload(conn, user_id):
+    decay_notice = apply_pet_decay(conn, user_id)
     profile, travel = refresh_travel_status(conn, user_id)
     reason = travel_block_reason(profile, travel)
     handbook_count = conn.execute(
@@ -3091,17 +3651,19 @@ def travel_status_payload(conn, user_id):
         "canTravel": reason is None,
         "blockReason": reason,
         "handbookCount": handbook_count,
+        "decayNotice": decay_notice,
     }
 
 
 def start_travel(user_id, requested_theme="auto"):
     with connect_db() as conn:
         conn.execute("BEGIN")
+        decay_notice = apply_pet_decay(conn, user_id)
         profile, active_travel = refresh_travel_status(conn, user_id)
         reason = travel_block_reason(profile, active_travel)
         if reason:
-            conn.rollback()
-            return 409, {"error": "TRAVEL_NOT_READY", "message": reason}
+            conn.commit()
+            return 409, {"error": "TRAVEL_NOT_READY", "message": reason, "decayNotice": decay_notice}
 
         theme = choose_travel_theme(conn, user_id, requested_theme)
         theme_row = fetch_theme_config(conn, theme)
@@ -3112,9 +3674,9 @@ def start_travel(user_id, requested_theme="auto"):
         material_count = 6 if theme == "hotspot" else 5
         materials = select_travel_materials(conn, user_id, theme, material_count)
         if not materials:
-            conn.rollback()
+            conn.commit()
             empty_message = "你还没有关注动态，看山先在家里陪你" if theme == "polar" else "热榜暂时没有取到内容"
-            return 409, {"error": "TRAVEL_CONTENT_EMPTY", "message": empty_message}
+            return 409, {"error": "TRAVEL_CONTENT_EMPTY", "message": empty_message, "decayNotice": decay_notice}
 
         travel_id = f"travel_{user_id}_{int(datetime.now().timestamp() * 1000)}"
         started_at = now_text()
@@ -3188,6 +3750,7 @@ def start_travel(user_id, requested_theme="auto"):
             "travel": camel_travel(travel, conn, include_contents=False),
             "profile": camel_profile(fetch_profile(conn, user_id), user_id),
             "message": meta["start"],
+            "decayNotice": decay_notice,
         }
 
 
@@ -3550,7 +4113,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, {"authenticated": True, "user": camel_user(user)})
             return
 
-        if path in ("/", "/people/p2wcex", "/hot", "/follow"):
+        if path in ("/", "/people/p2wcex", "/hot", "/follow", "/community"):
             session = self.require_auth_page(self.path)
             if session is None:
                 return
@@ -3563,7 +4126,11 @@ class Handler(BaseHTTPRequestHandler):
                 return
             user_id = session["user_id"]
             with connect_db() as conn:
-                self.send_json(200, {"profile": camel_profile(fetch_profile(conn, user_id), user_id)})
+                decay_notice = apply_pet_decay(conn, user_id)
+                self.send_json(200, {
+                    "profile": camel_profile(fetch_profile(conn, user_id), user_id),
+                    "decayNotice": decay_notice,
+                })
             return
         if path == "/api/p0/pet/daily-stat":
             session = self.require_auth_json()
@@ -3580,6 +4147,32 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(200, {
                     "dailyStat": camel_daily_stat(row),
                     "dailyStatRaw": row_to_dict(row),
+                })
+            return
+
+        if path == "/api/p0/pet/growth-logs":
+            session = self.require_auth_json()
+            if session is None:
+                return
+            qs = parse_qs(parsed.query)
+            limit = max(1, min(int((qs.get("limit") or [60])[0]), 200))
+            user_id = session["user_id"]
+            with connect_db() as conn:
+                decay_notice = apply_pet_decay(conn, user_id)
+                rows = conn.execute(
+                    """
+                    SELECT *
+                    FROM pet_growth_log
+                    WHERE user_id = ?
+                    ORDER BY created_at DESC, id DESC
+                    LIMIT ?
+                    """,
+                    (user_id, limit),
+                ).fetchall()
+                self.send_json(200, {
+                    "logs": [camel_growth_log(row) for row in rows],
+                    "profile": camel_profile(fetch_profile(conn, user_id), user_id),
+                    "decayNotice": decay_notice,
                 })
             return
 
@@ -3693,101 +4286,56 @@ class Handler(BaseHTTPRequestHandler):
             serve_comment_assist_sse(self, session["user_id"], content_id)
             return
 
+        if path == "/api/p1/community/ring":
+            session = self.require_auth_json()
+            if session is None:
+                return
+            qs = parse_qs(parsed.query)
+            page_num = int((qs.get("pageNum") or qs.get("page_num") or [1])[0])
+            page_size = int((qs.get("pageSize") or qs.get("page_size") or [20])[0])
+            try:
+                self.send_json(200, fetch_community_ring(page_num=page_num, page_size=page_size))
+            except Exception as error:
+                status = 409 if str(error) == "COMMUNITY_CONFIG_MISSING" else 502
+                self.send_json(status, {"error": "COMMUNITY_FETCH_FAILED", "message": str(error)})
+            return
+
+        if path == "/api/p1/community/comments":
+            session = self.require_auth_json()
+            if session is None:
+                return
+            qs = parse_qs(parsed.query)
+            content_token = (qs.get("contentToken") or qs.get("content_token") or [""])[0]
+            content_type = (qs.get("contentType") or qs.get("content_type") or ["pin"])[0]
+            page_num = int((qs.get("pageNum") or qs.get("page_num") or [1])[0])
+            page_size = int((qs.get("pageSize") or qs.get("page_size") or [20])[0])
+            if not content_token:
+                self.send_json(400, {"error": "CONTENT_TOKEN_REQUIRED"})
+                return
+            try:
+                self.send_json(200, fetch_community_comments(content_token, content_type, page_num, page_size))
+            except Exception as error:
+                status = 409 if str(error) == "COMMUNITY_CONFIG_MISSING" else 502
+                self.send_json(status, {"error": "COMMUNITY_COMMENTS_FAILED", "message": str(error)})
+            return
+
+        if path in ("/api/p1/leaderboard/pet-level", "/api/p1/leaderboard/travel-count"):
+            session = self.require_auth_json()
+            if session is None:
+                return
+            qs = parse_qs(parsed.query)
+            limit = max(1, min(int((qs.get("limit") or [50])[0]), 100))
+            rank_type = "travel_count" if path.endswith("/travel-count") else "pet_level"
+            with connect_db() as conn:
+                self.send_json(200, leaderboard_payload(conn, session["user_id"], rank_type, limit))
+            return
+
         if path == "/api/p1/travel/status":
             session = self.require_auth_json()
             if session is None:
                 return
             with connect_db() as conn:
                 self.send_json(200, travel_status_payload(conn, session["user_id"]))
-            return
-
-        if path == "/api/p1/leaderboard":
-            session = self.require_auth_json()
-            if session is None:
-                return
-            user_id = session["user_id"]
-            qs = parse_qs(parsed.query)
-            limit = max(1, min(int((qs.get("limit") or [50])[0]), 100))
-            with connect_db() as conn:
-                rows = conn.execute(
-                    """
-                    SELECT
-                      p.user_id, p.pet_name, p.level, p.stage, p.total_exp,
-                      p.total_read_count, p.total_watch_count, p.total_interaction_count,
-                      u.fullname, u.avatar_path
-                    FROM pet_profile p
-                    LEFT JOIN zhihu_user u ON u.uid = p.user_id
-                    WHERE p.adopted = 1
-                    ORDER BY p.level DESC, p.total_exp DESC, p.total_read_count DESC, p.user_id ASC
-                    LIMIT ?
-                    """,
-                    (limit,),
-                ).fetchall()
-                total = conn.execute(
-                    "SELECT COUNT(*) FROM pet_profile WHERE adopted = 1"
-                ).fetchone()[0]
-                self_row = conn.execute(
-                    """
-                    SELECT
-                      p.user_id, p.pet_name, p.level, p.stage, p.total_exp,
-                      p.total_read_count, p.total_watch_count, p.total_interaction_count,
-                      u.fullname, u.avatar_path
-                    FROM pet_profile p
-                    LEFT JOIN zhihu_user u ON u.uid = p.user_id
-                    WHERE p.user_id = ? AND p.adopted = 1
-                    """,
-                    (user_id,),
-                ).fetchone()
-                # Compute self rank
-                if self_row is None:
-                    self_rank = None
-                else:
-                    self_rank = conn.execute(
-                        """
-                        SELECT COUNT(*) + 1
-                        FROM pet_profile
-                        WHERE adopted = 1
-                          AND (
-                            level > ?
-                            OR (level = ? AND total_exp > ?)
-                            OR (level = ? AND total_exp = ? AND total_read_count > ?)
-                            OR (level = ? AND total_exp = ? AND total_read_count = ? AND user_id < ?)
-                          )
-                        """,
-                        (
-                            self_row["level"],
-                            self_row["level"], self_row["total_exp"],
-                            self_row["level"], self_row["total_exp"], self_row["total_read_count"],
-                            self_row["level"], self_row["total_exp"], self_row["total_read_count"], user_id,
-                        ),
-                    ).fetchone()[0]
-
-            def to_entry(row, rank):
-                return {
-                    "rank": rank,
-                    "userId": row["user_id"],
-                    "fullname": row["fullname"] or "知乎用户",
-                    "avatarPath": row["avatar_path"] or "",
-                    "petName": row["pet_name"] or "刘看山",
-                    "level": row["level"],
-                    "stage": row["stage"],
-                    "totalExp": row["total_exp"],
-                    "totalReadCount": row["total_read_count"],
-                    "totalWatchCount": row["total_watch_count"],
-                    "totalInteractionCount": row["total_interaction_count"],
-                    "isSelf": row["user_id"] == user_id,
-                }
-
-            top_entries = [to_entry(r, i + 1) for i, r in enumerate(rows)]
-            self_entry = None
-            if self_row is not None and not any(e["isSelf"] for e in top_entries):
-                self_entry = to_entry(self_row, self_rank)
-            self.send_json(200, {
-                "topEntries": top_entries,
-                "selfEntry": self_entry,
-                "selfRank": self_rank,
-                "totalAdopters": total,
-            })
             return
 
         if path == "/api/p1/travel/handbook":
@@ -3851,7 +4399,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_HEAD(self):
         parsed = urlparse(self.path)
         path = parsed.path
-        if path in ("/", "/people/p2wcex", "/hot", "/follow"):
+        if path in ("/", "/people/p2wcex", "/hot", "/follow", "/community"):
             session = self.require_auth_page(self.path)
             if session is None:
                 return
@@ -3932,6 +4480,7 @@ class Handler(BaseHTTPRequestHandler):
                 conn.execute("DELETE FROM pet_travel_event WHERE user_id = ?", (user_id,))
                 conn.execute("DELETE FROM pet_growth_log WHERE user_id = ?", (user_id,))
                 conn.execute("DELETE FROM pet_content_event WHERE user_id = ?", (user_id,))
+                conn.execute("DELETE FROM pet_state_decay_log WHERE user_id = ?", (user_id,))
                 conn.execute("DELETE FROM pet_daily_stat WHERE user_id = ?", (user_id,))
                 conn.execute("DELETE FROM pet_profile WHERE user_id = ?", (user_id,))
                 self.send_json(200, {"profile": camel_profile(fetch_profile(conn, user_id), user_id)})
@@ -4094,6 +4643,91 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, result)
             return
 
+        if path == "/api/p1/community/reaction":
+            session = self.require_auth_json()
+            if session is None:
+                return
+            content_token = str(body.get("contentToken") or body.get("content_token") or "")
+            content_type = str(body.get("contentType") or body.get("content_type") or "pin")
+            action_value = int(body.get("actionValue") if body.get("actionValue") is not None else body.get("action_value") or 1)
+            if not content_token:
+                self.send_json(400, {"error": "CONTENT_TOKEN_REQUIRED"})
+                return
+            try:
+                upstream = send_community_reaction(content_token, content_type, action_value)
+                reward = None
+                profile = None
+                if action_value == 1:
+                    status, response = apply_content_event(
+                        {
+                            "eventId": f"community_{content_type}_{content_token}_like_{int(time.time() * 1000)}",
+                            "contentId": f"community_{content_token}",
+                            "contentType": "pin" if content_type == "pin" else "comment",
+                            "actionType": "like",
+                            "occurredAt": now_text(),
+                        },
+                        session["user_id"],
+                    )
+                    if status == 200:
+                        reward = response.get("reward")
+                        profile = response.get("profile")
+                self.send_json(200, {"ok": True, "upstream": upstream.get("data"), "reward": reward, "profile": profile})
+            except Exception as error:
+                status = 409 if str(error) == "COMMUNITY_CONFIG_MISSING" else 502
+                self.send_json(status, {"error": "COMMUNITY_REACTION_FAILED", "message": str(error)})
+            return
+
+        if path == "/api/p1/community/comment":
+            session = self.require_auth_json()
+            if session is None:
+                return
+            content_token = str(body.get("contentToken") or body.get("content_token") or "")
+            content_type = str(body.get("contentType") or body.get("content_type") or "pin")
+            content = str(body.get("content") or "").strip()
+            if not content_token or not content:
+                self.send_json(400, {"error": "BAD_COMMENT_PAYLOAD"})
+                return
+            try:
+                upstream = create_community_comment(content_token, content_type, content)
+                status, response = apply_content_event(
+                    {
+                        "eventId": f"community_{content_type}_{content_token}_comment_{int(time.time() * 1000)}",
+                        "contentId": f"community_{content_token}",
+                        "contentType": "pin" if content_type == "pin" else "comment",
+                        "actionType": "comment",
+                        "occurredAt": now_text(),
+                    },
+                    session["user_id"],
+                )
+                self.send_json(200, {
+                    "ok": True,
+                    "commentId": (upstream.get("data") or {}).get("comment_id"),
+                    "reward": response.get("reward") if status == 200 else None,
+                    "profile": response.get("profile") if status == 200 else None,
+                })
+            except Exception as error:
+                status = 409 if str(error) == "COMMUNITY_CONFIG_MISSING" else 502
+                self.send_json(status, {"error": "COMMUNITY_COMMENT_FAILED", "message": str(error)})
+            return
+
+        if path == "/api/p1/community/publish":
+            session = self.require_auth_json()
+            if session is None:
+                return
+            title = str(body.get("title") or "").strip()
+            content = str(body.get("content") or "").strip()
+            image_urls = body.get("imageUrls") or body.get("image_urls") or []
+            if not content:
+                self.send_json(400, {"error": "COMMUNITY_CONTENT_REQUIRED"})
+                return
+            try:
+                upstream = publish_community_pin(title, content, image_urls if isinstance(image_urls, list) else [])
+                self.send_json(200, {"ok": True, "contentToken": (upstream.get("data") or {}).get("content_token")})
+            except Exception as error:
+                status = 409 if str(error) == "COMMUNITY_CONFIG_MISSING" else 502
+                self.send_json(status, {"error": "COMMUNITY_PUBLISH_FAILED", "message": str(error)})
+            return
+
         if path == "/api/p1/travel/start":
             session = self.require_auth_json()
             if session is None:
@@ -4140,5 +4774,6 @@ if __name__ == "__main__":
     print(f"推荐页: http://{host}:{port}/")
     print(f"关注页: http://{host}:{port}/follow")
     print(f"热榜页: http://{host}:{port}/hot")
+    print(f"圈子页: http://{host}:{port}/community")
     print(f"个人页: http://{host}:{port}/people/p2wcex")
     server.serve_forever()
