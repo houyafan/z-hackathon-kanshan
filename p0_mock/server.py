@@ -2510,6 +2510,41 @@ def calculate_reward(content_type, action_type):
     return {"exp": 0, "satiety": 0, "mood": 0, "travelEnergy": 0}
 
 
+def zero_content_reward():
+    return {
+        "exp": 0,
+        "satiety": 0,
+        "mood": 0,
+        "travelEnergy": 0,
+        "levelUp": False,
+        "stageChanged": False,
+    }
+
+
+def duplicate_content_event_message(action_type):
+    return {
+        "read": "已经阅读过这篇内容，本次不再增加经验",
+        "watch": "已经观看过这条内容，本次不再增加经验",
+        "like": "已经赞同过这篇内容",
+        "comment": "已经评论过这篇内容，本次不再增加经验",
+        "collect": "已经收藏过这篇内容",
+    }.get(action_type, "已经操作过这篇内容，本次不再增加经验")
+
+
+def duplicate_content_event_response(conn, user_id, content_id, action_type, decay_notice=None):
+    updated_content = fetch_content(conn, content_id)
+    interactions = fetch_content_interactions(conn, user_id, [content_id]).get(content_id)
+    return {
+        "duplicateInteraction": True,
+        "duplicateContentEvent": True,
+        "message": duplicate_content_event_message(action_type),
+        "reward": zero_content_reward(),
+        "profile": camel_profile(fetch_profile(conn, user_id), user_id),
+        "content": camel_content(updated_content, interactions=interactions) if updated_content else None,
+        "decayNotice": decay_notice,
+    }
+
+
 def moment_text_value(value):
     return str(value or "").strip()
 
@@ -3249,10 +3284,8 @@ def apply_content_event(payload, user_id):
             }
 
         try:
-            conn.execute("BEGIN")
-            decay_notice = apply_pet_decay(conn, user_id, profile)
-            profile = fetch_profile(conn, user_id)
-            if action_type in ("like", "collect"):
+            conn.execute("BEGIN IMMEDIATE")
+            if content_id and action_type in ("read", "watch", "like", "comment", "collect"):
                 existing_action = conn.execute(
                     """
                     SELECT 1
@@ -3266,23 +3299,9 @@ def apply_content_event(payload, user_id):
                 ).fetchone()
                 if existing_action is not None:
                     conn.rollback()
-                    updated_content = fetch_content(conn, content_id)
-                    interactions = fetch_content_interactions(conn, user_id, [content_id]).get(content_id)
-                    return 200, {
-                        "duplicateInteraction": True,
-                        "message": "已经赞同过这篇内容" if action_type == "like" else "已经收藏过这篇内容",
-                        "reward": {
-                            "exp": 0,
-                            "satiety": 0,
-                            "mood": 0,
-                            "travelEnergy": 0,
-                            "levelUp": False,
-                            "stageChanged": False,
-                        },
-                        "profile": camel_profile(fetch_profile(conn, user_id), user_id),
-                        "content": camel_content(updated_content, interactions=interactions) if updated_content else None,
-                        "decayNotice": decay_notice,
-                    }
+                    return 200, duplicate_content_event_response(conn, user_id, content_id, action_type)
+            decay_notice = apply_pet_decay(conn, user_id, profile)
+            profile = fetch_profile(conn, user_id)
             # Snapshot sleeping state AFTER apply_pet_decay so a tier that drops
             # satiety/mood into the sleep threshold for the first time still
             # halves THIS event's reward (consistent with maybe_progress_wake

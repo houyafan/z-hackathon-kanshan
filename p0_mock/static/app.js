@@ -2889,6 +2889,14 @@ function bindCommentEditor(modalRoot) {
       });
       if (resp?.profile) profile = resp.profile;
       if (resp?.content) mergeUpdatedContent(resp.content);
+      if (resp?.duplicateInteraction) {
+        submitBtn.textContent = "已评论 ✓";
+        submitBtn.disabled = true;
+        showToast(resp.message || "已经操作过这篇内容");
+        syncCharacter();
+        renderCurrentRoute();
+        return;
+      }
       if (resp?.reward) showReward(resp.reward, submitBtn);
       markOnboardingStep("interact");
       syncCharacter();
@@ -3373,6 +3381,7 @@ async function submitContentEvent(item, actionType, sourceElement) {
 
 function showReward(reward, sourceElement) {
   const partsText = rewardText(reward);
+  if (!reward?.levelUp && !partsText) return;
   const message = reward.levelUp
     ? `看山升级啦！Lv.${reward.fromLevel} → Lv.${reward.toLevel}`
     : `看山成长了：${partsText}`;
