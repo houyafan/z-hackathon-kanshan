@@ -2882,6 +2882,18 @@ button {
   line-height: 1.5;
 }
 
+.leaderboard-share-box ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  color: #1f2329;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.55;
+  list-style: none;
+}
+
 .leaderboard-share-box em {
   display: block;
   color: #667085;

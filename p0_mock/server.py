@@ -1408,6 +1408,7 @@ def leaderboard_payload(conn, current_user_id, rank_type, limit=50):
             visual_cache[level] = fetch_level_visual(conn, level)
         ranked_items.append(camel_leaderboard_item(row, index + 1, current_user_id, visual_cache[level]))
     current_item = next((item for item in ranked_items if item["isCurrentUser"]), None)
+    shared_today = leaderboard_share_today(conn, current_user_id)
     return {
         "rankType": rank_type,
         "scope": "global",
@@ -1415,6 +1416,8 @@ def leaderboard_payload(conn, current_user_id, rank_type, limit=50):
         "items": ranked_items[:limit],
         "currentUserRank": current_item["rank"] if current_item else None,
         "currentUserItem": current_item,
+        "shareRewardSharedToday": shared_today is not None,
+        "shareRewardSharedAt": shared_today["created_at"] if shared_today is not None else None,
     }
 
 

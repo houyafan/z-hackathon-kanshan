@@ -1470,14 +1470,19 @@ function currentUserRankCard(data = leaderboardData) {
   if (!item) {
     return `<div class="leaderboard-my-card muted">${leaderboardType === "travel_count" ? "你还没有完成游历" : "你暂未进入榜单"}</div>`;
   }
+  const sharedToday = Boolean(data?.shareRewardSharedToday);
   return `
     <div class="leaderboard-my-card">
       <span>我的名次</span>
       <strong>No.${item.rank}</strong>
       <small>Lv.${item.level} · ${formatCount(item.totalExp)} 经验 · 游历 ${formatCount(item.travelCount)} 次</small>
       <div class="leaderboard-share-box">
-        <p>发到「黑客松脑洞补给站」后，刘看山会自动升 1 级，并获得一次游历资格。</p>
-        <button type="button" data-leaderboard-share>分享看山赢奖励</button>
+        <p>分享你的刘看山等级到「黑客松脑洞补给站」圈子：</p>
+        <ul>
+          <li>✅ 刘看山直接升 1 级、解锁新造型，更快养成专属阅读伙伴</li>
+          <li>✅ 让更多人看到你的养成进度与专属看山形象</li>
+        </ul>
+        <button type="button" data-leaderboard-share ${sharedToday ? "disabled" : ""}>${sharedToday ? "明天再来分享领奖励" : "分享领升级奖励"}</button>
       </div>
     </div>
   `;
@@ -1606,8 +1611,19 @@ async function publishLeaderboardShare(button) {
     renderCurrentRoute();
     showToast("已在「黑客松脑洞补给站」发了一条圈子，刘看山已升级并获得一次游历资格");
   } catch (error) {
+    if (error?.status === 429 || error?.error === "LEADERBOARD_SHARE_DAILY_LIMIT") {
+      leaderboardData = {
+        ...(leaderboardData || {}),
+        shareRewardSharedToday: true,
+        shareRewardSharedAt: error.sharedAt || leaderboardData?.shareRewardSharedAt || null,
+      };
+      replaceSidebarLeaderboards();
+      if (leaderboardPanelOpen) renderLeaderboardPanel();
+      showToast(error.message || "今天已经分享过啦，明天再来分享领奖励");
+      return;
+    }
     button.disabled = false;
-    button.textContent = originalText || "分享看山赢奖励";
+    button.textContent = originalText || "分享领升级奖励";
     showToast(error.message || "发圈子失败");
   }
 }
