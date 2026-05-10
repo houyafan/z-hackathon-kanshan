@@ -1011,11 +1011,38 @@ function leaderboardVisual(item) {
   `;
 }
 
-function leaderboardItem(item) {
+function leaderboardMetric(item) {
   const isTravel = leaderboardType === "travel_count";
-  const metric = isTravel
+  return isTravel
     ? `<strong>${formatCount(item.travelCount)} 次</strong><small>已领取 ${formatCount(item.claimedTravelCount)} 次</small>`
     : `<strong>Lv.${item.level}</strong><small>${formatCount(item.totalExp)} 经验</small>`;
+}
+
+function leaderboardPodiumItem(item) {
+  const rankLabel = item.rank === 1 ? "第一名" : item.rank === 2 ? "第二名" : "第三名";
+  return `
+    <article class="leaderboard-podium-item rank-${item.rank} ${item.isCurrentUser ? "is-current" : ""}">
+      <div class="leaderboard-podium-rank">${rankLabel}</div>
+      ${leaderboardVisual(item)}
+      <strong>${escapeHTML(item.fullname || "知乎用户")}</strong>
+      <small>${escapeHTML(item.petName || "刘看山")} · ${escapeHTML(item.levelTitle || stageText(item.stage))}</small>
+      <div class="leaderboard-podium-metric">${leaderboardMetric(item)}</div>
+    </article>
+  `;
+}
+
+function leaderboardPodium(items) {
+  const topItems = items.slice(0, 3);
+  if (!topItems.length) return "";
+  return `
+    <div class="leaderboard-podium count-${topItems.length}">
+      ${topItems.map(leaderboardPodiumItem).join("")}
+    </div>
+  `;
+}
+
+function leaderboardItem(item) {
+  const metric = leaderboardMetric(item);
   return `
     <article class="leaderboard-item ${item.isCurrentUser ? "is-current" : ""} rank-${item.rank <= 3 ? item.rank : "normal"}">
       <div class="leaderboard-rank">${item.rank}</div>
@@ -1028,6 +1055,21 @@ function leaderboardItem(item) {
         ${metric}
       </div>
     </article>
+  `;
+}
+
+function leaderboardBody(items) {
+  if (!items.length) {
+    return `<div class="leaderboard-empty">${escapeHTML(leaderboardEmptyText())}</div>`;
+  }
+  const restItems = items.slice(3);
+  return `
+    <div class="leaderboard-board">
+      ${leaderboardPodium(items)}
+      ${restItems.length
+        ? `<div class="leaderboard-list">${restItems.map(leaderboardItem).join("")}</div>`
+        : ""}
+    </div>
   `;
 }
 
@@ -1057,9 +1099,7 @@ function leaderboardSideCard() {
       ? `<div class="leaderboard-empty">榜单加载中</div>`
       : leaderboardError
         ? `<div class="leaderboard-empty">${escapeHTML(leaderboardError.message || "榜单加载失败")}</div>`
-        : items.length
-          ? `<div class="leaderboard-list">${items.map(leaderboardItem).join("")}</div>`
-          : `<div class="leaderboard-empty">${escapeHTML(leaderboardEmptyText())}</div>`;
+        : leaderboardBody(items);
   return `
     <section class="card side-card leaderboard-side-card" data-sidebar-leaderboard>
       <div class="side-title">
@@ -1137,9 +1177,7 @@ function renderLeaderboardPanel() {
     ? `<div class="leaderboard-empty">榜单加载中</div>`
     : leaderboardError
       ? `<div class="leaderboard-empty">${escapeHTML(leaderboardError.message || "榜单加载失败")}</div>`
-      : items.length
-        ? `<div class="leaderboard-list">${items.map(leaderboardItem).join("")}</div>`
-        : `<div class="leaderboard-empty">${escapeHTML(leaderboardEmptyText())}</div>`;
+      : leaderboardBody(items);
   panel.innerHTML = `
     <div class="leaderboard-head">
       <div>

@@ -2470,8 +2470,59 @@ button {
   border-radius: 6px;
 }
 
-.leaderboard-side-card .leaderboard-list {
+.leaderboard-side-card .leaderboard-board {
   padding: 0;
+  flex: initial;
+  overflow: visible;
+}
+
+.leaderboard-side-card .leaderboard-podium {
+  min-height: 142px;
+  padding: 8px 0 10px;
+}
+
+.leaderboard-side-card .leaderboard-podium-item {
+  gap: 2px;
+}
+
+.leaderboard-side-card .leaderboard-podium-item.rank-1 {
+  min-height: 134px;
+}
+
+.leaderboard-side-card .leaderboard-podium-item.rank-1 .leaderboard-visual {
+  width: 78px;
+  height: 78px;
+}
+
+.leaderboard-side-card .leaderboard-podium-item.rank-2 .leaderboard-visual,
+.leaderboard-side-card .leaderboard-podium-item.rank-3 .leaderboard-visual {
+  width: 58px;
+  height: 58px;
+}
+
+.leaderboard-side-card .leaderboard-podium-rank {
+  font-size: 11px;
+}
+
+.leaderboard-side-card .leaderboard-podium-item strong {
+  max-width: 84px;
+  font-size: 12px;
+}
+
+.leaderboard-side-card .leaderboard-podium-item small {
+  display: none;
+}
+
+.leaderboard-side-card .leaderboard-podium-metric strong {
+  font-size: 12px;
+}
+
+.leaderboard-side-card .leaderboard-podium-metric small {
+  display: none;
+}
+
+.leaderboard-side-card .leaderboard-list {
+  padding: 4px 0 0;
 }
 
 .leaderboard-side-card .leaderboard-item {
@@ -2487,8 +2538,8 @@ button {
 }
 
 .leaderboard-side-card .leaderboard-visual {
-  width: 38px;
-  height: 38px;
+  width: 34px;
+  height: 34px;
   border-radius: 8px;
 }
 
@@ -2615,22 +2666,148 @@ button {
   font-weight: 700;
 }
 
-.leaderboard-list {
+.leaderboard-board {
+  flex: 1;
   min-height: 0;
   overflow-y: auto;
   padding: 0 12px 12px;
 }
 
-.leaderboard-item {
+.leaderboard-podium {
   display: grid;
-  grid-template-columns: 30px 50px minmax(0, 1fr) auto;
+  grid-template-columns: 1fr 1.12fr 1fr;
+  grid-template-areas: "second first third";
+  align-items: end;
+  gap: 8px;
+  min-height: 216px;
+  padding: 18px 4px 20px;
+  border-bottom: 1px solid #edf2fb;
+}
+
+.leaderboard-podium.count-1 {
+  grid-template-columns: 1fr;
+  grid-template-areas: "first";
+}
+
+.leaderboard-podium.count-2 {
+  grid-template-columns: 1fr 1fr;
+  grid-template-areas: "first second";
+}
+
+.leaderboard-podium-item {
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 8px 4px 10px;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.leaderboard-podium-item.rank-1 {
+  grid-area: first;
+  min-height: 196px;
+  border: 1px solid rgba(245, 159, 0, 0.24);
+  background: linear-gradient(180deg, #fff9e8 0%, #ffffff 100%);
+  box-shadow: 0 12px 30px rgba(245, 159, 0, 0.14);
+}
+
+.leaderboard-podium-item.rank-2 {
+  grid-area: second;
+}
+
+.leaderboard-podium-item.rank-3 {
+  grid-area: third;
+}
+
+.leaderboard-podium-rank {
+  color: #1677ff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.leaderboard-podium-item.rank-1 .leaderboard-podium-rank {
+  color: #f59f00;
+  font-size: 15px;
+}
+
+.leaderboard-podium-item.rank-2 .leaderboard-podium-rank {
+  color: #7b8798;
+}
+
+.leaderboard-podium-item.rank-3 .leaderboard-podium-rank {
+  color: #c46a2b;
+}
+
+.leaderboard-podium-item .leaderboard-visual {
+  width: 78px;
+  height: 78px;
+  border-radius: 18px;
+}
+
+.leaderboard-podium-item.rank-1 .leaderboard-visual {
+  width: 118px;
+  height: 118px;
+  border-radius: 22px;
+}
+
+.leaderboard-podium-item .leaderboard-visual small {
+  left: 8px;
+  bottom: 7px;
+}
+
+.leaderboard-podium-item strong,
+.leaderboard-podium-item small {
+  max-width: 100%;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.leaderboard-podium-item strong {
+  color: #1f2329;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.leaderboard-podium-item small {
+  color: #8491a5;
+  font-size: 11px;
+}
+
+.leaderboard-podium-metric strong,
+.leaderboard-podium-metric small {
+  display: block;
+  text-align: center;
+}
+
+.leaderboard-podium-metric strong {
+  color: #1677ff;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.leaderboard-podium-metric small {
+  margin-top: 1px;
+  color: #98a2b3;
+  font-size: 11px;
+}
+
+.leaderboard-list {
+  padding-top: 8px;
+}
+
+.leaderboard-list .leaderboard-item {
+  display: grid;
+  grid-template-columns: 30px 42px minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
   padding: 10px 8px;
   border-radius: 10px;
 }
 
-.leaderboard-item + .leaderboard-item {
+.leaderboard-list .leaderboard-item + .leaderboard-item {
   margin-top: 4px;
 }
 
@@ -2664,8 +2841,8 @@ button {
 }
 
 .leaderboard-visual {
-  width: 50px;
-  height: 50px;
+  width: 42px;
+  height: 42px;
   display: grid;
   place-items: center;
   border-radius: 12px;
