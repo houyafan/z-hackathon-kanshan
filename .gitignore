@@ -1,2 +1,5 @@
 blender-mcp/
 p0_mock/config.local.json
+db/sqlite/*.sqlite
+db/sqlite/*.sqlite3
+db/sqlite/*.db
