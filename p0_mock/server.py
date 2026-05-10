@@ -4,7 +4,9 @@ from http.cookies import SimpleCookie
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlencode, unquote, urlparse
 from urllib.request import Request, urlopen
+import base64
 import hashlib
+import hmac
 import json
 import mimetypes
 import os
@@ -79,6 +81,10 @@ def load_config():
         "zhihu_app_id": "",
         "zhihu_app_key": "",
         "zhihu_auth_redirect_uri": "http://127.0.0.1:5173/auth/callback",
+        "community_base_url": "https://openapi.zhihu.com",
+        "community_app_key": "",
+        "community_app_secret": "",
+        "community_ring_id": "",
         "session_ttl_hours": 24,
         "state_ttl_minutes": 10,
         "local_auth_bypass": False,
@@ -139,6 +145,10 @@ ZH_APP_KEY = str(CONFIG.get("zhihu_app_key") or "")
 ZH_AUTH_REDIRECT_URI = str(CONFIG.get("zhihu_auth_redirect_uri") or "http://127.0.0.1:5173/auth/callback")
 AUTH_MODE = str(CONFIG.get("auth_mode") or ("oauth" if ZH_APP_ID and ZH_APP_KEY else "mock")).lower()
 MOCK_USER = CONFIG["mock_user"]
+COMMUNITY_BASE_URL = str(CONFIG.get("community_base_url") or ZH_OPENAPI_BASE).rstrip("/")
+COMMUNITY_APP_KEY = str(CONFIG.get("community_app_key") or "")
+COMMUNITY_APP_SECRET = str(CONFIG.get("community_app_secret") or "")
+COMMUNITY_RING_ID = str(CONFIG.get("community_ring_id") or "")
 SESSION_TTL_HOURS = int(CONFIG.get("session_ttl_hours") or 24)
 STATE_TTL_MINUTES = int(CONFIG.get("state_ttl_minutes") or 10)
 LOCAL_AUTH_BYPASS = bool(CONFIG.get("local_auth_bypass"))
@@ -872,6 +882,172 @@ def append_query_param(url, key, value):
     query = parse_qs(parsed.query)
     query[key] = [str(value)]
     return parsed._replace(query=urlencode(query, doseq=True)).geturl()
+
+
+def community_configured():
+    return bool(COMMUNITY_APP_KEY and COMMUNITY_APP_SECRET and COMMUNITY_RING_ID)
+
+
+def community_headers():
+    timestamp = str(int(time.time()))
+    log_id = f"lks_{int(time.time() * 1000)}_{secrets.token_hex(4)}"
+    extra_info = ""
+    sign_str = f"app_key:{COMMUNITY_APP_KEY}|ts:{timestamp}|logid:{log_id}|extra_info:{extra_info}"
+    digest = hmac.new(
+        COMMUNITY_APP_SECRET.encode("utf-8"),
+        sign_str.encode("utf-8"),
+        hashlib.sha256,
+    ).digest()
+    return {
+        "X-App-Key": COMMUNITY_APP_KEY,
+        "X-Timestamp": timestamp,
+        "X-Log-Id": log_id,
+        "X-Sign": base64.b64encode(digest).decode("utf-8"),
+        "X-Extra-Info": extra_info,
+        "Accept": "application/json",
+        "User-Agent": "z-hackathon-kanshan/1.0",
+    }
+
+
+def community_request(path, *, method="GET", params=None, body=None, timeout=10):
+    if not community_configured():
+        raise RuntimeError("COMMUNITY_CONFIG_MISSING")
+    url = f"{COMMUNITY_BASE_URL}{path}"
+    for key, value in (params or {}).items():
+        if value is not None:
+            url = append_query_param(url, key, value)
+    data = None
+    headers = community_headers()
+    if body is not None:
+        data = json.dumps(body, ensure_ascii=False).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    request = Request(url, data=data, method=method, headers=headers)
+    with urlopen(request, timeout=timeout) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    code = payload.get("status", payload.get("code", 0)) if isinstance(payload, dict) else 0
+    if code not in (0, "0", None, 20000, "20000"):
+        raise RuntimeError(str(payload.get("msg") or payload.get("message") or payload))
+    return payload
+
+
+def normalize_community_comment(comment):
+    if not isinstance(comment, dict):
+        return None
+    comment_id = str(comment.get("comment_id") or comment.get("commentId") or comment.get("id") or "")
+    if not comment_id:
+        return None
+    return {
+        "commentId": comment_id,
+        "content": str(comment.get("content") or ""),
+        "authorName": str(comment.get("author_name") or comment.get("authorName") or "知乎用户"),
+        "authorToken": str(comment.get("author_token") or comment.get("authorToken") or ""),
+        "likeCount": int(comment.get("like_count") or comment.get("likeCount") or 0),
+        "replyCount": int(comment.get("reply_count") or comment.get("replyCount") or 0),
+        "publishTime": int(comment.get("publish_time") or comment.get("publishTime") or 0),
+    }
+
+
+def normalize_community_pin(pin):
+    if not isinstance(pin, dict):
+        return None
+    pin_id = str(pin.get("pin_id") or pin.get("content_token") or pin.get("id") or "")
+    if not pin_id:
+        return None
+    return {
+        "pinId": pin_id,
+        "title": str(pin.get("title") or "").strip(),
+        "content": str(pin.get("content") or "").strip(),
+        "authorName": str(pin.get("author_name") or pin.get("authorName") or "知乎用户"),
+        "authorToken": str(pin.get("author_token") or pin.get("authorToken") or ""),
+        "images": pin.get("images") if isinstance(pin.get("images"), list) else [],
+        "publishTime": int(pin.get("publish_time") or pin.get("publishTime") or 0),
+        "likeNum": int(pin.get("like_num") or pin.get("likeNum") or 0),
+        "commentNum": int(pin.get("comment_num") or pin.get("commentNum") or 0),
+        "favNum": int(pin.get("fav_num") or pin.get("favNum") or 0),
+        "shareNum": int(pin.get("share_num") or pin.get("shareNum") or 0),
+        "comments": [item for item in (normalize_community_comment(comment) for comment in (pin.get("comments") or [])) if item],
+    }
+
+
+def fetch_community_ring(page_num=1, page_size=20):
+    page_num = max(1, int(page_num))
+    page_size = max(1, min(int(page_size), 50))
+    payload = community_request(
+        "/openapi/ring/detail",
+        params={"ring_id": COMMUNITY_RING_ID, "page_num": page_num, "page_size": page_size},
+    )
+    data = payload.get("data") or {}
+    ring = data.get("ring_info") or {}
+    return {
+        "source": "zhihu_community_api",
+        "configured": True,
+        "ring": {
+            "ringId": str(ring.get("ring_id") or COMMUNITY_RING_ID),
+            "ringName": str(ring.get("ring_name") or "圈子"),
+            "ringDesc": str(ring.get("ring_desc") or ""),
+            "ringAvatar": str(ring.get("ring_avatar") or ""),
+            "membershipNum": int(ring.get("membership_num") or 0),
+            "discussionNum": int(ring.get("discussion_num") or 0),
+        },
+        "contents": [item for item in (normalize_community_pin(pin) for pin in (data.get("contents") or [])) if item],
+        "pageNum": page_num,
+        "pageSize": page_size,
+    }
+
+
+def fetch_community_comments(content_token, content_type="pin", page_num=1, page_size=20):
+    payload = community_request(
+        "/openapi/comment/list",
+        params={
+            "content_token": content_token,
+            "content_type": content_type,
+            "page_num": max(1, int(page_num)),
+            "page_size": max(1, min(int(page_size), 50)),
+        },
+    )
+    data = payload.get("data") or {}
+    return {
+        "comments": [item for item in (normalize_community_comment(comment) for comment in (data.get("comments") or [])) if item],
+        "hasMore": bool(data.get("has_more")),
+    }
+
+
+def send_community_reaction(content_token, content_type, action_value):
+    return community_request(
+        "/openapi/reaction",
+        method="POST",
+        body={
+            "content_token": content_token,
+            "content_type": content_type,
+            "action_type": "like",
+            "action_value": 1 if int(action_value) else 0,
+        },
+    )
+
+
+def create_community_comment(content_token, content_type, content):
+    return community_request(
+        "/openapi/comment/create",
+        method="POST",
+        body={
+            "content_token": content_token,
+            "content_type": content_type,
+            "content": content,
+        },
+    )
+
+
+def publish_community_pin(title, content, image_urls=None):
+    return community_request(
+        "/openapi/publish/pin",
+        method="POST",
+        body={
+            "title": title,
+            "content": content,
+            "image_urls": image_urls or [],
+            "ring_id": COMMUNITY_RING_ID,
+        },
+    )
 
 
 def normalize_zhihu_web_url(url):
@@ -2669,7 +2845,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, {"authenticated": True, "user": camel_user(user)})
             return
 
-        if path in ("/", "/people/p2wcex", "/hot", "/follow"):
+        if path in ("/", "/people/p2wcex", "/hot", "/follow", "/community"):
             session = self.require_auth_page(self.path)
             if session is None:
                 return
@@ -2747,6 +2923,39 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(200, {"data": [raw_follow_moment(row) for row in rows]})
             return
 
+        if path == "/api/p1/community/ring":
+            session = self.require_auth_json()
+            if session is None:
+                return
+            qs = parse_qs(parsed.query)
+            page_num = int((qs.get("pageNum") or qs.get("page_num") or [1])[0])
+            page_size = int((qs.get("pageSize") or qs.get("page_size") or [20])[0])
+            try:
+                self.send_json(200, fetch_community_ring(page_num=page_num, page_size=page_size))
+            except Exception as error:
+                status = 409 if str(error) == "COMMUNITY_CONFIG_MISSING" else 502
+                self.send_json(status, {"error": "COMMUNITY_FETCH_FAILED", "message": str(error)})
+            return
+
+        if path == "/api/p1/community/comments":
+            session = self.require_auth_json()
+            if session is None:
+                return
+            qs = parse_qs(parsed.query)
+            content_token = (qs.get("contentToken") or qs.get("content_token") or [""])[0]
+            content_type = (qs.get("contentType") or qs.get("content_type") or ["pin"])[0]
+            page_num = int((qs.get("pageNum") or qs.get("page_num") or [1])[0])
+            page_size = int((qs.get("pageSize") or qs.get("page_size") or [20])[0])
+            if not content_token:
+                self.send_json(400, {"error": "CONTENT_TOKEN_REQUIRED"})
+                return
+            try:
+                self.send_json(200, fetch_community_comments(content_token, content_type, page_num, page_size))
+            except Exception as error:
+                status = 409 if str(error) == "COMMUNITY_CONFIG_MISSING" else 502
+                self.send_json(status, {"error": "COMMUNITY_COMMENTS_FAILED", "message": str(error)})
+            return
+
         if path == "/api/p1/travel/status":
             session = self.require_auth_json()
             if session is None:
@@ -2816,7 +3025,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_HEAD(self):
         parsed = urlparse(self.path)
         path = parsed.path
-        if path in ("/", "/people/p2wcex", "/hot", "/follow"):
+        if path in ("/", "/people/p2wcex", "/hot", "/follow", "/community"):
             session = self.require_auth_page(self.path)
             if session is None:
                 return
@@ -2928,6 +3137,91 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(status, response)
             return
 
+        if path == "/api/p1/community/reaction":
+            session = self.require_auth_json()
+            if session is None:
+                return
+            content_token = str(body.get("contentToken") or body.get("content_token") or "")
+            content_type = str(body.get("contentType") or body.get("content_type") or "pin")
+            action_value = int(body.get("actionValue") if body.get("actionValue") is not None else body.get("action_value") or 1)
+            if not content_token:
+                self.send_json(400, {"error": "CONTENT_TOKEN_REQUIRED"})
+                return
+            try:
+                upstream = send_community_reaction(content_token, content_type, action_value)
+                reward = None
+                profile = None
+                if action_value == 1:
+                    status, response = apply_content_event(
+                        {
+                            "eventId": f"community_{content_type}_{content_token}_like_{int(time.time() * 1000)}",
+                            "contentId": f"community_{content_token}",
+                            "contentType": "pin" if content_type == "pin" else "comment",
+                            "actionType": "like",
+                            "occurredAt": now_text(),
+                        },
+                        session["user_id"],
+                    )
+                    if status == 200:
+                        reward = response.get("reward")
+                        profile = response.get("profile")
+                self.send_json(200, {"ok": True, "upstream": upstream.get("data"), "reward": reward, "profile": profile})
+            except Exception as error:
+                status = 409 if str(error) == "COMMUNITY_CONFIG_MISSING" else 502
+                self.send_json(status, {"error": "COMMUNITY_REACTION_FAILED", "message": str(error)})
+            return
+
+        if path == "/api/p1/community/comment":
+            session = self.require_auth_json()
+            if session is None:
+                return
+            content_token = str(body.get("contentToken") or body.get("content_token") or "")
+            content_type = str(body.get("contentType") or body.get("content_type") or "pin")
+            content = str(body.get("content") or "").strip()
+            if not content_token or not content:
+                self.send_json(400, {"error": "BAD_COMMENT_PAYLOAD"})
+                return
+            try:
+                upstream = create_community_comment(content_token, content_type, content)
+                status, response = apply_content_event(
+                    {
+                        "eventId": f"community_{content_type}_{content_token}_comment_{int(time.time() * 1000)}",
+                        "contentId": f"community_{content_token}",
+                        "contentType": "pin" if content_type == "pin" else "comment",
+                        "actionType": "comment",
+                        "occurredAt": now_text(),
+                    },
+                    session["user_id"],
+                )
+                self.send_json(200, {
+                    "ok": True,
+                    "commentId": (upstream.get("data") or {}).get("comment_id"),
+                    "reward": response.get("reward") if status == 200 else None,
+                    "profile": response.get("profile") if status == 200 else None,
+                })
+            except Exception as error:
+                status = 409 if str(error) == "COMMUNITY_CONFIG_MISSING" else 502
+                self.send_json(status, {"error": "COMMUNITY_COMMENT_FAILED", "message": str(error)})
+            return
+
+        if path == "/api/p1/community/publish":
+            session = self.require_auth_json()
+            if session is None:
+                return
+            title = str(body.get("title") or "").strip()
+            content = str(body.get("content") or "").strip()
+            image_urls = body.get("imageUrls") or body.get("image_urls") or []
+            if not content:
+                self.send_json(400, {"error": "COMMUNITY_CONTENT_REQUIRED"})
+                return
+            try:
+                upstream = publish_community_pin(title, content, image_urls if isinstance(image_urls, list) else [])
+                self.send_json(200, {"ok": True, "contentToken": (upstream.get("data") or {}).get("content_token")})
+            except Exception as error:
+                status = 409 if str(error) == "COMMUNITY_CONFIG_MISSING" else 502
+                self.send_json(status, {"error": "COMMUNITY_PUBLISH_FAILED", "message": str(error)})
+            return
+
         if path == "/api/p1/travel/start":
             session = self.require_auth_json()
             if session is None:
@@ -2964,5 +3258,6 @@ if __name__ == "__main__":
     print(f"推荐页: http://{host}:{port}/")
     print(f"关注页: http://{host}:{port}/follow")
     print(f"热榜页: http://{host}:{port}/hot")
+    print(f"圈子页: http://{host}:{port}/community")
     print(f"个人页: http://{host}:{port}/people/p2wcex")
     server.serve_forever()
