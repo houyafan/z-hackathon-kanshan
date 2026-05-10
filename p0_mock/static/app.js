@@ -5,6 +5,9 @@ const toast = document.getElementById("toast");
 
 let currentUser = null;
 let profile = null;
+let dailyStat = null;
+let _patHandlerAttached = false;
+let _lastPatAt = 0;
 let travelState = null;
 let character = null;
 let feedItems = [];
@@ -16,9 +19,12 @@ let followMomentsPromise = null;
 let followMomentsLoaded = false;
 let followSyncError = null;
 let modelPreloadPromise = null;
+let _activeCommentAssist = null;
 let noticeTimer = null;
 let noticeRemaining = 0;
 let idleBandVisible = true;
+let _prevWakeStatus = null;
+let _lastWakeBubbleAt = null;
 const savedRewardWalk = localStorage.getItem("liukanshan_reward_walk_enabled") ?? localStorage.getItem("liukanshan_level_walk_enabled");
 let rewardWalkEnabled = savedRewardWalk !== "0";
 const MODEL_PATH = "/3d-liukanshan-roaming/liukanshan-slot.glb?v=2";
@@ -478,12 +484,21 @@ function renderPetHoverCard() {
   }
   const activeTravel = travelState?.activeTravel;
   const canTravel = travelState?.canTravel;
-  const travelAction = activeTravel?.status === "traveling"
+  const isSleeping = profile.wakeStatus === "sleeping";
+  const wakeRemaining = isSleeping
+    ? Math.max((profile.wakeRequired ?? 3) - (profile.wakeProgress ?? 0), 1)
+    : 0;
+  const travelDisabledForSleep = isSleeping;
+  const travelAction = isSleeping
+    ? `<button data-hover-travel-start disabled>看山休眠中</button>`
+    : activeTravel?.status === "traveling"
     ? `<button data-hover-travel-return>立即归来</button>`
     : activeTravel?.status === "returned"
       ? `<button data-hover-travel-claim="${escapeHTML(activeTravel.travelId)}">领取内容</button>`
-      : `<button data-hover-travel-start ${canTravel === false ? "disabled" : ""}>出门游历</button>`;
-  const travelHint = activeTravel?.status === "traveling"
+      : `<button data-hover-travel-start ${canTravel === false || travelDisabledForSleep ? "disabled" : ""}>出门游历</button>`;
+  const travelHint = isSleeping
+    ? `看山休眠中 · 还需阅读 ${wakeRemaining} 篇内容唤醒`
+    : activeTravel?.status === "traveling"
     ? `${travelThemeText(activeTravel.theme)} · ${formatCountdown(activeTravel.expectedReturnAt)}`
     : activeTravel?.status === "returned"
       ? `${travelThemeText(activeTravel.theme)} · 已带回内容`
@@ -560,6 +575,45 @@ function showCharacterNotice(message, seconds = 20) {
   }, 1000);
 }
 
+function applyWakeUI(currentProfile) {
+  // Updates the roaming character's sleeping styling and surfaces the LLM
+  // wake/sleep message in the speech bubble. Detects sleep<->wake transitions
+  // by comparing against `_prevWakeStatus` so we only show the bubble once
+  // per transition (and re-show it when the LLM eventually fills in
+  // lastWakeMessage). Sleeping bubble is sticky as long as the pet is asleep.
+  const charEl = document.getElementById("roamingCharacter");
+  if (charEl) {
+    charEl.classList.toggle("is-sleeping", currentProfile?.wakeStatus === "sleeping");
+  }
+  if (!currentProfile?.adopted) {
+    _prevWakeStatus = null;
+    _lastWakeBubbleAt = null;
+    return;
+  }
+  const status = currentProfile.wakeStatus || "awake";
+  const bubbleStamp = currentProfile.wakeMessageAt || null;
+  if (status === "sleeping") {
+    const message =
+      currentProfile.lastWakeMessage
+      || "看山有点累了，先小睡一会儿，主人去读几条内容把我唤醒吧。";
+    if (_prevWakeStatus !== "sleeping" || bubbleStamp !== _lastWakeBubbleAt) {
+      showCharacterNotice(message, 18);
+      _lastWakeBubbleAt = bubbleStamp;
+    }
+  } else if (status === "awake" && _prevWakeStatus === "sleeping") {
+    if (currentProfile.lastWakeMessage) {
+      showCharacterNotice(currentProfile.lastWakeMessage, 8);
+      _lastWakeBubbleAt = bubbleStamp;
+    }
+    try {
+      character?.playSpawnEffect?.({ scaleMultiplier: 1.2 });
+    } catch (error) {
+      console.warn("wake spawn effect failed", error);
+    }
+  }
+  _prevWakeStatus = status;
+}
+
 function preloadCharacterModel() {
   if (!modelPreloadPromise) {
     modelPreloadPromise = fetch(MODEL_PATH, { cache: "force-cache" })
@@ -620,6 +674,20 @@ async function loadTravelStatus() {
   return travelState;
 }
 
+async function loadDailyStat() {
+  if (!profile?.adopted) {
+    dailyStat = null;
+    return null;
+  }
+  try {
+    const data = await api("/api/p0/pet/daily-stat");
+    dailyStat = data?.dailyStat || null;
+  } catch (err) {
+    dailyStat = null;
+  }
+  return dailyStat;
+}
+
 async function loadContents() {
   const data = await api("/api/p0/contents?limit=30");
   feedItems = data.contents;
@@ -641,6 +709,15 @@ async function loadHotItems() {
       throw error;
     });
   return hotItemsPromise;
+}
+
+async function loadLeaderboard(limit = 50) {
+  try {
+    const data = await api(`/api/p1/leaderboard?limit=${limit}`);
+    return data;
+  } catch (err) {
+    return null;
+  }
 }
 
 async function loadFollowMoments({ sync = false } = {}) {
@@ -685,11 +762,12 @@ function syncCharacter() {
 
   container.style.display = "block";
   renderPetHoverCard();
+  ensurePatHandler();
   const idleMessage = `Lv.${profile.level} ${stageText(profile.stage)}`;
   if (!character) {
     try {
       preloadCharacterModel();
-      character = initRoamingCharacter({
+      character = window.character = initRoamingCharacter({
         modelPath: MODEL_PATH,
         idleMessage,
         arrivedMessage: "我来啦",
@@ -777,6 +855,7 @@ function syncCharacter() {
       character.setMessage(idleMessage, { autoHide: 1800 });
     }
   }
+  applyWakeUI(profile);
 }
 
 function shell(active) {
@@ -828,6 +907,39 @@ function highlightFollowTab() {
   });
 }
 
+async function pollFollowOverview(batchId, attempts = 12) {
+  // 12 polls × 2s = 24s upper bound
+  for (let i = 0; i < attempts; i++) {
+    await new Promise((r) => setTimeout(r, 2000));
+    let resp;
+    try {
+      resp = await api(`/api/p0/follow-moments/overview?batchId=${encodeURIComponent(batchId)}`);
+    } catch (err) {
+      continue;
+    }
+    if (!resp || resp.status === "pending") continue;
+    if (resp.status === "ready" && resp.overviewText) {
+      window._latestFollowSummaries = Array.isArray(resp.summaries) ? resp.summaries : [];
+      showCharacterNotice(resp.overviewText, 8);
+      // Re-render follow page so badges with new summaries appear immediately.
+      if (window.location.pathname === "/follow") renderFollow();
+      try {
+        await api("/api/p0/follow-moments/overview/consume", {
+          method: "POST",
+          body: JSON.stringify({ batchId }),
+        });
+      } catch (_) {
+        /* best effort */
+      }
+      return;
+    }
+    if (resp.status === "failed" || resp.status === "skipped") {
+      // Fall through to existing fallback bubble (no extra action).
+      return;
+    }
+  }
+}
+
 async function syncFollowMoments() {
   if (!currentUser || !profile?.adopted) return;
   try {
@@ -853,6 +965,9 @@ async function syncFollowMoments() {
       method: "POST",
       body: JSON.stringify({}),
     }).catch(() => {});
+    if (data && data.batchId && data.llm && data.llm.plannedCount > 0) {
+      pollFollowOverview(data.batchId);
+    }
   } catch (error) {
     if (!["OAUTH_TOKEN_REQUIRED", "FOLLOW_MOMENTS_SYNC_FAILED"].includes(error.error)) {
       console.warn("Follow moments sync failed", error);
@@ -887,6 +1002,90 @@ function renderLoginGate() {
       </section>
     </main>
   `;
+}
+
+function renderDailyQuests(stat) {
+  if (!profile?.adopted) return "";
+  const safeStat = stat || {};
+  const signed = !!safeStat.signedInAt;
+  const reads = (safeStat.validReadCount || 0) + (safeStat.validWatchCount || 0);
+  const questDone = !!safeStat.quest3readsClaimed;
+  return `
+    <section class="card side-card daily-quests">
+      <header class="daily-quests-title">每日任务</header>
+      <ul class="daily-quests-list">
+        <li class="daily-quest ${signed ? "is-done" : ""}">
+          <span class="daily-quest-icon">${signed ? "✓" : "○"}</span>
+          <span class="daily-quest-text">每日签到</span>
+          ${signed
+            ? `<span class="daily-quest-status">已领取</span>`
+            : `<button class="daily-quest-btn" data-action="daily-signin">立即签到</button>`}
+        </li>
+        <li class="daily-quest ${questDone ? "is-done" : ""}">
+          <span class="daily-quest-icon">${questDone ? "✓" : "○"}</span>
+          <span class="daily-quest-text">浏览 3 条内容</span>
+          <span class="daily-quest-progress">${Math.min(reads, 3)}/3</span>
+        </li>
+      </ul>
+    </section>
+  `;
+}
+
+async function handleDailySignin(button) {
+  if (!button || button.disabled) return;
+  button.disabled = true;
+  const originalText = button.textContent;
+  button.textContent = "签到中...";
+  try {
+    const resp = await api("/api/p1/daily/sign-in", { method: "POST", body: "{}" });
+    if (resp?.alreadySignedIn) {
+      showToast("今天已经签过啦");
+    } else if (resp?.reward) {
+      showReward({
+        satiety: resp.reward.satiety,
+        mood: resp.reward.mood,
+        travelEnergy: resp.reward.travelEnergy,
+      }, button);
+      showToast("签到成功，看山很开心");
+    }
+    if (resp?.profile) profile = resp.profile;
+    await loadDailyStat();
+    syncCharacter();
+    renderCurrentRoute();
+  } catch (err) {
+    button.disabled = false;
+    button.textContent = originalText || "立即签到";
+    showToast(err?.message || "签到失败");
+  }
+}
+
+async function handlePetPat() {
+  const now = Date.now();
+  if (now - _lastPatAt < 1500) return; // local debounce
+  _lastPatAt = now;
+  try {
+    const resp = await api("/api/p1/pet/pat", { method: "POST", body: "{}" });
+    if (resp?.ok && resp.reaction) {
+      showCharacterNotice(resp.reaction, 4);
+      if (resp.profile) profile = resp.profile;
+      syncCharacter();
+    }
+  } catch (err) {
+    if (err?.message) {
+      showCharacterNotice(err.message, 3);
+    }
+  }
+}
+
+function ensurePatHandler() {
+  if (_patHandlerAttached) return;
+  const el = document.getElementById("roamingCharacter");
+  if (!el) return;
+  el.addEventListener("click", (event) => {
+    if (event.target.closest("#petHoverCard")) return;
+    handlePetPat();
+  });
+  _patHandlerAttached = true;
 }
 
 function petPanel() {
@@ -1150,12 +1349,23 @@ function followMomentCard(moment) {
   const author = targetAuthor.name ? `${targetAuthor.name}：` : "";
   const timeText = formatMomentTime(moment.action_time);
   const action = moment.action_text || "有了新动态";
+  // Best-effort match summaries: raw_payload from listing endpoint lacks
+  // moment_key, so fall back to actorName match within the latest batch.
+  const actorName = actor.name || "";
+  const summaryEntry = (window._latestFollowSummaries || []).find(
+    (s) => s && (s.key === moment.momentKey || (actorName && s.actorName === actorName)),
+  );
+  const llmSummary = (summaryEntry && summaryEntry.summary) || moment.llmSummary || "";
+  const llmBadge = llmSummary
+    ? `<span class="follow-llm-badge" data-llm-summary="${escapeHTML(llmSummary)}" aria-label="刘看山一句话总结">看山一句</span>`
+    : "";
   return `
     <article class="card follow-moment-card">
       <div class="follow-moment-source">
         <span class="follow-moment-avatar avatar"></span>
         <span><strong>${escapeHTML(actor.name || "知乎用户")}</strong>${escapeHTML(action)}</span>
         ${timeText ? `<small>${escapeHTML(timeText)}</small>` : ""}
+        ${llmBadge}
       </div>
       <h2><button class="content-open-title">${escapeHTML(title)}</button></h2>
       ${excerpt ? `
@@ -1222,11 +1432,16 @@ function renderRecommend() {
         ${hotCard()}
         ${authorPlatformCard()}
         ${recommendFollowCard()}
+        <div data-leaderboard-slot="recommend"></div>
       </aside>
     </main>
   `;
   bindCommon();
   bindRecommend();
+  loadLeaderboard(20).then((data) => {
+    const slot = document.querySelector('[data-leaderboard-slot="recommend"]');
+    if (slot) slot.outerHTML = renderLeaderboard(data, { variant: "mini" });
+  });
 }
 
 function renderFollow() {
@@ -1294,6 +1509,54 @@ function renderHot() {
   bindCommon();
 }
 
+function renderLeaderboard(data, { variant = "full" } = {}) {
+  if (!data) return "";
+  const top = (data.topEntries || []).slice(0, variant === "mini" ? 3 : 10);
+  const showSelfFooter = data.selfEntry && !top.some(e => e.isSelf);
+  if (top.length === 0) {
+    return `
+      <section class="leaderboard ${variant === "mini" ? "leaderboard-mini" : ""}">
+        <header class="leaderboard-title">看山榜单</header>
+        <div class="leaderboard-empty">在等更多伙伴一起来养看山～</div>
+      </section>
+    `;
+  }
+  const renderRow = (e) => `
+    <li class="leaderboard-row ${e.isSelf ? "is-self" : ""}">
+      <span class="leaderboard-rank">${e.rank <= 3 ? ["🥇", "🥈", "🥉"][e.rank - 1] : "#" + e.rank}</span>
+      <span class="leaderboard-avatar">${e.avatarPath
+        ? `<img src="${escapeHTML(e.avatarPath)}" alt="">`
+        : `<span class="leaderboard-avatar-fallback">${escapeHTML((e.fullname || "?")[0])}</span>`}</span>
+      <span class="leaderboard-info">
+        <span class="leaderboard-name">${escapeHTML(e.fullname)}${e.isSelf ? " · 我" : ""}</span>
+        <span class="leaderboard-meta">${escapeHTML(e.petName)} · L${e.level} · ${escapeHTML(stageLabel(e.stage))}</span>
+      </span>
+      <span class="leaderboard-exp">${e.totalExp.toLocaleString()} 经验</span>
+    </li>
+  `;
+  return `
+    <section class="leaderboard ${variant === "mini" ? "leaderboard-mini" : ""}">
+      <header class="leaderboard-title">
+        看山榜单
+        <span class="leaderboard-total">共 ${data.totalAdopters || 0} 位</span>
+      </header>
+      <ol class="leaderboard-list">
+        ${top.map(renderRow).join("")}
+      </ol>
+      ${showSelfFooter ? `
+        <div class="leaderboard-self-footer">
+          <span>你的排名</span>
+          ${renderRow(data.selfEntry)}
+        </div>
+      ` : ""}
+    </section>
+  `;
+}
+
+function stageLabel(stage) {
+  return ({ cub: "幼崽", growing: "成长", adult: "成年", advanced: "进阶" })[stage] || stage || "";
+}
+
 function renderPeople() {
   const displayName = escapeHTML(currentUser?.fullname || "知乎用户");
   const headline = escapeHTML(currentUser?.headline || "这个人还没有填写个人简介。");
@@ -1336,6 +1599,7 @@ function renderPeople() {
         <aside class="side-stack">
           ${creatorCard()}
           ${petPanel()}
+          ${renderDailyQuests(dailyStat)}
           <section class="card side-card">
             <div class="creator-stat">
               <div><small>关注了</small><strong>1</strong></div>
@@ -1349,11 +1613,30 @@ function renderPeople() {
               <li>获得 22 次喜欢，2 次收藏</li>
             </ul>
           </section>
+          <div data-leaderboard-slot="people"></div>
         </aside>
       </section>
     </main>
   `;
   bindCommon();
+  loadLeaderboard(50).then((data) => {
+    const slot = document.querySelector('[data-leaderboard-slot="people"]');
+    if (slot) slot.outerHTML = renderLeaderboard(data, { variant: "full" });
+  });
+  if (profile?.adopted && !dailyStat) {
+    loadDailyStat().then(() => {
+      const aside = document.querySelector(".profile-grid .side-stack");
+      if (!aside) return;
+      const existing = aside.querySelector(".daily-quests");
+      const html = renderDailyQuests(dailyStat);
+      if (!html) return;
+      if (existing) {
+        const wrapper = document.createElement("div");
+        wrapper.innerHTML = html.trim();
+        existing.replaceWith(wrapper.firstChild);
+      }
+    });
+  }
 }
 
 function bindCommon() {
@@ -1384,6 +1667,17 @@ function bindRecommend() {
   document.querySelectorAll("[data-interact]").forEach((button) => {
     button.addEventListener("click", () => {
       const item = feedItems.find((entry) => entry.id === button.dataset.interact);
+      if (button.dataset.action === "comment") {
+        // 评论按钮不再直接发奖：打开内容弹窗，并把焦点放到评论框
+        if (!item) return;
+        openContent(item, button).then(() => {
+          window.setTimeout(() => {
+            const ta = document.querySelector(".content-modal .comment-textarea");
+            ta?.focus();
+          }, 60);
+        });
+        return;
+      }
       submitContentEvent(item, button.dataset.action, button);
       button.classList.add("active");
     });
@@ -1405,6 +1699,27 @@ async function openContent(item, sourceElement) {
   }
 }
 
+function renderCommentEditor(content) {
+  const contentId = content.contentId || content.id || "";
+  const contentType = content.contentType || content.type || "article";
+  return `
+    <section class="comment-editor" data-content-id="${escapeHTML(contentId)}" data-content-type="${escapeHTML(contentType)}">
+      <div class="comment-editor-header">
+        <span class="comment-editor-title">写下你的评论</span>
+        <button type="button" class="comment-ai-btn" data-action="ai-comment">
+          <span class="comment-ai-icon">✨</span>
+          让看山帮你想一句
+        </button>
+      </div>
+      <textarea class="comment-textarea" placeholder="说点什么吧（6-200 字）" rows="4" maxlength="200"></textarea>
+      <div class="comment-editor-footer">
+        <span class="comment-char-count">0/200</span>
+        <button type="button" class="comment-submit-btn" data-action="comment-submit" disabled>提交评论</button>
+      </div>
+    </section>
+  `;
+}
+
 function renderContentModal(content) {
   document.querySelector(".content-modal")?.remove();
   const modal = document.createElement("div");
@@ -1416,13 +1731,151 @@ function renderContentModal(content) {
       <h1>${escapeHTML(content.title)}</h1>
       <div class="content-author">${escapeHTML(content.author)}</div>
       <div class="content-full">${renderParagraphs(content.fullContent)}</div>
+      ${renderCommentEditor(content)}
     </div>
   `;
   document.body.appendChild(modal);
-  modal.querySelector(".content-close").addEventListener("click", () => modal.remove());
+  const closeModal = () => {
+    discardActiveCommentAssist();
+    modal.remove();
+  };
+  modal.querySelector(".content-close").addEventListener("click", closeModal);
   modal.addEventListener("click", (event) => {
-    if (event.target === modal) modal.remove();
+    if (event.target === modal) closeModal();
   });
+  bindCommentEditor(modal);
+}
+
+function bindCommentEditor(modalRoot) {
+  const editor = modalRoot.querySelector(".comment-editor");
+  if (!editor) return;
+  const textarea = editor.querySelector(".comment-textarea");
+  const submitBtn = editor.querySelector(".comment-submit-btn");
+  const counter = editor.querySelector(".comment-char-count");
+  const aiBtn = editor.querySelector(".comment-ai-btn");
+
+  // While AI is streaming, force submit disabled — otherwise user can submit
+  // before `done` arrives and the assistLogId never gets attached to the request.
+  const updateSubmitState = () => {
+    if (editor.dataset.aiStreaming === "true") {
+      submitBtn.disabled = true;
+      return;
+    }
+    const len = textarea.value.length;
+    submitBtn.disabled = len < 6 || len > 200;
+  };
+
+  textarea.addEventListener("input", () => {
+    const len = textarea.value.length;
+    counter.textContent = `${len}/200`;
+    if (submitBtn.textContent === "已提交 ✓" && len > 0) {
+      submitBtn.textContent = "提交评论";
+    }
+    updateSubmitState();
+  });
+
+  aiBtn.addEventListener("click", () => {
+    if (_activeCommentAssist) {
+      _activeCommentAssist.abort();
+      _activeCommentAssist = null;
+    }
+    const contentId = editor.dataset.contentId;
+    if (!contentId) return;
+    aiBtn.disabled = true;
+    aiBtn.innerHTML = '<span class="comment-ai-icon">⌛</span>看山在写...';
+    textarea.value = "";
+    counter.textContent = "0/200";
+    editor.dataset.aiStreaming = "true";
+    updateSubmitState();
+    let logId = null;
+    const url = `/api/p1/comment/assist?content_id=${encodeURIComponent(contentId)}`;
+    const es = new EventSource(url);
+    _activeCommentAssist = {
+      abort: () => es.close(),
+      logId: null,
+    };
+    es.onmessage = (evt) => {
+      try {
+        const data = JSON.parse(evt.data);
+        if (data.id) {
+          logId = data.id;
+          if (_activeCommentAssist) _activeCommentAssist.logId = logId;
+        }
+        if (data.chunk) {
+          textarea.value += data.chunk;
+          counter.textContent = `${textarea.value.length}/200`;
+        }
+        if (data.done) {
+          es.close();
+          _activeCommentAssist = null;
+          aiBtn.disabled = false;
+          aiBtn.innerHTML = '<span class="comment-ai-icon">↻</span>换一句';
+          if (logId) editor.dataset.assistLogId = String(logId);
+          editor.dataset.aiStreaming = "false";
+          updateSubmitState();
+        }
+      } catch (e) {
+        /* ignore parse errors */
+      }
+    };
+    es.onerror = () => {
+      es.close();
+      _activeCommentAssist = null;
+      aiBtn.disabled = false;
+      aiBtn.innerHTML = '<span class="comment-ai-icon">✨</span>让看山帮你想一句';
+      editor.dataset.aiStreaming = "false";
+      updateSubmitState();
+    };
+  });
+
+  submitBtn.addEventListener("click", async () => {
+    const text = textarea.value.trim();
+    if (text.length < 6) return;
+    const requestBody = {
+      contentId: editor.dataset.contentId,
+      commentText: text,
+      assistLogId: editor.dataset.assistLogId ? Number(editor.dataset.assistLogId) : null,
+    };
+    submitBtn.disabled = true;
+    submitBtn.textContent = "提交中...";
+    try {
+      const resp = await api("/api/p1/comment/submit", {
+        method: "POST",
+        body: JSON.stringify(requestBody),
+      });
+      if (resp?.profile) profile = resp.profile;
+      if (resp?.content) mergeUpdatedContent(resp.content);
+      if (resp?.reward) showReward(resp.reward, submitBtn);
+      syncCharacter();
+      renderCurrentRoute();
+      // mark assist log as used (no need to discard on close anymore)
+      _activeCommentAssist = null;
+      delete editor.dataset.assistLogId;
+      textarea.value = "";
+      counter.textContent = "0/200";
+      submitBtn.textContent = "已提交 ✓";
+      submitBtn.disabled = true;
+    } catch (err) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "提交评论";
+      showToast(err?.message || "提交失败");
+    }
+  });
+}
+
+function discardActiveCommentAssist() {
+  if (!_activeCommentAssist) return;
+  const handle = _activeCommentAssist;
+  _activeCommentAssist = null;
+  try {
+    handle.abort();
+  } catch (_) { /* ignore */ }
+  if (handle.logId) {
+    api("/api/p1/comment/discard", {
+      method: "POST",
+      body: JSON.stringify({ assistLogId: handle.logId }),
+    }).catch(() => {});
+  }
 }
 
 let travelReturnTimer = null;
@@ -1598,6 +2051,21 @@ function renderTravelHandbookEntry(entry) {
   const contentsBlock = (entry.contents || [])
     .map((content) => travelContentButtonHTML(content))
     .join("");
+  const llmReady = status === "ready" && !!summaryText;
+  const sharePayload = JSON.stringify({
+    theme: entry.coverStyle,
+    travelId: entry.travelId,
+    llmSummary: entry.llmSummary,
+    llmPetQuote: entry.llmPetQuote,
+    llmHighlights: entry.llmHighlights,
+  });
+  const shareBtn = `
+    <button type="button" class="handbook-share-btn"
+            ${llmReady ? "" : "disabled"}
+            data-share-handbook="${escapeHTML(sharePayload)}">
+      ${llmReady ? "分享这次旅行" : "等看山写完再分享～"}
+    </button>
+  `;
   return `
     <article class="travel-handbook-entry ${escapeHTML(entry.coverStyle || "")}">
       <div>
@@ -1606,6 +2074,7 @@ function renderTravelHandbookEntry(entry) {
         ${summaryBlock}
         <p class="handbook-pet-quote">${escapeHTML(quote)}</p>
         ${highlightsBlock}
+        ${shareBtn}
       </div>
       <div class="travel-handbook-contents">
         ${contentsBlock}
@@ -1722,6 +2191,22 @@ function renderTravelHandbook(entries) {
   });
   modal.querySelectorAll(".handbook-content-button").forEach((button) => {
     button.addEventListener("click", () => handleHandbookContentClick(button));
+  });
+  modal.querySelectorAll("[data-share-handbook]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (button.disabled) return;
+      let data;
+      try {
+        data = JSON.parse(button.dataset.shareHandbook);
+      } catch {
+        return;
+      }
+      if (typeof window.openShareCardPreview !== "function") {
+        showToast("分享组件未就绪");
+        return;
+      }
+      window.openShareCardPreview(data);
+    });
   });
 }
 
@@ -1876,11 +2361,18 @@ document.addEventListener("click", (event) => {
     renderCurrentRoute();
   }
 });
+document.addEventListener("click", (event) => {
+  const target = event.target.closest('[data-action="daily-signin"]');
+  if (!target) return;
+  event.preventDefault();
+  handleDailySignin(target);
+});
 
 const authUser = await loadAuth();
 if (authUser) {
   await loadProfile();
   await loadTravelStatus();
+  await loadDailyStat();
   await loadContents();
   if (window.location.pathname === "/hot") {
     await loadHotItems();

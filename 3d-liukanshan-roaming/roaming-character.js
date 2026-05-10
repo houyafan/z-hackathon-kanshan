@@ -1165,7 +1165,8 @@ class RoamingCharacter {
         this.renderer = new THREE.WebGLRenderer({
             canvas: canvas,
             antialias: true,
-            alpha: true
+            alpha: true,
+            preserveDrawingBuffer: true
         });
         this.renderer.setSize(width, height);
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -1811,6 +1812,27 @@ class RoamingCharacter {
         }
         this.travelGate.startGoTravel();
         this.travelWasActive = true;
+    }
+
+    captureSceneSnapshot(themeOverrides = {}) {
+        if (!this.renderer || !this.scene || !this.camera) {
+            return null;
+        }
+        const prevBg = this.scene.background;
+        const prevClearColor = this.renderer.getClearColor(new THREE.Color()).getHex();
+        const prevClearAlpha = this.renderer.getClearAlpha();
+        try {
+            if (themeOverrides.background) {
+                this.scene.background = new THREE.Color(themeOverrides.background);
+                this.renderer.setClearColor(themeOverrides.background, 1);
+            }
+            this.renderer.render(this.scene, this.camera);
+            return this.renderer.domElement.toDataURL('image/png');
+        } finally {
+            this.scene.background = prevBg;
+            this.renderer.setClearColor(prevClearColor, prevClearAlpha);
+            this.renderer.render(this.scene, this.camera);
+        }
     }
 
     startBackHome(options = {}) {

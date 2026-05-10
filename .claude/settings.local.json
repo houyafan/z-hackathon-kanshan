@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(sqlite3 db/sqlite/liukanshan_p0.sqlite \".schema\")",
+      "Bash(python3 *)",
+      "Bash(node -e \"require\\('fs'\\).readFileSync\\('p0_mock/static/app.js','utf8'\\); new Function\\(require\\('fs'\\).readFileSync\\('p0_mock/static/app.js','utf8'\\)\\); console.log\\('app.js parse ok'\\)\")",
+      "Bash(node --check p0_mock/static/app.js)",
+      "Bash(curl -s -b /tmp/lks_p1_cookie 'http://127.0.0.1:5191/api/p0/contents?limit=3')",
+      "Bash(curl -s -b /tmp/lks_p1_cookie -X POST -H 'Content-Type: application/json' -d '{\"eventId\":\"evt_e2e___TRACKED_VAR__\",\"contentId\":\"article_ai_bonus_001\",\"contentType\":\"article\",\"actionType\":\"read\",\"completionRatio\":0.9,\"durationSec\":60,\"contentTags\":[\"AI\",\"科技\",\"学术\"]}' http://127.0.0.1:5191/api/p0/pet/content-events)",
+      "Bash(curl -s -b /tmp/lks_p1_cookie http://127.0.0.1:5191/api/p0/pet/profile)",
+      "Bash(git rm *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git ls-files *)",
+      "Bash(xargs -I{} ls -lh {})",
+      "Bash(git mv *)",
+      "Bash(git push *)",
+      "Bash(python -m unittest tests.test_pet_llm -v)",
+      "Bash(sqlite3 db/sqlite/liukanshan_p0.sqlite)",
+      "Bash(node -c p0_mock/static/app.js)",
+      "Bash(curl -s http://127.0.0.1:5173/api/auth/me)",
+      "Bash(curl -s http://127.0.0.1:5173/api/p0/contents)",
+      "Bash(pkill -f \"p0_mock/server.py\")",
+      "Bash(LOCAL_AUTH_BYPASS=true python3 *)",
+      "Bash(sqlite3 db/sqlite/liukanshan_p0.sqlite \"SELECT id, user_id, actor_name, action_text, target_title, llm_summary_status FROM zhihu_follow_moment ORDER BY id DESC LIMIT 5\")",
+      "Bash(sqlite3 db/sqlite/liukanshan_p0.sqlite \"SELECT id, sync_batch_id, status, overview_text, moment_count FROM pet_follow_moment_overview ORDER BY id DESC LIMIT 3\")",
+      "Bash(chmod +x *)"
+    ]
+  }
+}

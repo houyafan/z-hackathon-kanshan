@@ -67,6 +67,11 @@ CREATE TABLE IF NOT EXISTS pet_profile (
   satiety INTEGER NOT NULL DEFAULT 50 CHECK (satiety BETWEEN 0 AND 100),
   mood INTEGER NOT NULL DEFAULT 50 CHECK (mood BETWEEN 0 AND 100),
   health INTEGER NOT NULL DEFAULT 100 CHECK (health BETWEEN 0 AND 100),
+  wake_status TEXT NOT NULL DEFAULT 'awake'
+    CHECK (wake_status IN ('awake', 'sleeping')),
+  wake_progress INTEGER NOT NULL DEFAULT 0,
+  last_wake_message TEXT DEFAULT NULL,
+  wake_message_at TEXT DEFAULT NULL,
   travel_energy INTEGER NOT NULL DEFAULT 0 CHECK (travel_energy >= 0),
   travel_status TEXT NOT NULL DEFAULT 'home'
     CHECK (travel_status IN ('home', 'traveling', 'returned', 'cooldown', 'sleeping')),
@@ -114,10 +119,10 @@ CREATE TABLE IF NOT EXISTS pet_growth_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
 
-  source_type TEXT NOT NULL CHECK (source_type IN ('content_event', 'daily_task', 'manual', 'decay')),
+  source_type TEXT NOT NULL CHECK (source_type IN ('content_event', 'daily_task', 'manual', 'decay', 'pat')),
   source_id TEXT NOT NULL,
 
-  change_type TEXT NOT NULL CHECK (change_type IN ('total_exp', 'satiety', 'mood', 'level', 'stage')),
+  change_type TEXT NOT NULL CHECK (change_type IN ('total_exp', 'satiety', 'mood', 'level', 'stage', 'travel_energy')),
   delta INTEGER NOT NULL,
   before_value INTEGER NOT NULL,
   after_value INTEGER NOT NULL,
@@ -153,6 +158,9 @@ CREATE TABLE IF NOT EXISTS pet_daily_stat (
   satiety_gained INTEGER NOT NULL DEFAULT 0 CHECK (satiety_gained >= 0),
   mood_gained INTEGER NOT NULL DEFAULT 0 CHECK (mood_gained >= 0),
   travel_energy_gained INTEGER NOT NULL DEFAULT 0 CHECK (travel_energy_gained >= 0),
+
+  signed_in_at TEXT DEFAULT NULL,
+  quest_3reads_claimed INTEGER NOT NULL DEFAULT 0,
 
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -202,6 +210,8 @@ CREATE TABLE IF NOT EXISTS zhihu_follow_moment (
   llm_summary TEXT DEFAULT NULL,
   llm_summary_model TEXT DEFAULT NULL,
   llm_summary_updated_at TEXT DEFAULT NULL,
+  llm_retry_count INTEGER NOT NULL DEFAULT 0,
+  llm_error TEXT DEFAULT NULL,
 
   reward_granted INTEGER NOT NULL DEFAULT 0 CHECK (reward_granted IN (0, 1)),
   notified_at TEXT DEFAULT NULL,
@@ -448,3 +458,43 @@ VALUES
   );
 
 COMMIT;
+
+-- R3 评论 LLM 辅助：每次 AI 建议的生命周期日志
+CREATE TABLE IF NOT EXISTS pet_comment_assist_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  content_id TEXT NOT NULL,
+  content_type TEXT NOT NULL,
+  prompt_payload TEXT NOT NULL,
+  suggested_comment TEXT DEFAULT NULL,
+  status TEXT NOT NULL DEFAULT 'streaming'
+    CHECK (status IN ('streaming','ready','failed','used','discarded')),
+  model TEXT DEFAULT NULL,
+  final_comment TEXT DEFAULT NULL,
+  used_as_is INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_comment_assist_user_content
+  ON pet_comment_assist_log(user_id, content_id);
+CREATE INDEX IF NOT EXISTS idx_comment_assist_user_streaming
+  ON pet_comment_assist_log(user_id, content_id, status);
+
+-- R4 关注动态 LLM 总结：每次 sync 的"扫一眼关注 tab"聚合句
+CREATE TABLE IF NOT EXISTS pet_follow_moment_overview (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  sync_batch_id TEXT NOT NULL,
+  overview_text TEXT NOT NULL DEFAULT '',
+  moment_count INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'ready'
+    CHECK (status IN ('ready','failed','skipped')),
+  model TEXT DEFAULT NULL,
+  consumed_at TEXT DEFAULT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_follow_overview_user_unconsumed
+  ON pet_follow_moment_overview(user_id, consumed_at);
+CREATE INDEX IF NOT EXISTS idx_follow_overview_batch
+  ON pet_follow_moment_overview(sync_batch_id);

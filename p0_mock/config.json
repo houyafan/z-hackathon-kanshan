@@ -14,7 +14,8 @@
     "api_url": "https://ark.cn-beijing.volces.com/api/v3/chat/completions",
     "api_key": "da042629-c5cb-4539-81c3-da191f144888",
     "model": "ep-20260318222506-4qlr2",
-    "timeout_sec": 30
+    "timeout_sec": 30,
+    "demo_fallback": false
   },
   "mock_user": {
     "uid": 10001,
