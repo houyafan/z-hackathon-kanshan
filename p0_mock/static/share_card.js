@@ -16,12 +16,20 @@ function ensureShareCardRoot() {
   return root;
 }
 
-function renderShareCardHtml({ theme, summary, petQuote, highlight, sceneDataUrl }) {
+function renderShareCardHtml({ theme, summary, petQuote, highlight, sceneDataUrl, level, levelTitle, level2dImage, shareBgImage }) {
   const themeMeta = SHARE_CARD_THEMES[theme] || SHARE_CARD_THEMES.polar;
+  const levelBlock = level2dImage ? `
+    <div class="share-card-level">
+      <img src="${escapeShareHtml(level2dImage)}" alt="刘看山等级形象">
+      <span>Lv.${escapeShareHtml(level || 1)}</span>
+    </div>
+  ` : '';
   return `
-    <div class="share-card" style="background:${themeMeta.background}">
+    <div class="share-card" style="background:${themeMeta.background}${shareBgImage ? ` url('${escapeShareHtml(shareBgImage)}') center/cover no-repeat` : ''}">
       <div class="share-card-scene" style="background-image:url('${sceneDataUrl || ''}');background-color:${themeMeta.background}">
+        ${levelBlock}
         <div class="share-card-theme">${themeMeta.label}</div>
+        ${levelTitle ? `<div class="share-card-level-title">Lv.${escapeShareHtml(level || 1)} · ${escapeShareHtml(levelTitle)}</div>` : ''}
         <div class="share-card-pet-quote">"${escapeShareHtml(petQuote || '看山带回了一份小汇报')}"</div>
       </div>
       <div class="share-card-body">
@@ -68,7 +76,43 @@ window.generateTravelShareCard = async function (handbookData) {
     petQuote: handbookData.llmPetQuote || handbookData.petQuote || '',
     highlight: Array.isArray(highlights) && highlights.length ? highlights[0] : null,
     sceneDataUrl,
+    level: handbookData.level,
+    levelTitle: handbookData.levelTitle,
+    level2dImage: handbookData.level2dImage,
+    shareBgImage: handbookData.shareBgImage,
   });
+  await new Promise(r => requestAnimationFrame(r));
+  const canvas = await html2canvas(root.querySelector('.share-card'), {
+    backgroundColor: null,
+    width: 750,
+    height: 1280,
+    scale: 2,
+    useCORS: true,
+  });
+  return canvas.toDataURL('image/png');
+};
+
+window.generateLeaderboardShareCard = async function (payload) {
+  if (window.__html2canvasFailed || typeof html2canvas !== 'function') return null;
+  const root = ensureShareCardRoot();
+  root.innerHTML = `
+    <div class="share-card leaderboard-share-card"
+         style="background:#f4f9ff${payload.shareBgImage ? ` url('${escapeShareHtml(payload.shareBgImage)}') center/cover no-repeat` : ''}">
+      <div class="leaderboard-share-visual">
+        <img src="${escapeShareHtml(payload.level2dImage || '')}" alt="刘看山等级形象">
+      </div>
+      <div class="leaderboard-share-copy">
+        <small>刘看山等级榜</small>
+        <h1>Lv.${escapeShareHtml(payload.level || 1)}</h1>
+        <strong>${escapeShareHtml(payload.levelTitle || '宇宙知识探索员')}</strong>
+        <p>${escapeShareHtml(payload.slogan || '内容越读，看山越强')}</p>
+      </div>
+      <div class="share-card-footer">
+        <span class="share-card-watermark">知乎 · 刘看山虚拟宠物</span>
+        <span class="share-card-qr">↗</span>
+      </div>
+    </div>
+  `;
   await new Promise(r => requestAnimationFrame(r));
   const canvas = await html2canvas(root.querySelector('.share-card'), {
     backgroundColor: null,

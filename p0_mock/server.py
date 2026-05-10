@@ -359,6 +359,150 @@ def seed_decay_config(conn):
         )
 
 
+LEVEL_VISUALS = [
+    {
+        "level": 1,
+        "stage": "cub",
+        "title": "新手探索员",
+        "effect_style": "cute",
+        "description": "基础红围巾，刚开始陪主人探索知识宇宙",
+    },
+    {
+        "level": 2,
+        "stage": "cub",
+        "title": "星章探索员",
+        "effect_style": "cute",
+        "description": "围巾星章点亮，开始积累阅读成就",
+    },
+    {
+        "level": 3,
+        "stage": "cub",
+        "title": "任务新星",
+        "effect_style": "cute",
+        "description": "挂上任务星章，进入稳定阅读节奏",
+    },
+    {
+        "level": 4,
+        "stage": "growing",
+        "title": "行星记录员",
+        "effect_style": "explore",
+        "description": "戴上航天帽和行星徽章，开始记录知识旅程",
+    },
+    {
+        "level": 5,
+        "stage": "growing",
+        "title": "火箭见习官",
+        "effect_style": "explore",
+        "description": "背上迷你科考包，准备更远的内容探索",
+    },
+    {
+        "level": 6,
+        "stage": "growing",
+        "title": "星图导航员",
+        "effect_style": "explore",
+        "description": "护目镜与指南针就位，能看懂更复杂的知识路线",
+    },
+    {
+        "level": 7,
+        "stage": "adult",
+        "title": "深空任务官",
+        "effect_style": "cool",
+        "description": "带着任务旗帜出发，拥有稳定的深度阅读能力",
+    },
+    {
+        "level": 8,
+        "stage": "adult",
+        "title": "知识探测者",
+        "effect_style": "cool",
+        "description": "点亮探测头灯和知识权杖，能发现隐藏的优质内容",
+    },
+    {
+        "level": 9,
+        "stage": "adult",
+        "title": "星际领航员",
+        "effect_style": "cool",
+        "description": "蓝金徽章与能量装备成型，进入高阶陪伴状态",
+    },
+    {
+        "level": 10,
+        "stage": "advanced",
+        "title": "宇宙知识领航员",
+        "effect_style": "legendary",
+        "description": "金色星际冠、披风与权杖加身，成为知识宇宙的领航伙伴",
+    },
+]
+
+
+def default_level_visual(level):
+    try:
+        safe_level = max(1, int(level))
+    except (TypeError, ValueError):
+        safe_level = 1
+    capped_level = min(safe_level, 10)
+    config = next((item for item in LEVEL_VISUALS if item["level"] == capped_level), LEVEL_VISUALS[0])
+    return {
+        **config,
+        "level": safe_level,
+        "image_url": f"/static/assets/pet-level/level-{capped_level:02d}.png",
+        "thumbnail_url": f"/static/assets/pet-level/level-{capped_level:02d}.png",
+        "share_bg_url": f"/static/assets/pet-level/{config['effect_style']}-share-bg.svg",
+    }
+
+
+def seed_level_visual_config(conn):
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pet_level_visual_config (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          level INTEGER NOT NULL CHECK (level >= 1),
+          stage TEXT NOT NULL CHECK (stage IN ('cub', 'growing', 'adult', 'advanced')),
+          title TEXT NOT NULL,
+          effect_style TEXT NOT NULL
+            CHECK (effect_style IN ('cute', 'explore', 'cool', 'legendary')),
+          image_url TEXT NOT NULL,
+          thumbnail_url TEXT DEFAULT NULL,
+          share_bg_url TEXT NOT NULL,
+          description TEXT DEFAULT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(level)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pet_level_visual_style "
+        "ON pet_level_visual_config(effect_style, level)"
+    )
+    for item in LEVEL_VISUALS:
+        visual = default_level_visual(item["level"])
+        conn.execute(
+            """
+            INSERT INTO pet_level_visual_config
+              (level, stage, title, effect_style, image_url, thumbnail_url, share_bg_url, description)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(level) DO UPDATE SET
+              stage = excluded.stage,
+              title = excluded.title,
+              effect_style = excluded.effect_style,
+              image_url = excluded.image_url,
+              thumbnail_url = excluded.thumbnail_url,
+              share_bg_url = excluded.share_bg_url,
+              description = excluded.description,
+              updated_at = CURRENT_TIMESTAMP
+            """,
+            (
+                item["level"],
+                item["stage"],
+                item["title"],
+                item["effect_style"],
+                visual["image_url"],
+                visual["thumbnail_url"],
+                visual["share_bg_url"],
+                item["description"],
+            ),
+        )
+
+
 def migrate_db(conn):
     add_column_if_missing(conn, "pet_profile", "health", "INTEGER NOT NULL DEFAULT 100 CHECK (health BETWEEN 0 AND 100)")
     add_column_if_missing(conn, "pet_profile", "travel_energy", "INTEGER NOT NULL DEFAULT 0 CHECK (travel_energy >= 0)")
@@ -375,6 +519,7 @@ def migrate_db(conn):
     migrate_pet_profile_wake_columns(conn)
     migrate_pet_daily_stat_quest_columns(conn)
     migrate_pet_growth_log_check_constraints(conn)
+    seed_level_visual_config(conn)
     add_column_if_missing(conn, "pet_travel_event", "reward_exp", f"INTEGER NOT NULL DEFAULT {TRAVEL_CLAIM_EXP} CHECK (reward_exp >= 0)")
     add_column_if_missing(conn, "pet_travel_event", "reward_mood", f"INTEGER NOT NULL DEFAULT {TRAVEL_CLAIM_MOOD} CHECK (reward_mood >= 0)")
     add_column_if_missing(conn, "pet_travel_event", "reward_energy", f"INTEGER NOT NULL DEFAULT {TRAVEL_CLAIM_ENERGY} CHECK (reward_energy >= 0)")
@@ -840,7 +985,26 @@ def camel_user(row):
     }
 
 
-def camel_profile(row, user_id=DEFAULT_USER_ID):
+def camel_level_visual(row, fallback_level=1):
+    if row is None:
+        row = default_level_visual(fallback_level)
+    keys = set(row.keys()) if hasattr(row, "keys") else set(row)
+    level = row["level"] if "level" in keys else fallback_level
+    image_url = row["image_url"] if "image_url" in keys else default_level_visual(level)["image_url"]
+    thumbnail_url = row["thumbnail_url"] if "thumbnail_url" in keys else None
+    return {
+        "level": level,
+        "stage": row["stage"],
+        "title": row["title"],
+        "effectStyle": row["effect_style"],
+        "imageUrl": image_url,
+        "thumbnailUrl": thumbnail_url or image_url,
+        "shareBgImage": row["share_bg_url"],
+        "description": row["description"],
+    }
+
+
+def camel_profile(row, user_id=DEFAULT_USER_ID, level_visual=None):
     if row is None:
         return {
             "userId": user_id,
@@ -851,6 +1015,7 @@ def camel_profile(row, user_id=DEFAULT_USER_ID):
     wake_progress = row["wake_progress"] if "wake_progress" in keys else 0
     last_wake_message = row["last_wake_message"] if "last_wake_message" in keys else None
     wake_message_at = row["wake_message_at"] if "wake_message_at" in keys else None
+    visual = camel_level_visual(level_visual, row["level"])
     return {
         "id": row["id"],
         "userId": row["user_id"],
@@ -876,6 +1041,12 @@ def camel_profile(row, user_id=DEFAULT_USER_ID):
         "wakeRequired": WAKE_REQUIRED_READS,
         "lastWakeMessage": last_wake_message,
         "wakeMessageAt": wake_message_at,
+        "level2dImage": visual["imageUrl"],
+        "level2dThumbnail": visual["thumbnailUrl"],
+        "levelTitle": visual["title"],
+        "levelEffectStyle": visual["effectStyle"],
+        "shareBgImage": visual["shareBgImage"],
+        "levelVisualDescription": visual["description"],
         "createdAt": row["created_at"],
         "updatedAt": row["updated_at"],
     }
@@ -959,15 +1130,31 @@ def camel_content(row, include_full=False):
     return content
 
 
-def level_2d_image(level):
+def fetch_level_visual(conn, level):
     try:
-        safe_level = max(1, min(int(level), 99))
+        safe_level = max(1, int(level))
     except (TypeError, ValueError):
         safe_level = 1
-    return f"/static/assets/pet-level/level-{safe_level:02d}.png"
+    row = conn.execute(
+        "SELECT * FROM pet_level_visual_config WHERE level = ?",
+        (safe_level,),
+    ).fetchone()
+    if row is None:
+        row = conn.execute(
+            """
+            SELECT *
+            FROM pet_level_visual_config
+            WHERE level <= ?
+            ORDER BY level DESC
+            LIMIT 1
+            """,
+            (safe_level,),
+        ).fetchone()
+    return row or default_level_visual(safe_level)
 
 
-def camel_leaderboard_item(row, rank, current_user_id):
+def camel_leaderboard_item(row, rank, current_user_id, level_visual=None):
+    visual = camel_level_visual(level_visual, row["level"])
     return {
         "rank": rank,
         "userId": row["user_id"],
@@ -980,7 +1167,12 @@ def camel_leaderboard_item(row, rank, current_user_id):
         "travelCount": row["travel_count"] or 0,
         "claimedTravelCount": row["claimed_travel_count"] or 0,
         "lastTravelAt": row["last_travel_at"] if "last_travel_at" in row.keys() else None,
-        "level2dImage": level_2d_image(row["level"]),
+        "level2dImage": visual["imageUrl"],
+        "level2dThumbnail": visual["thumbnailUrl"],
+        "levelTitle": visual["title"],
+        "levelEffectStyle": visual["effectStyle"],
+        "shareBgImage": visual["shareBgImage"],
+        "levelVisualDescription": visual["description"],
         "isCurrentUser": int(row["user_id"]) == int(current_user_id),
     }
 
@@ -1047,7 +1239,13 @@ def leaderboard_payload(conn, current_user_id, rank_type, limit=50):
             """
         ).fetchall()
 
-    ranked_items = [camel_leaderboard_item(row, index + 1, current_user_id) for index, row in enumerate(rows)]
+    visual_cache = {}
+    ranked_items = []
+    for index, row in enumerate(rows):
+        level = row["level"]
+        if level not in visual_cache:
+            visual_cache[level] = fetch_level_visual(conn, level)
+        ranked_items.append(camel_leaderboard_item(row, index + 1, current_user_id, visual_cache[level]))
     current_item = next((item for item in ranked_items if item["isCurrentUser"]), None)
     return {
         "rankType": rank_type,
@@ -4138,8 +4336,10 @@ class Handler(BaseHTTPRequestHandler):
             user_id = session["user_id"]
             with connect_db() as conn:
                 decay_notice = apply_pet_decay(conn, user_id)
+                profile_row = fetch_profile(conn, user_id)
+                visual = fetch_level_visual(conn, profile_row["level"]) if profile_row else None
                 self.send_json(200, {
-                    "profile": camel_profile(fetch_profile(conn, user_id), user_id),
+                    "profile": camel_profile(profile_row, user_id, visual),
                     "decayNotice": decay_notice,
                 })
             return
@@ -4328,6 +4528,17 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as error:
                 status = 409 if str(error) == "COMMUNITY_CONFIG_MISSING" else 502
                 self.send_json(status, {"error": "COMMUNITY_COMMENTS_FAILED", "message": str(error)})
+            return
+
+        if path == "/api/p1/pet/level-visuals":
+            session = self.require_auth_json()
+            if session is None:
+                return
+            with connect_db() as conn:
+                rows = conn.execute(
+                    "SELECT * FROM pet_level_visual_config ORDER BY level ASC"
+                ).fetchall()
+                self.send_json(200, {"visuals": [camel_level_visual(row) for row in rows]})
             return
 
         if path in ("/api/p1/leaderboard/pet-level", "/api/p1/leaderboard/travel-count"):

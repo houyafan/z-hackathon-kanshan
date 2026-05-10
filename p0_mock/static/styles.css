@@ -1279,6 +1279,62 @@ button {
   color: #1677ff;
 }
 
+.pet-mini-image {
+  overflow: hidden;
+  border: 1px solid rgba(22, 119, 255, 0.14);
+}
+
+.pet-mini-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.pet-mini-image.level-cool,
+.pet-mini-image.level-legendary {
+  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.08), 0 8px 20px rgba(22, 119, 255, 0.18);
+}
+
+.pet-level-showcase {
+  display: grid;
+  grid-template-columns: 86px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  margin-top: 14px;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(22, 119, 255, 0.12);
+  background: linear-gradient(135deg, #f8fbff 0%, #eef6ff 100%);
+}
+
+.pet-level-showcase.level-legendary {
+  border-color: rgba(245, 176, 65, 0.32);
+  background: linear-gradient(135deg, #fffaf0 0%, #edf7ff 100%);
+}
+
+.pet-level-showcase img {
+  width: 86px;
+  height: 86px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.pet-level-showcase strong,
+.pet-level-showcase small {
+  display: block;
+}
+
+.pet-level-showcase strong {
+  font-size: 14px;
+}
+
+.pet-level-showcase small {
+  margin-top: 5px;
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .pet-stats {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1743,6 +1799,7 @@ button {
 }
 
 .travel-handbook-entry {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1.25fr) minmax(220px, 0.75fr);
   gap: 18px;
@@ -1781,6 +1838,37 @@ button {
   display: block;
   margin-top: 6px;
   font-size: 16px;
+}
+
+.handbook-level-visual {
+  float: right;
+  width: 74px;
+  margin: 0 0 8px 12px;
+  padding: 5px;
+  border-radius: 8px;
+  border: 1px solid rgba(22, 119, 255, 0.12);
+  background: rgba(255, 255, 255, 0.78);
+  text-align: center;
+}
+
+.handbook-level-visual.level-legendary {
+  border-color: rgba(245, 176, 65, 0.34);
+}
+
+.handbook-level-visual img {
+  display: block;
+  width: 62px;
+  height: 62px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+.handbook-level-visual span {
+  display: block;
+  margin-top: 2px;
+  color: #1677ff;
+  font-size: 10px;
+  font-weight: 900;
 }
 
 .travel-handbook-entry p,
@@ -2584,6 +2672,14 @@ button {
   background: linear-gradient(145deg, #f8fbff, #e4f0ff);
   color: #1677ff;
   box-shadow: inset 0 0 0 1px rgba(22, 119, 255, 0.12);
+  position: relative;
+  overflow: hidden;
+}
+
+.leaderboard-visual img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .leaderboard-visual span {
@@ -2593,18 +2689,30 @@ button {
 }
 
 .leaderboard-visual small {
+  position: absolute;
+  left: 4px;
+  bottom: 3px;
   display: block;
-  margin-top: -8px;
+  padding: 1px 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.86);
   font-size: 10px;
   font-weight: 800;
+  color: #1f2329;
 }
 
-.leaderboard-visual.level-7,
-.leaderboard-visual.level-8,
-.leaderboard-visual.level-9,
-.leaderboard-visual.level-10 {
-  background: linear-gradient(145deg, #fff7d6, #ffd6e8 52%, #d9ecff);
-  color: #9a4b00;
+.leaderboard-visual.level-explore {
+  background: linear-gradient(145deg, #f8fbff, #dfefff);
+}
+
+.leaderboard-visual.level-cool {
+  background: linear-gradient(145deg, #f2f9ff, #d2e9ff);
+  box-shadow: inset 0 0 0 1px rgba(22, 119, 255, 0.18), 0 0 18px rgba(22, 119, 255, 0.16);
+}
+
+.leaderboard-visual.level-legendary {
+  background: linear-gradient(145deg, #fff7d6, #e5f3ff);
+  box-shadow: inset 0 0 0 1px rgba(245, 176, 65, 0.32), 0 0 20px rgba(245, 176, 65, 0.22);
 }
 
 .leaderboard-user {
@@ -2687,6 +2795,60 @@ button {
 
 .roaming-character.pet-level-up .character-canvas {
   animation: petLevelBounce 1.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.level-up-preview {
+  position: fixed;
+  right: 24px;
+  bottom: 92px;
+  z-index: 1500;
+  display: grid;
+  grid-template-columns: 88px minmax(0, 220px);
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid rgba(22, 119, 255, 0.16);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 18px 46px rgba(31, 71, 132, 0.22);
+  animation: levelPreviewIn 4.6s ease both;
+}
+
+.level-up-preview.level-legendary {
+  border-color: rgba(245, 176, 65, 0.36);
+  box-shadow: 0 18px 50px rgba(245, 176, 65, 0.22);
+}
+
+.level-up-preview img {
+  width: 88px;
+  height: 88px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.level-up-preview small,
+.level-up-preview strong,
+.level-up-preview span {
+  display: block;
+}
+
+.level-up-preview small {
+  color: #1677ff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.level-up-preview strong {
+  margin-top: 4px;
+  color: #1f2329;
+  font-size: 15px;
+}
+
+.level-up-preview span {
+  margin-top: 5px;
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .roaming-character.roaming-evolving.pet-level-up::before {
@@ -2906,6 +3068,22 @@ button {
   100% {
     opacity: 0;
     transform: scale(1.45);
+  }
+}
+
+@keyframes levelPreviewIn {
+  0% {
+    opacity: 0;
+    transform: translateY(14px) scale(0.96);
+  }
+  10%,
+  82% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
   }
 }
 
@@ -3446,6 +3624,37 @@ button {
   padding: 40px;
   box-shadow: inset 0 -120px 200px rgba(0,0,0,0.5);
 }
+.share-card-level {
+  position: absolute;
+  top: 40px;
+  right: 40px;
+  width: 148px;
+  padding: 10px;
+  border: 1px solid rgba(255,255,255,0.35);
+  border-radius: 18px;
+  background: rgba(255,255,255,0.18);
+  text-align: center;
+}
+.share-card-level img {
+  width: 128px;
+  height: 128px;
+  object-fit: cover;
+  border-radius: 14px;
+}
+.share-card-level span,
+.share-card-level-title {
+  font-weight: 800;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.45);
+}
+.share-card-level span {
+  display: block;
+  margin-top: 6px;
+  font-size: 20px;
+}
+.share-card-level-title {
+  margin-bottom: 12px;
+  font-size: 20px;
+}
 .share-card-theme {
   font-size: 32px;
   font-weight: 700;
@@ -3563,6 +3772,54 @@ button {
   border-color: #c8c8c8;
   color: #c8c8c8;
   cursor: not-allowed;
+}
+
+.leaderboard-share-card {
+  justify-content: space-between;
+  color: #1f2329;
+}
+
+.leaderboard-share-visual {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding-top: 120px;
+}
+
+.leaderboard-share-visual img {
+  width: 430px;
+  height: 430px;
+  object-fit: cover;
+  border-radius: 28px;
+  box-shadow: 0 24px 80px rgba(22,119,255,0.18);
+}
+
+.leaderboard-share-copy {
+  padding: 0 72px 96px;
+  text-align: center;
+}
+
+.leaderboard-share-copy small {
+  color: #1677ff;
+  font-size: 26px;
+  font-weight: 800;
+}
+
+.leaderboard-share-copy h1 {
+  margin: 18px 0 6px;
+  font-size: 92px;
+  line-height: 1;
+}
+
+.leaderboard-share-copy strong {
+  display: block;
+  font-size: 34px;
+}
+
+.leaderboard-share-copy p {
+  margin: 26px 0 0;
+  color: #667085;
+  font-size: 24px;
 }
 
 .daily-quests {

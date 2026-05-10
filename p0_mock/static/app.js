@@ -31,6 +31,8 @@ let leaderboardError = null;
 let leaderboardPanelOpen = false;
 let leaderboardPositionTimer = null;
 let leaderboardPromise = null;
+let levelVisuals = null;
+let levelVisualsPromise = null;
 let modelPreloadPromise = null;
 let _activeCommentAssist = null;
 let noticeTimer = null;
@@ -58,6 +60,41 @@ function removeAfter(element, ms) {
 
 function characterElement() {
   return document.getElementById("roamingCharacter");
+}
+
+function currentLevelVisual() {
+  if (!profile?.adopted) return null;
+  return {
+    level: profile.level,
+    imageUrl: profile.level2dImage,
+    thumbnailUrl: profile.level2dThumbnail || profile.level2dImage,
+    title: profile.levelTitle,
+    effectStyle: profile.levelEffectStyle || "cute",
+    shareBgImage: profile.shareBgImage,
+    description: profile.levelVisualDescription,
+  };
+}
+
+async function loadLevelVisuals() {
+  if (levelVisuals) return levelVisuals;
+  if (levelVisualsPromise) return levelVisualsPromise;
+  levelVisualsPromise = api("/api/p1/pet/level-visuals")
+    .then((data) => {
+      levelVisuals = data.visuals || [];
+      return levelVisuals;
+    })
+    .finally(() => {
+      levelVisualsPromise = null;
+    });
+  return levelVisualsPromise;
+}
+
+function visualForLevel(level) {
+  const safeLevel = Math.max(1, Number(level || 1));
+  const visuals = levelVisuals || [];
+  return [...visuals]
+    .filter((item) => Number(item.level) <= safeLevel)
+    .sort((a, b) => Number(b.level) - Number(a.level))[0] || null;
 }
 
 function characterCenter() {
@@ -558,12 +595,16 @@ function renderPetHoverCard() {
     : activeTravel?.status === "returned"
       ? `${travelThemeText(activeTravel.theme)} · 已带回内容`
       : travelState?.blockReason || "阅读内容积攒学识和精力后出门";
+  const visual = currentLevelVisual();
+  const visualImage = visual?.thumbnailUrl || visual?.imageUrl;
   card.innerHTML = `
     <div class="pet-hover-head">
-      <span class="pet-mini">山</span>
+      <span class="pet-mini pet-mini-image level-${escapeHTML(visual?.effectStyle || "cute")}">
+        ${visualImage ? `<img src="${escapeHTML(visualImage)}" alt="${escapeHTML(visual.title || "刘看山等级形象")}">` : "山"}
+      </span>
       <div>
         <strong>${escapeHTML(profile.petName || "刘看山")}</strong>
-        <small>Lv.${profile.level} · ${stageText(profile.stage)}</small>
+        <small>Lv.${profile.level} · ${escapeHTML(visual?.title || stageText(profile.stage))}</small>
       </div>
     </div>
     <div class="pet-hover-stats">
@@ -713,6 +754,9 @@ async function loadAuth() {
 async function loadProfile() {
   const data = await api("/api/p0/pet/profile");
   profile = data.profile;
+  if (profile?.adopted) {
+    loadLevelVisuals().catch((error) => console.warn("level visuals preload failed", error));
+  }
   handleDecayNotice(data.decayNotice);
   syncCharacter();
   return profile;
@@ -957,9 +1001,11 @@ async function openGrowthLog() {
 
 function leaderboardVisual(item) {
   const level = Number(item?.level || 1);
+  const effectStyle = item?.levelEffectStyle || "cute";
+  const image = item?.level2dThumbnail || item?.level2dImage;
   return `
-    <div class="leaderboard-visual level-${Math.min(level, 10)}">
-      <span>山</span>
+    <div class="leaderboard-visual level-${escapeHTML(effectStyle)}" title="${escapeHTML(item?.levelTitle || `Lv.${level}`)}">
+      ${image ? `<img src="${escapeHTML(image)}" alt="${escapeHTML(item?.levelTitle || `Lv.${level} 刘看山`)}">` : `<span>山</span>`}
       <small>Lv.${level}</small>
     </div>
   `;
@@ -976,7 +1022,7 @@ function leaderboardItem(item) {
       ${leaderboardVisual(item)}
       <div class="leaderboard-user">
         <strong>${escapeHTML(item.fullname || "知乎用户")}</strong>
-        <small>${escapeHTML(item.petName || "刘看山")} · ${escapeHTML(stageText(item.stage))}</small>
+        <small>${escapeHTML(item.petName || "刘看山")} · ${escapeHTML(item.levelTitle || stageText(item.stage))}</small>
       </div>
       <div class="leaderboard-metric">
         ${metric}
@@ -1531,12 +1577,23 @@ function petPanel() {
     : activeTravel?.status === "returned"
       ? `<button class="outline-btn" data-hover-travel-claim="${escapeHTML(activeTravel.travelId)}">领取带回内容</button>`
       : `<button class="outline-btn" data-hover-travel-start ${travelState?.canTravel === false ? "disabled" : ""}>出门游历</button>`;
+  const visual = currentLevelVisual();
+  const visualImage = visual?.imageUrl || visual?.thumbnailUrl;
   return `
     <section class="card side-card pet-panel">
       <div class="pet-title">
-        <span class="pet-mini">山</span>
+        <span class="pet-mini pet-mini-image level-${escapeHTML(visual?.effectStyle || "cute")}">
+          ${visualImage ? `<img src="${escapeHTML(visualImage)}" alt="${escapeHTML(visual.title || "刘看山等级形象")}">` : "山"}
+        </span>
         <span>${profile.petName}</span>
         <span class="level-pill">Lv.${profile.level}</span>
+      </div>
+      <div class="pet-level-showcase level-${escapeHTML(visual?.effectStyle || "cute")}">
+        ${visualImage ? `<img src="${escapeHTML(visualImage)}" alt="${escapeHTML(visual.title || "刘看山等级形象")}">` : ""}
+        <div>
+          <strong>${escapeHTML(visual?.title || stageText(profile.stage))}</strong>
+          <small>${escapeHTML(visual?.description || "阅读越多，看山越强")}</small>
+        </div>
       </div>
       <div class="pet-stats">
         <div class="stat-box"><small>阶段</small><strong>${stageText(profile.stage)}</strong></div>
@@ -2603,6 +2660,14 @@ function renderTravelHandbookEntry(entry) {
   const contentsBlock = (entry.contents || [])
     .map((content) => travelContentButtonHTML(content))
     .join("");
+  const visual = currentLevelVisual();
+  const visualImage = visual?.imageUrl || visual?.thumbnailUrl;
+  const visualBadge = visualImage ? `
+    <div class="handbook-level-visual level-${escapeHTML(visual?.effectStyle || "cute")}">
+      <img src="${escapeHTML(visualImage)}" alt="${escapeHTML(visual.title || "刘看山等级形象")}">
+      <span>Lv.${profile?.level || 1}</span>
+    </div>
+  ` : "";
   const llmReady = status === "ready" && !!summaryText;
   const sharePayload = JSON.stringify({
     theme: entry.coverStyle,
@@ -2610,6 +2675,11 @@ function renderTravelHandbookEntry(entry) {
     llmSummary: entry.llmSummary,
     llmPetQuote: entry.llmPetQuote,
     llmHighlights: entry.llmHighlights,
+    level: profile?.level || 1,
+    levelTitle: visual?.title || "",
+    level2dImage: visualImage || "",
+    levelEffectStyle: visual?.effectStyle || "cute",
+    shareBgImage: visual?.shareBgImage || "",
   });
   const shareBtn = `
     <button type="button" class="handbook-share-btn"
@@ -2621,6 +2691,7 @@ function renderTravelHandbookEntry(entry) {
   return `
     <article class="travel-handbook-entry ${escapeHTML(entry.coverStyle || "")}">
       <div>
+        ${visualBadge}
         <small>${escapeHTML(entry.themeTitle || "")}</small>
         ${badgeBlock}
         ${summaryBlock}
@@ -2845,6 +2916,9 @@ function showReward(reward, sourceElement) {
     ? `看山升级啦！Lv.${reward.fromLevel} → Lv.${reward.toLevel}`
     : `看山成长了：${partsText}`;
   showToast(message);
+  if (reward.levelUp) {
+    showLevelUpPreview(reward).catch((error) => console.warn("level preview failed", error));
+  }
   if (character && reward.levelUp) {
     const centerX = window.innerWidth / 2;
     const centerY = window.innerHeight * 0.58;
@@ -2867,6 +2941,26 @@ function showReward(reward, sourceElement) {
     character?.setMessage(message, { autoHide: 3200 });
   }
   playRewardEffect(reward, reward.levelUp || rewardWalkEnabled ? sourceElement : null, message);
+}
+
+async function showLevelUpPreview(reward) {
+  await loadLevelVisuals();
+  const visual = visualForLevel(reward.toLevel) || currentLevelVisual();
+  const image = visual?.imageUrl || visual?.thumbnailUrl;
+  if (!visual || !image) return;
+  document.querySelector(".level-up-preview")?.remove();
+  const panel = document.createElement("div");
+  panel.className = `level-up-preview level-${visual.effectStyle || "cute"}`;
+  panel.innerHTML = `
+    <img src="${escapeHTML(image)}" alt="${escapeHTML(visual.title || `Lv.${reward.toLevel} 刘看山`)}">
+    <div>
+      <small>解锁新形象</small>
+      <strong>Lv.${reward.toLevel} · ${escapeHTML(visual.title || "刘看山")}</strong>
+      <span>${escapeHTML(visual.description || "继续阅读，解锁更酷的看山")}</span>
+    </div>
+  `;
+  document.body.appendChild(panel);
+  removeAfter(panel, 4600);
 }
 
 function playRewardEffect(reward, sourceElement, message) {

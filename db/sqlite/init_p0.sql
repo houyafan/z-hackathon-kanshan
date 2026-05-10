@@ -145,6 +145,23 @@ CREATE TABLE IF NOT EXISTS pet_level_config (
   UNIQUE (required_total_exp)
 );
 
+CREATE TABLE IF NOT EXISTS pet_level_visual_config (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  level INTEGER NOT NULL CHECK (level >= 1),
+  stage TEXT NOT NULL CHECK (stage IN ('cub', 'growing', 'adult', 'advanced')),
+  title TEXT NOT NULL,
+  effect_style TEXT NOT NULL
+    CHECK (effect_style IN ('cute', 'explore', 'cool', 'legendary')),
+  image_url TEXT NOT NULL,
+  thumbnail_url TEXT DEFAULT NULL,
+  share_bg_url TEXT NOT NULL,
+  description TEXT DEFAULT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+  UNIQUE (level)
+);
+
 CREATE TABLE IF NOT EXISTS pet_daily_stat (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
@@ -396,6 +413,9 @@ CREATE INDEX IF NOT EXISTS idx_pet_travel_event_user_status
 CREATE INDEX IF NOT EXISTS idx_pet_profile_level_rank
   ON pet_profile (adopted, level DESC, total_exp DESC, updated_at ASC);
 
+CREATE INDEX IF NOT EXISTS idx_pet_level_visual_style
+  ON pet_level_visual_config (effect_style, level);
+
 CREATE INDEX IF NOT EXISTS idx_pet_travel_event_rank
   ON pet_travel_event (status, user_id, returned_at DESC, claimed_at DESC);
 
@@ -421,6 +441,49 @@ VALUES
   (8, 'adult', 1400, '寻文看山', '[]'),
   (9, 'adult', 1900, '知心看山', '[]'),
   (10, 'advanced', 2500, '进阶看山', '[]');
+
+INSERT INTO pet_level_visual_config
+  (level, stage, title, effect_style, image_url, thumbnail_url, share_bg_url, description)
+VALUES
+  (1, 'cub', '新手探索员', 'cute',
+   '/static/assets/pet-level/level-01.png', '/static/assets/pet-level/level-01.png',
+   '/static/assets/pet-level/cute-share-bg.svg', '基础红围巾，刚开始陪主人探索知识宇宙'),
+  (2, 'cub', '星章探索员', 'cute',
+   '/static/assets/pet-level/level-02.png', '/static/assets/pet-level/level-02.png',
+   '/static/assets/pet-level/cute-share-bg.svg', '围巾星章点亮，开始积累阅读成就'),
+  (3, 'cub', '任务新星', 'cute',
+   '/static/assets/pet-level/level-03.png', '/static/assets/pet-level/level-03.png',
+   '/static/assets/pet-level/cute-share-bg.svg', '挂上任务星章，进入稳定阅读节奏'),
+  (4, 'growing', '行星记录员', 'explore',
+   '/static/assets/pet-level/level-04.png', '/static/assets/pet-level/level-04.png',
+   '/static/assets/pet-level/explore-share-bg.svg', '戴上航天帽和行星徽章，开始记录知识旅程'),
+  (5, 'growing', '火箭见习官', 'explore',
+   '/static/assets/pet-level/level-05.png', '/static/assets/pet-level/level-05.png',
+   '/static/assets/pet-level/explore-share-bg.svg', '背上迷你科考包，准备更远的内容探索'),
+  (6, 'growing', '星图导航员', 'explore',
+   '/static/assets/pet-level/level-06.png', '/static/assets/pet-level/level-06.png',
+   '/static/assets/pet-level/explore-share-bg.svg', '护目镜与指南针就位，能看懂更复杂的知识路线'),
+  (7, 'adult', '深空任务官', 'cool',
+   '/static/assets/pet-level/level-07.png', '/static/assets/pet-level/level-07.png',
+   '/static/assets/pet-level/cool-share-bg.svg', '带着任务旗帜出发，拥有稳定的深度阅读能力'),
+  (8, 'adult', '知识探测者', 'cool',
+   '/static/assets/pet-level/level-08.png', '/static/assets/pet-level/level-08.png',
+   '/static/assets/pet-level/cool-share-bg.svg', '点亮探测头灯和知识权杖，能发现隐藏的优质内容'),
+  (9, 'adult', '星际领航员', 'cool',
+   '/static/assets/pet-level/level-09.png', '/static/assets/pet-level/level-09.png',
+   '/static/assets/pet-level/cool-share-bg.svg', '蓝金徽章与能量装备成型，进入高阶陪伴状态'),
+  (10, 'advanced', '宇宙知识领航员', 'legendary',
+   '/static/assets/pet-level/level-10.png', '/static/assets/pet-level/level-10.png',
+   '/static/assets/pet-level/legendary-share-bg.svg', '金色星际冠、披风与权杖加身，成为知识宇宙的领航伙伴')
+ON CONFLICT(level) DO UPDATE SET
+  stage = excluded.stage,
+  title = excluded.title,
+  effect_style = excluded.effect_style,
+  image_url = excluded.image_url,
+  thumbnail_url = excluded.thumbnail_url,
+  share_bg_url = excluded.share_bg_url,
+  description = excluded.description,
+  updated_at = CURRENT_TIMESTAMP;
 
 INSERT OR IGNORE INTO pet_travel_theme_config
   (theme, title, required_level, energy_cost, duration_sec, preferred_tags, return_count)
