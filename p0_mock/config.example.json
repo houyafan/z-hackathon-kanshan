@@ -23,6 +23,7 @@
   },
   "mock_user": {
     "uid": 10001,
+    "user_token": "p2wcex",
     "fullname": "看山七子",
     "gender": "unknown",
     "headline": "让复杂讨论被看见结构，而非淹没在情绪中。",

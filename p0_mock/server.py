@@ -29,6 +29,7 @@ LEVEL_VISUAL_CONFIG_PATH = ROOT / "p0_mock" / "level_visuals.json"
 DEFAULT_USER_ID = 10001
 SESSION_COOKIE_NAME = "lks_session"
 APP_TZ = timezone(timedelta(hours=8), "Asia/Shanghai")
+ADMIN_USER_TOKENS = {"p2wcex", "sunny-27-1-97"}
 
 
 def now_dt():
@@ -590,6 +591,13 @@ def seed_level_config(conn):
 
 
 def migrate_db(conn):
+    add_column_if_missing(conn, "zhihu_user", "user_token", "TEXT DEFAULT NULL")
+    mock_token = zhihu_user_token(MOCK_USER) or COMMUNITY_APP_KEY
+    if mock_token:
+        conn.execute(
+            "UPDATE zhihu_user SET user_token = ? WHERE uid = ? AND (user_token IS NULL OR user_token = '')",
+            (mock_token, DEFAULT_USER_ID),
+        )
     add_column_if_missing(conn, "pet_profile", "health", "INTEGER NOT NULL DEFAULT 100 CHECK (health BETWEEN 0 AND 100)")
     add_column_if_missing(conn, "pet_profile", "travel_energy", "INTEGER NOT NULL DEFAULT 0 CHECK (travel_energy >= 0)")
     add_column_if_missing(conn, "pet_profile", "travel_status", "TEXT NOT NULL DEFAULT 'home'")
@@ -1061,6 +1069,8 @@ def camel_user(row):
     return {
         "userId": row["uid"],
         "uid": row["uid"],
+        "userToken": row["user_token"] if "user_token" in row.keys() else None,
+        "isAdmin": is_admin_user(row),
         "fullname": row["fullname"],
         "gender": row["gender"],
         "headline": row["headline"],
@@ -1350,6 +1360,42 @@ def leaderboard_payload(conn, current_user_id, rank_type, limit=50):
     }
 
 
+def admin_overview_payload(conn):
+    stats = {
+        "users": conn.execute("SELECT COUNT(*) AS c FROM zhihu_user").fetchone()["c"],
+        "adoptedPets": conn.execute("SELECT COUNT(*) AS c FROM pet_profile WHERE adopted = 1").fetchone()["c"],
+        "contents": conn.execute("SELECT COUNT(*) AS c FROM zhihu_content_pool WHERE status = 'published'").fetchone()["c"],
+        "growthEvents": conn.execute("SELECT COUNT(*) AS c FROM pet_growth_log").fetchone()["c"],
+        "travels": conn.execute("SELECT COUNT(*) AS c FROM pet_travel_event").fetchone()["c"],
+    }
+    level_rows = conn.execute(
+        """
+        SELECT
+          lc.level,
+          lc.stage,
+          lc.required_total_exp,
+          COALESCE(lv.title, lc.title) AS title,
+          COALESCE(lv.effect_style, 'cute') AS effect_style,
+          COALESCE(lv.description, '') AS description
+        FROM pet_level_config lc
+        LEFT JOIN pet_level_visual_config lv ON lv.level = lc.level
+        ORDER BY lc.level ASC
+        """
+    ).fetchall()
+    levels = [
+        {
+            "level": row["level"],
+            "stage": row["stage"],
+            "requiredTotalExp": row["required_total_exp"],
+            "title": row["title"],
+            "effectStyle": row["effect_style"],
+            "description": row["description"],
+        }
+        for row in level_rows
+    ]
+    return {"stats": stats, "levels": levels, "adminTokens": sorted(ADMIN_USER_TOKENS)}
+
+
 def camel_follow_moment(row):
     if row is None:
         return None
@@ -1399,17 +1445,38 @@ def fetch_user(conn, user_id):
     ).fetchone()
 
 
+def zhihu_user_token(user):
+    return str(
+        user.get("user_token")
+        or user.get("userToken")
+        or user.get("url_token")
+        or user.get("urlToken")
+        or user.get("token")
+        or ""
+    ).strip()
+
+
+def is_admin_user(user_row):
+    if user_row is None:
+        return False
+    keys = user_row.keys() if hasattr(user_row, "keys") else []
+    token = str(user_row["user_token"] if "user_token" in keys else "").strip()
+    return token in ADMIN_USER_TOKENS
+
+
 def upsert_zhihu_user(conn, user):
     uid = int(user.get("uid") or user.get("userId"))
+    user_token = zhihu_user_token(user) or None
     fullname = str(user.get("fullname") or "知乎用户")
     conn.execute(
         """
         INSERT INTO zhihu_user
-          (uid, fullname, gender, headline, description, avatar_path, phone_no, email,
+          (uid, user_token, fullname, gender, headline, description, avatar_path, phone_no, email,
            last_login_at, created_at, updated_at)
         VALUES
-          (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(uid) DO UPDATE SET
+          user_token = COALESCE(excluded.user_token, zhihu_user.user_token),
           fullname = excluded.fullname,
           gender = excluded.gender,
           headline = excluded.headline,
@@ -1422,6 +1489,7 @@ def upsert_zhihu_user(conn, user):
         """,
         (
             uid,
+            user_token,
             fullname,
             user.get("gender"),
             user.get("headline"),
@@ -2118,6 +2186,7 @@ def fetch_hot_items(limit=30):
 def mock_zhihu_user():
     return {
         "uid": int(MOCK_USER.get("uid") or DEFAULT_USER_ID),
+        "user_token": zhihu_user_token(MOCK_USER) or COMMUNITY_APP_KEY or "p2wcex",
         "fullname": MOCK_USER.get("fullname") or "看山七子",
         "gender": MOCK_USER.get("gender") or "unknown",
         "headline": MOCK_USER.get("headline") or "",
@@ -4474,10 +4543,32 @@ class Handler(BaseHTTPRequestHandler):
             return None
         return session
 
+    def require_admin_json(self):
+        session = self.require_auth_json()
+        if session is None:
+            return None
+        with connect_db() as conn:
+            user = fetch_user(conn, session["user_id"])
+        if not is_admin_user(user):
+            self.send_json(403, {"error": "ADMIN_REQUIRED", "message": "当前账号无管理权限"})
+            return None
+        return session
+
     def require_auth_page(self, next_url):
         session = self.get_current_session()
         if session is None:
             self.send_redirect(f"/auth/login?next={quote(safe_next_url(next_url))}")
+            return None
+        return session
+
+    def require_admin_page(self, next_url):
+        session = self.require_auth_page(next_url)
+        if session is None:
+            return None
+        with connect_db() as conn:
+            user = fetch_user(conn, session["user_id"])
+        if not is_admin_user(user):
+            self.send_error(403, "当前账号无管理权限")
             return None
         return session
 
@@ -4561,11 +4652,26 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, {"authenticated": True, "user": camel_user(user)})
             return
 
+        if path == "/admin":
+            session = self.require_admin_page(self.path)
+            if session is None:
+                return
+            self.send_file(STATIC_DIR / "index.html")
+            return
+
         if path in ("/", "/people/p2wcex", "/hot", "/follow", "/community"):
             session = self.require_auth_page(self.path)
             if session is None:
                 return
             self.send_file(STATIC_DIR / "index.html")
+            return
+
+        if path == "/api/admin/overview":
+            session = self.require_admin_json()
+            if session is None:
+                return
+            with connect_db() as conn:
+                self.send_json(200, admin_overview_payload(conn))
             return
 
         if path == "/api/p0/pet/profile":
@@ -4874,7 +4980,12 @@ class Handler(BaseHTTPRequestHandler):
     def do_HEAD(self):
         parsed = urlparse(self.path)
         path = parsed.path
-        if path in ("/", "/people/p2wcex", "/hot", "/follow", "/community"):
+        if path == "/admin":
+            session = self.require_admin_page(self.path)
+            if session is None:
+                return
+            target = STATIC_DIR / "index.html"
+        elif path in ("/", "/people/p2wcex", "/hot", "/follow", "/community"):
             session = self.require_auth_page(self.path)
             if session is None:
                 return
@@ -4942,7 +5053,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/p0/pet/reset":
-            session = self.require_auth_json()
+            session = self.require_admin_json()
             if session is None:
                 return
             user_id = session["user_id"]

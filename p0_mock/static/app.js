@@ -31,6 +31,7 @@ let leaderboardError = null;
 let leaderboardPanelOpen = false;
 let leaderboardPositionTimer = null;
 let leaderboardPromise = null;
+let adminOverview = null;
 let levelVisuals = null;
 let levelVisualsPromise = null;
 let modelPreloadPromise = null;
@@ -46,8 +47,13 @@ let rewardWalkEnabled = savedRewardWalk !== "0";
 const MODEL_PATH = "/3d-liukanshan-roaming/liukanshan-slot.glb?v=2";
 const ONBOARDING_VERSION = "v1";
 const ONBOARDING_KEY = `liukanshan_onboarding_${ONBOARDING_VERSION}`;
+const ADMIN_USER_TOKENS = new Set(["p2wcex", "sunny-27-1-97"]);
 let onboardingTimer = null;
 let onboardingSnoozedUntil = 0;
+
+function isAdminUser(user = currentUser) {
+  return Boolean(user?.isAdmin || ADMIN_USER_TOKENS.has(String(user?.userToken || "").trim()));
+}
 
 function effectLayer() {
   let layer = document.querySelector(".pet-effect-layer");
@@ -845,6 +851,7 @@ function renderPetHoverCard() {
       : travelState?.blockReason || "阅读内容积攒学识和精力后出门";
   const visual = currentLevelVisual();
   const visualImage = visual?.thumbnailUrl || visual?.imageUrl;
+  const resetButton = isAdminUser() ? `<button data-hover-reset>重置</button>` : "";
   card.innerHTML = `
     <div class="pet-hover-head">
       <span class="pet-mini pet-mini-image level-${escapeHTML(visual?.effectStyle || "cute")}">
@@ -869,7 +876,7 @@ function renderPetHoverCard() {
       ${travelAction}
       <button data-hover-handbook>旅行手账</button>
       <button data-hover-growth-log>成长日志</button>
-      <button data-hover-reset>重置</button>
+      ${resetButton}
     </div>
     <label class="pet-hover-toggle">
       <input type="checkbox" data-hover-reward-walk ${rewardWalkEnabled ? "checked" : ""}>
@@ -1041,6 +1048,13 @@ async function loadContents() {
   const data = await api("/api/p0/contents?limit=30");
   feedItems = data.contents;
   return feedItems;
+}
+
+async function loadAdminOverview() {
+  if (!isAdminUser()) return null;
+  const data = await api("/api/admin/overview");
+  adminOverview = data;
+  return data;
 }
 
 async function loadHotItems() {
@@ -1683,6 +1697,7 @@ function shell(active) {
         <a class="${active === "recommend" ? "active" : ""}" href="/">推荐</a>
         <a class="${active === "hot" ? "active" : ""}" href="/hot">热榜</a>
         <a class="new-badge ${active === "community" ? "active" : ""}" href="/community">黑客松脑洞补给站</a>
+        ${isAdminUser() ? `<a class="${active === "admin" ? "active" : ""}" href="/admin">管理后台</a>` : ""}
       </nav>
       <div class="search">
         <input value="${active === "people" ? "中国女子在西班牙被刺身亡" : "朋友圈文案"}" aria-label="搜索">
@@ -1916,6 +1931,9 @@ function petPanel() {
       : `<button class="outline-btn" data-hover-travel-start ${travelState?.canTravel === false ? "disabled" : ""}>出门游历</button>`;
   const visual = currentLevelVisual();
   const visualImage = visual?.imageUrl || visual?.thumbnailUrl;
+  const resetButton = isAdminUser()
+    ? `<button class="reset-pet-btn" data-reset-pet>重置刘看山</button>`
+    : "";
   return `
     <section class="card side-card pet-panel">
       <div class="pet-title">
@@ -1945,7 +1963,7 @@ function petPanel() {
         <button class="outline-btn" data-hover-handbook>旅行手账</button>
         <button class="outline-btn" data-hover-growth-log>成长日志</button>
       </div>
-      <button class="reset-pet-btn" data-reset-pet>重置刘看山</button>
+      ${resetButton}
     </section>
   `;
 }
@@ -2298,6 +2316,83 @@ function renderCommunity() {
   `;
   bindCommon();
   bindCommunity();
+}
+
+function adminStatCard(label, value) {
+  return `
+    <div class="admin-stat-card">
+      <small>${escapeHTML(label)}</small>
+      <strong>${formatCount(value)}</strong>
+    </div>
+  `;
+}
+
+function renderAdmin() {
+  if (!isAdminUser()) {
+    app.innerHTML = `
+      ${shell("admin")}
+      <main class="admin-page">
+        <section class="card admin-denied">
+          <h1>暂无管理权限</h1>
+          <p>仅指定用户 token 可访问刘看山管理后台。</p>
+        </section>
+      </main>
+    `;
+    return;
+  }
+  if (!adminOverview) {
+    loadAdminOverview()
+      .then(() => {
+        if (window.location.pathname === "/admin") renderAdmin();
+      })
+      .catch((error) => {
+        adminOverview = { error };
+        if (window.location.pathname === "/admin") renderAdmin();
+      });
+  }
+  const stats = adminOverview?.stats || {};
+  const levels = adminOverview?.levels || [];
+  app.innerHTML = `
+    ${shell("admin")}
+    <main class="admin-page">
+      <section class="card admin-hero">
+        <div>
+          <div class="content-type">刘看山管理后台</div>
+          <h1>配置与观测中心</h1>
+          <p>后续等级、埋点、运营开关和素材配置都可以在这里收口。</p>
+        </div>
+        <span class="admin-token-pill">${escapeHTML(currentUser?.userToken || "admin")}</span>
+      </section>
+      ${adminOverview?.error ? `<section class="card admin-denied">后台数据加载失败：${escapeHTML(adminOverview.error.message || "未知错误")}</section>` : ""}
+      <section class="admin-stat-grid">
+        ${adminStatCard("用户数", stats.users ?? "-")}
+        ${adminStatCard("已领养", stats.adoptedPets ?? "-")}
+        ${adminStatCard("内容池", stats.contents ?? "-")}
+        ${adminStatCard("成长日志", stats.growthEvents ?? "-")}
+        ${adminStatCard("游历记录", stats.travels ?? "-")}
+      </section>
+      <section class="card admin-section">
+        <div class="side-title"><span>等级配置</span><small>当前只读，后续开放编辑</small></div>
+        <div class="admin-level-table">
+          ${levels.length ? levels.map((item) => `
+            <article>
+              <span>Lv.${item.level}</span>
+              <strong>${escapeHTML(item.title)}</strong>
+              <small>${escapeHTML(stageText(item.stage))} · ${formatCount(item.requiredTotalExp)} 经验 · ${escapeHTML(item.effectStyle)}</small>
+            </article>
+          `).join("") : `<p>等级配置加载中</p>`}
+        </div>
+      </section>
+      <section class="card admin-section">
+        <div class="side-title"><span>预留能力</span><small>下一阶段</small></div>
+        <div class="admin-placeholder-grid">
+          <div><strong>埋点看板</strong><small>留存时长、路径、互动漏斗</small></div>
+          <div><strong>等级编辑</strong><small>称号、阶段、2D 图、升级阈值</small></div>
+          <div><strong>运营开关</strong><small>奖励、衰减、游历资格配置</small></div>
+        </div>
+      </section>
+    </main>
+  `;
 }
 
 function renderRecommend() {
@@ -3362,6 +3457,8 @@ function renderCurrentRoute() {
     renderHot();
   } else if (path === "/community") {
     renderCommunity();
+  } else if (path === "/admin") {
+    renderAdmin();
   } else {
     renderRecommend();
   }
@@ -3374,7 +3471,7 @@ document.addEventListener("click", (event) => {
   const link = event.target.closest("a");
   if (!link) return;
   const url = new URL(link.href);
-  if (url.origin === window.location.origin && ["/", "/people/p2wcex", "/hot", "/follow", "/community"].includes(url.pathname)) {
+  if (url.origin === window.location.origin && ["/", "/people/p2wcex", "/hot", "/follow", "/community", "/admin"].includes(url.pathname)) {
     event.preventDefault();
     window.history.pushState({}, "", url.pathname);
     renderCurrentRoute();

@@ -2837,6 +2837,133 @@ button {
   opacity: 0.68;
 }
 
+.admin-page {
+  width: min(100% - 64px, 1040px);
+  margin: 18px auto 40px;
+}
+
+.admin-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 28px;
+}
+
+.admin-hero h1 {
+  margin: 8px 0;
+  font-size: 28px;
+  line-height: 1.25;
+}
+
+.admin-hero p,
+.admin-denied p {
+  margin: 0;
+  color: #667085;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.admin-token-pill {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #eaf3ff;
+  color: #1677ff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.admin-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  margin: 12px 0;
+}
+
+.admin-stat-card {
+  padding: 16px;
+  border: 1px solid #e8eef7;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.admin-stat-card small,
+.admin-stat-card strong {
+  display: block;
+}
+
+.admin-stat-card small {
+  color: #667085;
+  font-size: 12px;
+}
+
+.admin-stat-card strong {
+  margin-top: 8px;
+  color: #121212;
+  font-size: 26px;
+}
+
+.admin-section,
+.admin-denied {
+  margin-top: 12px;
+  padding: 22px;
+}
+
+.admin-level-table {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.admin-level-table article {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) minmax(160px, auto);
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #eef2f7;
+  border-radius: 8px;
+  background: #fbfdff;
+}
+
+.admin-level-table span {
+  color: #1677ff;
+  font-weight: 900;
+}
+
+.admin-level-table strong {
+  color: #1f2329;
+}
+
+.admin-level-table small {
+  color: #667085;
+  text-align: right;
+}
+
+.admin-placeholder-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.admin-placeholder-grid div {
+  padding: 14px;
+  border: 1px dashed #c8d8f2;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.admin-placeholder-grid strong,
+.admin-placeholder-grid small {
+  display: block;
+}
+
+.admin-placeholder-grid small {
+  margin-top: 6px;
+  color: #667085;
+}
+
 .leaderboard-my-card.muted {
   color: #8491a5;
   font-size: 13px;
@@ -3740,6 +3867,28 @@ button {
   .page,
   .profile-wrap {
     width: calc(100% - 32px);
+  }
+
+  .admin-page {
+    width: calc(100% - 32px);
+  }
+
+  .admin-hero,
+  .admin-level-table article,
+  .admin-placeholder-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-hero {
+    display: grid;
+  }
+
+  .admin-stat-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .admin-level-table small {
+    text-align: left;
   }
 
   .zh-hot-list-card {
