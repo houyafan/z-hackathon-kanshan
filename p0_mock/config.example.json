@@ -11,6 +11,7 @@
   "community_app_key": "<user-token>",
   "community_app_secret": "<circle-token>",
   "community_ring_id": "<ring-id>",
+  "community_fallback_ring_ids": [],
   "session_ttl_hours": 24,
   "state_ttl_minutes": 10,
   "local_auth_bypass": false,

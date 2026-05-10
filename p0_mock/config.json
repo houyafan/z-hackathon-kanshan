@@ -11,6 +11,7 @@
   "community_app_key": "p2wcex",
   "community_app_secret": "vDIBBxP37bahJ4DzXHOIkybVgtVJabyT",
   "community_ring_id": "2029619126742656657",
+  "community_fallback_ring_ids": ["2001009660925334090", "2015023739549529606"],
   "session_ttl_hours": 24,
   "state_ttl_minutes": 10,
   "local_auth_bypass": false,

@@ -20,6 +20,7 @@ let communityContents = [];
 let communityPromise = null;
 let communityLoaded = false;
 let communityError = null;
+let communityFallbackReason = "";
 let leaderboardType = "pet_level";
 let leaderboardData = null;
 let leaderboardLoaded = false;
@@ -543,7 +544,6 @@ function renderPetHoverCard() {
       <strong>${escapeHTML(travelHint)}</strong>
     </div>
     <div class="pet-hover-actions">
-      <a href="/people/p2wcex">个人页</a>
       ${travelAction}
       <button data-hover-handbook>旅行手账</button>
       <button data-hover-leaderboard>排行榜</button>
@@ -719,12 +719,14 @@ async function loadCommunity({ refresh = false } = {}) {
       communityContents = data.contents || [];
       communityLoaded = true;
       communityError = null;
+      communityFallbackReason = data.fallback ? (data.fallbackReason || "目标圈子暂不可读，已展示可读开放圈子内容") : "";
       return data;
     })
     .catch((error) => {
       communityPromise = null;
       communityLoaded = true;
       communityError = error;
+      communityFallbackReason = "";
       console.warn("Community load failed", error);
       throw error;
   });
@@ -1029,10 +1031,7 @@ function shell(active) {
         <a class="${active === "follow" ? "active" : ""}" href="/follow" data-follow-tab>关注</a>
         <a class="${active === "recommend" ? "active" : ""}" href="/">推荐</a>
         <a class="${active === "hot" ? "active" : ""}" href="/hot">热榜</a>
-        <a href="#">专栏</a>
-        <a class="new-badge ${active === "community" ? "active" : ""}" href="/community">圈子</a>
-        <a href="#">付费咨询</a>
-        <a href="#">知学堂</a>
+        <a class="new-badge ${active === "community" ? "active" : ""}" href="/community">黑客松脑洞补给站</a>
       </nav>
       <div class="search">
         <input value="${active === "people" ? "中国女子在西班牙被刺身亡" : "朋友圈文案"}" aria-label="搜索">
@@ -1107,7 +1106,6 @@ function renderLoginGate() {
       <nav class="nav">
         <a class="active" href="/">推荐</a>
         <a href="#">热榜</a>
-        <a href="#">专栏</a>
       </nav>
       <div class="search">
         <input value="登录后领养刘看山" aria-label="搜索">
@@ -1452,6 +1450,9 @@ function communityHero() {
   const avatar = ring.ringAvatar
     ? `<img src="${escapeHTML(ring.ringAvatar)}" alt="">`
     : `<span>圈</span>`;
+  const fallbackNotice = communityFallbackReason
+    ? `<div class="community-notice">目标圈子暂未开放读取权限，当前展示可读开放圈子内容。</div>`
+    : "";
   return `
     <section class="card community-hero">
       <div class="community-avatar">${avatar}</div>
@@ -1462,6 +1463,7 @@ function communityHero() {
           <span>${formatCount(ring.membershipNum)} 成员</span>
           <span>${formatCount(ring.discussionNum)} 讨论</span>
         </div>
+        ${fallbackNotice}
       </div>
       <button class="outline-btn" data-refresh-community>刷新</button>
     </section>

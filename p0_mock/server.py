@@ -85,6 +85,7 @@ def load_config():
         "community_app_key": "",
         "community_app_secret": "",
         "community_ring_id": "",
+        "community_fallback_ring_ids": ["2001009660925334090", "2015023739549529606"],
         "session_ttl_hours": 24,
         "state_ttl_minutes": 10,
         "local_auth_bypass": False,
@@ -149,6 +150,11 @@ COMMUNITY_BASE_URL = str(CONFIG.get("community_base_url") or ZH_OPENAPI_BASE).rs
 COMMUNITY_APP_KEY = str(CONFIG.get("community_app_key") or "")
 COMMUNITY_APP_SECRET = str(CONFIG.get("community_app_secret") or "")
 COMMUNITY_RING_ID = str(CONFIG.get("community_ring_id") or "")
+COMMUNITY_FALLBACK_RING_IDS = [
+    str(item)
+    for item in (CONFIG.get("community_fallback_ring_ids") or [])
+    if str(item).strip()
+]
 SESSION_TTL_HOURS = int(CONFIG.get("session_ttl_hours") or 24)
 STATE_TTL_MINUTES = int(CONFIG.get("state_ttl_minutes") or 10)
 LOCAL_AUTH_BYPASS = bool(CONFIG.get("local_auth_bypass"))
@@ -1069,12 +1075,12 @@ def normalize_community_pin(pin):
     }
 
 
-def fetch_community_ring(page_num=1, page_size=20):
+def fetch_community_ring_by_id(ring_id, page_num=1, page_size=20):
     page_num = max(1, int(page_num))
     page_size = max(1, min(int(page_size), 50))
     payload = community_request(
         "/openapi/ring/detail",
-        params={"ring_id": COMMUNITY_RING_ID, "page_num": page_num, "page_size": page_size},
+        params={"ring_id": ring_id, "page_num": page_num, "page_size": page_size},
     )
     data = payload.get("data") or {}
     ring = data.get("ring_info") or {}
@@ -1082,7 +1088,7 @@ def fetch_community_ring(page_num=1, page_size=20):
         "source": "zhihu_community_api",
         "configured": True,
         "ring": {
-            "ringId": str(ring.get("ring_id") or COMMUNITY_RING_ID),
+            "ringId": str(ring.get("ring_id") or ring_id),
             "ringName": str(ring.get("ring_name") or "圈子"),
             "ringDesc": str(ring.get("ring_desc") or ""),
             "ringAvatar": str(ring.get("ring_avatar") or ""),
@@ -1093,6 +1099,30 @@ def fetch_community_ring(page_num=1, page_size=20):
         "pageNum": page_num,
         "pageSize": page_size,
     }
+
+
+def fetch_community_ring(page_num=1, page_size=20):
+    try:
+        payload = fetch_community_ring_by_id(COMMUNITY_RING_ID, page_num, page_size)
+        payload["requestedRingId"] = COMMUNITY_RING_ID
+        payload["fallback"] = False
+        return payload
+    except Exception as error:
+        last_error = error
+        if "readable list" not in str(error):
+            raise
+        for fallback_ring_id in COMMUNITY_FALLBACK_RING_IDS:
+            if fallback_ring_id == COMMUNITY_RING_ID:
+                continue
+            try:
+                payload = fetch_community_ring_by_id(fallback_ring_id, page_num, page_size)
+                payload["requestedRingId"] = COMMUNITY_RING_ID
+                payload["fallback"] = True
+                payload["fallbackReason"] = str(error)
+                return payload
+            except Exception as fallback_error:
+                last_error = fallback_error
+        raise last_error
 
 
 def fetch_community_comments(content_token, content_type="pin", page_num=1, page_size=20):
