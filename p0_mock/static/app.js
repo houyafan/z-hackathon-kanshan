@@ -51,6 +51,13 @@ const ADMIN_USER_TOKENS = new Set(["p2wcex", "sunny-27-1-97"]);
 const ADMIN_USER_UIDS = new Set(["1908940156829918831", "2013197829758268031"]);
 let onboardingTimer = null;
 let onboardingSnoozedUntil = 0;
+const ONBOARDING_BLOCKING_SELECTOR = [
+  ".content-modal",
+  ".growth-log-modal",
+  ".travel-handbook-modal",
+  ".travel-material-modal",
+  ".share-card-overlay",
+].join(", ");
 
 function isAdminUser(user = currentUser) {
   if (!user) return false;
@@ -361,6 +368,34 @@ function removeOnboardingGuide() {
   });
 }
 
+function hasOnboardingBlockingOverlay() {
+  return Boolean(document.querySelector(ONBOARDING_BLOCKING_SELECTOR));
+}
+
+function closeBlockingModal(modal) {
+  modal?.remove();
+  scheduleOnboardingGuide(260);
+}
+
+function isElementUncovered(element) {
+  const rect = element.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return false;
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+  const fullyOutsideViewport = rect.bottom < 0 || rect.top > viewportHeight || rect.right < 0 || rect.left > viewportWidth;
+  if (fullyOutsideViewport) return true;
+  const samplePoints = [
+    [rect.left + rect.width / 2, rect.top + rect.height / 2],
+    [rect.left + rect.width * 0.2, rect.top + rect.height * 0.2],
+    [rect.right - rect.width * 0.2, rect.bottom - rect.height * 0.2],
+  ];
+  return samplePoints.some(([x, y]) => {
+    if (x < 0 || y < 0 || x > viewportWidth || y > viewportHeight) return false;
+    const topElement = document.elementFromPoint(x, y);
+    return topElement && (element === topElement || element.contains(topElement));
+  });
+}
+
 function highlightOnboardingTarget(step) {
   document.querySelectorAll(".onboarding-highlight").forEach((element) => {
     element.classList.remove("onboarding-highlight");
@@ -369,7 +404,7 @@ function highlightOnboardingTarget(step) {
   const target = [...document.querySelectorAll(step.target)].find((element) => {
     if (element.disabled) return false;
     const rect = element.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0;
+    return rect.width > 0 && rect.height > 0 && isElementUncovered(element);
   });
   if (!target) return;
   target.classList.add("onboarding-highlight");
@@ -408,7 +443,7 @@ function avoidOnboardingOverlap(guide, step) {
 
 function renderOnboardingGuide(step) {
   removeOnboardingGuide();
-  if (!step) return;
+  if (!step || hasOnboardingBlockingOverlay()) return;
   const guide = document.createElement("div");
   guide.className = `onboarding-guide step-${step.id} placement-${step.placement || "side"}`;
   guide.setAttribute("role", "dialog");
@@ -491,6 +526,11 @@ function scheduleOnboardingGuide(delay = 220) {
   window.clearTimeout(onboardingTimer);
   onboardingTimer = window.setTimeout(() => {
     if (Date.now() < onboardingSnoozedUntil) return;
+    if (hasOnboardingBlockingOverlay()) {
+      removeOnboardingGuide();
+      scheduleOnboardingGuide(800);
+      return;
+    }
     renderOnboardingGuide(currentOnboardingStep());
   }, delay);
 }
@@ -1284,9 +1324,10 @@ function renderGrowthLogModal(logs = []) {
     </div>
   `;
   document.body.appendChild(modal);
-  modal.querySelector(".content-close").addEventListener("click", () => modal.remove());
+  removeOnboardingGuide();
+  modal.querySelector(".content-close").addEventListener("click", () => closeBlockingModal(modal));
   modal.addEventListener("click", (event) => {
-    if (event.target === modal) modal.remove();
+    if (event.target === modal) closeBlockingModal(modal);
   });
 }
 
@@ -2853,9 +2894,10 @@ function renderCommunityModal(pin, comments = [], loading = false) {
     </div>
   `;
   document.body.appendChild(modal);
-  modal.querySelector(".content-close").addEventListener("click", () => modal.remove());
+  removeOnboardingGuide();
+  modal.querySelector(".content-close").addEventListener("click", () => closeBlockingModal(modal));
   modal.addEventListener("click", (event) => {
-    if (event.target === modal) modal.remove();
+    if (event.target === modal) closeBlockingModal(modal);
   });
   modal.querySelector(".community-comment-form").addEventListener("submit", (event) => {
     event.preventDefault();
@@ -2895,6 +2937,7 @@ async function openContent(item, sourceElement) {
     const data = await api(`/api/p0/contents/${encodeURIComponent(item.id)}`);
     renderContentModal(data.content);
     if (profile?.adopted) {
+      markOnboardingStep("consume");
       submitContentEvent(item, item.action, sourceElement);
     } else {
       showToast("领养刘看山后，阅读会转化为成长");
@@ -2940,9 +2983,10 @@ function renderContentModal(content) {
     </div>
   `;
   document.body.appendChild(modal);
+  removeOnboardingGuide();
   const closeModal = () => {
     discardActiveCommentAssist();
-    modal.remove();
+    closeBlockingModal(modal);
   };
   modal.querySelector(".content-close").addEventListener("click", closeModal);
   modal.addEventListener("click", (event) => {
@@ -3393,9 +3437,10 @@ function showTravelMaterialModal(payload, source) {
     </div>
   `;
   document.body.appendChild(modal);
-  modal.querySelector(".content-close").addEventListener("click", () => modal.remove());
+  removeOnboardingGuide();
+  modal.querySelector(".content-close").addEventListener("click", () => closeBlockingModal(modal));
   modal.addEventListener("click", (event) => {
-    if (event.target === modal) modal.remove();
+    if (event.target === modal) closeBlockingModal(modal);
   });
 }
 
@@ -3423,9 +3468,10 @@ function renderTravelHandbook(entries) {
     </div>
   `;
   document.body.appendChild(modal);
-  modal.querySelector(".content-close").addEventListener("click", () => modal.remove());
+  removeOnboardingGuide();
+  modal.querySelector(".content-close").addEventListener("click", () => closeBlockingModal(modal));
   modal.addEventListener("click", (event) => {
-    if (event.target === modal) modal.remove();
+    if (event.target === modal) closeBlockingModal(modal);
   });
   modal.querySelectorAll(".handbook-content-button").forEach((button) => {
     button.addEventListener("click", () => handleHandbookContentClick(button));
