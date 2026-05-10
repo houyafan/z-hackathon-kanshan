@@ -1278,9 +1278,41 @@ function leaderboardVisual(item) {
   const effectStyle = item?.levelEffectStyle || "cute";
   const image = item?.level2dThumbnail || item?.level2dImage;
   return `
-    <div class="leaderboard-visual level-${escapeHTML(effectStyle)}" title="${escapeHTML(item?.levelTitle || `Lv.${level}`)}">
-      ${image ? `<img src="${escapeHTML(image)}" alt="${escapeHTML(item?.levelTitle || `Lv.${level} 刘看山`)}">` : `<span>山</span>`}
-      <small>Lv.${level}</small>
+    <div class="leaderboard-avatar-wrap" tabindex="0" aria-label="${escapeHTML(item?.fullname || "知乎用户")}的排行资料">
+      <div class="leaderboard-visual level-${escapeHTML(effectStyle)}" title="${escapeHTML(item?.levelTitle || `Lv.${level}`)}">
+        ${image ? `<img src="${escapeHTML(image)}" alt="${escapeHTML(item?.levelTitle || `Lv.${level} 刘看山`)}">` : `<span>山</span>`}
+        <small>Lv.${level}</small>
+      </div>
+      ${leaderboardUserPopover(item)}
+    </div>
+  `;
+}
+
+function leaderboardUserPopover(item) {
+  const displayName = item?.fullname || "知乎用户";
+  const headline = item?.headline || "这个人还没有填写个人简介";
+  const description = item?.description || item?.petName || "正在和刘看山一起阅读成长";
+  const avatar = item?.avatarPath
+    ? `<img src="${escapeHTML(item.avatarPath)}" alt="${escapeHTML(displayName)}">`
+    : `<span>${escapeHTML(displayName.slice(0, 1) || "知")}</span>`;
+  const rankMetric = leaderboardType === "travel_count"
+    ? `游历 ${formatCount(item?.travelCount || 0)} 次`
+    : `${formatCount(item?.totalExp || 0)} 经验`;
+  return `
+    <div class="leaderboard-user-popover" role="tooltip">
+      <div class="leaderboard-user-popover-head">
+        <div class="leaderboard-user-avatar">${avatar}</div>
+        <div>
+          <strong>${escapeHTML(displayName)}</strong>
+          <small>${escapeHTML(headline)}</small>
+        </div>
+      </div>
+      <p>${escapeHTML(description)}</p>
+      <div class="leaderboard-user-tags">
+        <span>Lv.${escapeHTML(String(item?.level || 1))}</span>
+        <span>${escapeHTML(item?.levelTitle || stageText(item?.stage))}</span>
+        <span>${escapeHTML(rankMetric)}</span>
+      </div>
     </div>
   `;
 }
