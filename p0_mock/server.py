@@ -367,21 +367,21 @@ DEFAULT_LEVEL_VISUALS = [
     {
         "level": 1,
         "stage": "cub",
-        "title": "新手探索员",
+        "title": "星途起点",
         "effect_style": "cute",
         "description": "基础红围巾，刚开始陪主人探索知识宇宙",
     },
     {
         "level": 2,
         "stage": "cub",
-        "title": "星章探索员",
+        "title": "星章萌新",
         "effect_style": "cute",
         "description": "围巾星章点亮，开始积累阅读成就",
     },
     {
         "level": 3,
         "stage": "cub",
-        "title": "任务新星",
+        "title": "星光信使",
         "effect_style": "cute",
         "description": "挂上任务星章，进入稳定阅读节奏",
     },
@@ -395,7 +395,7 @@ DEFAULT_LEVEL_VISUALS = [
     {
         "level": 5,
         "stage": "growing",
-        "title": "火箭见习官",
+        "title": "星际见习官",
         "effect_style": "explore",
         "description": "背上迷你科考包，准备更远的内容探索",
     },
@@ -409,7 +409,7 @@ DEFAULT_LEVEL_VISUALS = [
     {
         "level": 7,
         "stage": "adult",
-        "title": "深空任务官",
+        "title": "深空开拓者",
         "effect_style": "cool",
         "description": "带着任务旗帜出发，拥有稳定的深度阅读能力",
     },
@@ -430,7 +430,7 @@ DEFAULT_LEVEL_VISUALS = [
     {
         "level": 10,
         "stage": "advanced",
-        "title": "宇宙知识领航员",
+        "title": "宇宙知识领航者",
         "effect_style": "legendary",
         "description": "金色星际冠、披风与权杖加身，成为知识宇宙的领航伙伴",
     },
@@ -2362,7 +2362,7 @@ def leaderboard_share_image_urls(profile_payload, project_url=""):
 
 def leaderboard_share_copy(user, profile_payload, rank_item, project_url):
     level = profile_payload.get("level") or 1
-    level_title = profile_payload.get("levelTitle") or "新手探索员"
+    level_title = profile_payload.get("levelTitle") or "星途起点"
     share_url = f"{project_public_origin(project_url)}/"
     title = "挖到一个超棒的知乎新玩法！「看山陪伴计划」"
     content = (

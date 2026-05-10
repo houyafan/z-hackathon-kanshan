@@ -510,39 +510,39 @@ CREATE INDEX IF NOT EXISTS idx_oauth_state_expiry
 INSERT OR IGNORE INTO pet_level_config
   (level, stage, required_total_exp, title, unlock_features)
 VALUES
-  (1, 'cub', 0, '新手探索员', '[]'),
-  (2, 'cub', 50, '星章探索员', '[]'),
-  (3, 'cub', 120, '任务新星', '[]'),
+  (1, 'cub', 0, '星途起点', '[]'),
+  (2, 'cub', 50, '星章萌新', '[]'),
+  (3, 'cub', 120, '星光信使', '[]'),
   (4, 'growing', 250, '行星记录员', '[]'),
-  (5, 'growing', 450, '火箭见习官', '[]'),
+  (5, 'growing', 450, '星际见习官', '[]'),
   (6, 'growing', 700, '星图导航员', '[]'),
-  (7, 'adult', 1000, '深空任务官', '[]'),
+  (7, 'adult', 1000, '深空开拓者', '[]'),
   (8, 'adult', 1400, '知识探测者', '[]'),
   (9, 'adult', 1900, '星际领航员', '[]'),
-  (10, 'advanced', 2500, '宇宙知识领航员', '[]');
+  (10, 'advanced', 2500, '宇宙知识领航者', '[]');
 
 INSERT INTO pet_level_visual_config
   (level, stage, title, effect_style, image_url, thumbnail_url, share_bg_url, description)
 VALUES
-  (1, 'cub', '新手探索员', 'cute',
+  (1, 'cub', '星途起点', 'cute',
    '/static/assets/pet-level/level-01.png', '/static/assets/pet-level/level-01.png',
    '/static/assets/pet-level/cute-share-bg.svg', '基础红围巾，刚开始陪主人探索知识宇宙'),
-  (2, 'cub', '星章探索员', 'cute',
+  (2, 'cub', '星章萌新', 'cute',
    '/static/assets/pet-level/level-02.png', '/static/assets/pet-level/level-02.png',
    '/static/assets/pet-level/cute-share-bg.svg', '围巾星章点亮，开始积累阅读成就'),
-  (3, 'cub', '任务新星', 'cute',
+  (3, 'cub', '星光信使', 'cute',
    '/static/assets/pet-level/level-03.png', '/static/assets/pet-level/level-03.png',
    '/static/assets/pet-level/cute-share-bg.svg', '挂上任务星章，进入稳定阅读节奏'),
   (4, 'growing', '行星记录员', 'explore',
    '/static/assets/pet-level/level-04.png', '/static/assets/pet-level/level-04.png',
    '/static/assets/pet-level/explore-share-bg.svg', '戴上航天帽和行星徽章，开始记录知识旅程'),
-  (5, 'growing', '火箭见习官', 'explore',
+  (5, 'growing', '星际见习官', 'explore',
    '/static/assets/pet-level/level-05.png', '/static/assets/pet-level/level-05.png',
    '/static/assets/pet-level/explore-share-bg.svg', '背上迷你科考包，准备更远的内容探索'),
   (6, 'growing', '星图导航员', 'explore',
    '/static/assets/pet-level/level-06.png', '/static/assets/pet-level/level-06.png',
    '/static/assets/pet-level/explore-share-bg.svg', '护目镜与指南针就位，能看懂更复杂的知识路线'),
-  (7, 'adult', '深空任务官', 'cool',
+  (7, 'adult', '深空开拓者', 'cool',
    '/static/assets/pet-level/level-07.png', '/static/assets/pet-level/level-07.png',
    '/static/assets/pet-level/cool-share-bg.svg', '带着任务旗帜出发，拥有稳定的深度阅读能力'),
   (8, 'adult', '知识探测者', 'cool',
@@ -551,7 +551,7 @@ VALUES
   (9, 'adult', '星际领航员', 'cool',
    '/static/assets/pet-level/level-09.png', '/static/assets/pet-level/level-09.png',
    '/static/assets/pet-level/cool-share-bg.svg', '蓝金徽章与能量装备成型，进入高阶陪伴状态'),
-  (10, 'advanced', '宇宙知识领航员', 'legendary',
+  (10, 'advanced', '宇宙知识领航者', 'legendary',
    '/static/assets/pet-level/level-10.png', '/static/assets/pet-level/level-10.png',
    '/static/assets/pet-level/legendary-share-bg.svg', '金色星际冠、披风与权杖加身，成为知识宇宙的领航伙伴')
 ON CONFLICT(level) DO UPDATE SET

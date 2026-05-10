@@ -4,7 +4,7 @@
       "level": 1,
       "stage": "cub",
       "required_total_exp": 0,
-      "title": "新手探索员",
+      "title": "星途起点",
       "effect_style": "cute",
       "description": "基础红围巾，刚开始陪主人探索知识宇宙"
     },
@@ -12,7 +12,7 @@
       "level": 2,
       "stage": "cub",
       "required_total_exp": 50,
-      "title": "星章探索员",
+      "title": "星章萌新",
       "effect_style": "cute",
       "description": "围巾星章点亮，开始积累阅读成就"
     },
@@ -20,7 +20,7 @@
       "level": 3,
       "stage": "cub",
       "required_total_exp": 120,
-      "title": "任务新星",
+      "title": "星光信使",
       "effect_style": "cute",
       "description": "挂上任务星章，进入稳定阅读节奏"
     },
@@ -36,7 +36,7 @@
       "level": 5,
       "stage": "growing",
       "required_total_exp": 450,
-      "title": "火箭见习官",
+      "title": "星际见习官",
       "effect_style": "explore",
       "description": "背上迷你科考包，准备更远的内容探索"
     },
@@ -52,7 +52,7 @@
       "level": 7,
       "stage": "adult",
       "required_total_exp": 1000,
-      "title": "深空任务官",
+      "title": "深空开拓者",
       "effect_style": "cool",
       "description": "带着任务旗帜出发，拥有稳定的深度阅读能力"
     },
@@ -76,7 +76,7 @@
       "level": 10,
       "stage": "advanced",
       "required_total_exp": 2500,
-      "title": "宇宙知识领航员",
+      "title": "宇宙知识领航者",
       "effect_style": "legendary",
       "description": "金色星际冠、披风与权杖加身，成为知识宇宙的领航伙伴"
     }
