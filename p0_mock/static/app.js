@@ -43,6 +43,10 @@ let _lastWakeBubbleAt = null;
 const savedRewardWalk = localStorage.getItem("liukanshan_reward_walk_enabled") ?? localStorage.getItem("liukanshan_level_walk_enabled");
 let rewardWalkEnabled = savedRewardWalk !== "0";
 const MODEL_PATH = "/3d-liukanshan-roaming/liukanshan-slot.glb?v=2";
+const ONBOARDING_VERSION = "v1";
+const ONBOARDING_KEY = `liukanshan_onboarding_${ONBOARDING_VERSION}`;
+let onboardingTimer = null;
+let onboardingSnoozedUntil = 0;
 
 function effectLayer() {
   let layer = document.querySelector(".pet-effect-layer");
@@ -206,6 +210,239 @@ function showToast(message) {
   toast.classList.add("show");
   window.clearTimeout(showToast.timer);
   showToast.timer = window.setTimeout(() => toast.classList.remove("show"), 1800);
+}
+
+function defaultOnboardingState() {
+  return {
+    version: ONBOARDING_VERSION,
+    skipped: false,
+    firstConsumeDone: false,
+    firstInteractDone: false,
+    travelSeen: false,
+    growthLogSeen: false,
+    leaderboardSeen: false,
+  };
+}
+
+function getOnboardingState() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(ONBOARDING_KEY) || "{}");
+    return { ...defaultOnboardingState(), ...parsed, version: ONBOARDING_VERSION };
+  } catch {
+    return defaultOnboardingState();
+  }
+}
+
+function saveOnboardingState(nextState) {
+  localStorage.setItem(ONBOARDING_KEY, JSON.stringify({ ...defaultOnboardingState(), ...nextState }));
+}
+
+function markOnboardingStep(stepKey) {
+  const state = getOnboardingState();
+  if (state.skipped) return;
+  const fieldMap = {
+    consume: "firstConsumeDone",
+    interact: "firstInteractDone",
+    travel: "travelSeen",
+    growthLog: "growthLogSeen",
+    leaderboard: "leaderboardSeen",
+  };
+  const field = fieldMap[stepKey];
+  if (!field || state[field]) return;
+  saveOnboardingState({ ...state, [field]: true });
+  scheduleOnboardingGuide(300);
+}
+
+function onboardingSteps() {
+  return [
+    {
+      id: "login",
+      index: 1,
+      title: "先登录知乎",
+      body: "登录后就能领养刘看山，把阅读和互动变成成长值。",
+      primaryText: "登录知乎",
+      target: ".login-primary",
+      action: "login",
+    },
+    {
+      id: "adopt",
+      index: 2,
+      title: "领养刘看山",
+      body: "到个人页点击领养，让看山正式回家。",
+      primaryText: "去领养",
+      target: "[data-adopt]",
+      route: "/people/p2wcex",
+      action: "adopt",
+    },
+    {
+      id: "consume",
+      index: 3,
+      title: "阅读一条推荐",
+      body: "打开推荐内容全文，文章、想法、视频和小说都会给看山加经验。",
+      primaryText: "去推荐页",
+      target: "[data-open-content]",
+      route: "/",
+    },
+    {
+      id: "interact",
+      index: 4,
+      title: "完成一次互动",
+      body: "点赞、收藏或评论会提升心情，也会记录在成长日志里。",
+      primaryText: "去互动",
+      target: "[data-interact]",
+      route: "/",
+    },
+    {
+      id: "travel",
+      index: 5,
+      title: "认识游历入口",
+      body: "悬浮刘看山可以看到游历、手账、成长日志和排行榜。",
+      primaryText: "我知道了",
+      target: "#roamingCharacter",
+      action: "travel",
+    },
+    {
+      id: "growthLog",
+      index: 6,
+      title: "查看成长日志",
+      body: "每次成长和衰减都会记录下来，方便回看最近的变化。",
+      primaryText: "打开日志",
+      target: "[data-hover-growth-log]",
+      action: "growthLog",
+    },
+    {
+      id: "leaderboard",
+      index: 7,
+      title: "看看排行榜",
+      body: "等级榜和游历榜会展示大家的看山成长进度。",
+      primaryText: "打开榜单",
+      target: "[data-hover-leaderboard], [data-sidebar-leaderboard]",
+      action: "leaderboard",
+    },
+  ];
+}
+
+function currentOnboardingStep() {
+  const state = getOnboardingState();
+  if (state.skipped) return null;
+  if (!currentUser) return onboardingSteps()[0];
+  if (!profile?.adopted) return onboardingSteps()[1];
+  if (!state.firstConsumeDone) return onboardingSteps()[2];
+  if (!state.firstInteractDone) return onboardingSteps()[3];
+  if (!state.travelSeen) return onboardingSteps()[4];
+  if (!state.growthLogSeen) return onboardingSteps()[5];
+  if (!state.leaderboardSeen) return onboardingSteps()[6];
+  return null;
+}
+
+function removeOnboardingGuide() {
+  document.querySelector(".onboarding-guide")?.remove();
+  document.querySelectorAll(".onboarding-highlight").forEach((element) => {
+    element.classList.remove("onboarding-highlight");
+  });
+}
+
+function highlightOnboardingTarget(step) {
+  document.querySelectorAll(".onboarding-highlight").forEach((element) => {
+    element.classList.remove("onboarding-highlight");
+  });
+  if (!step?.target) return;
+  const target = [...document.querySelectorAll(step.target)].find((element) => {
+    if (element.disabled) return false;
+    const rect = element.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  });
+  if (!target) return;
+  target.classList.add("onboarding-highlight");
+  const rect = target.getBoundingClientRect();
+  const visible = rect.top >= 72 && rect.bottom <= window.innerHeight - 88;
+  if (!visible) {
+    target.scrollIntoView({ block: "center", behavior: "smooth" });
+  }
+}
+
+function renderOnboardingGuide(step) {
+  removeOnboardingGuide();
+  if (!step) return;
+  const guide = document.createElement("div");
+  guide.className = `onboarding-guide step-${step.id}`;
+  guide.setAttribute("role", "dialog");
+  guide.setAttribute("aria-label", "新手引导");
+  guide.innerHTML = `
+    <div class="onboarding-guide-card">
+      <button class="onboarding-close" data-onboarding-later aria-label="稍后再看">×</button>
+      <div class="onboarding-kicker">新手引导 ${step.index}/7</div>
+      <h2>${escapeHTML(step.title)}</h2>
+      <p>${escapeHTML(step.body)}</p>
+      <div class="onboarding-progress" aria-hidden="true">
+        ${onboardingSteps().map((item) => `<span class="${item.index <= step.index ? "active" : ""}"></span>`).join("")}
+      </div>
+      <div class="onboarding-actions">
+        <button class="onboarding-skip" data-onboarding-skip>跳过引导</button>
+        <button class="onboarding-primary" data-onboarding-primary>${escapeHTML(step.primaryText)}</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(guide);
+  guide.querySelector("[data-onboarding-later]").addEventListener("click", () => {
+    onboardingSnoozedUntil = Date.now() + 3 * 60 * 1000;
+    removeOnboardingGuide();
+  });
+  guide.querySelector("[data-onboarding-skip]").addEventListener("click", () => {
+    saveOnboardingState({ ...getOnboardingState(), skipped: true });
+    removeOnboardingGuide();
+    showToast("已跳过新手引导");
+  });
+  guide.querySelector("[data-onboarding-primary]").addEventListener("click", () => {
+    handleOnboardingPrimary(step);
+  });
+  window.requestAnimationFrame(() => highlightOnboardingTarget(step));
+}
+
+function routeTo(path) {
+  if (!path || window.location.pathname === path) return false;
+  window.history.pushState({}, "", path);
+  renderCurrentRoute();
+  return true;
+}
+
+function handleOnboardingPrimary(step) {
+  if (step.action === "login") {
+    const next = encodeURIComponent(window.location.pathname || "/");
+    window.location.href = `/auth/login?next=${next}`;
+    return;
+  }
+  if (step.action === "adopt") {
+    if (routeTo(step.route)) return;
+    document.querySelector("[data-adopt]")?.click();
+    return;
+  }
+  if (step.action === "travel") {
+    markOnboardingStep("travel");
+    character?.setMessage?.("悬浮我，可以看到游历和成长菜单~", { autoHide: 3200 });
+    showToast("游历入口在刘看山的悬浮菜单里");
+    return;
+  }
+  if (step.action === "growthLog") {
+    openGrowthLog();
+    return;
+  }
+  if (step.action === "leaderboard") {
+    openLeaderboardPanel();
+    return;
+  }
+  if (step.route) {
+    routeTo(step.route);
+    scheduleOnboardingGuide(380);
+  }
+}
+
+function scheduleOnboardingGuide(delay = 220) {
+  window.clearTimeout(onboardingTimer);
+  onboardingTimer = window.setTimeout(() => {
+    if (Date.now() < onboardingSnoozedUntil) return;
+    renderOnboardingGuide(currentOnboardingStep());
+  }, delay);
 }
 
 function isLocalDebugHost() {
@@ -987,6 +1224,7 @@ async function openGrowthLog() {
     showToast("领养刘看山后查看成长日志");
     return;
   }
+  markOnboardingStep("growthLog");
   renderGrowthLogModal([]);
   try {
     const data = await api("/api/p0/pet/growth-logs?limit=80");
@@ -1229,6 +1467,7 @@ async function openLeaderboardPanel(type = leaderboardType) {
     showToast("领养刘看山后查看排行榜");
     return;
   }
+  markOnboardingStep("leaderboard");
   leaderboardPanelOpen = true;
   leaderboardType = type === "travel_count" ? "travel_count" : "pet_level";
   renderLeaderboardPanel();
@@ -1513,6 +1752,7 @@ function renderLoginGate() {
       </section>
     </main>
   `;
+  scheduleOnboardingGuide();
 }
 
 function renderDailyQuests(stat) {
@@ -2233,6 +2473,7 @@ async function likeCommunityPin(pinId, sourceElement) {
     if (data.profile) profile = data.profile;
     syncCharacter();
     if (data.reward) showReward(data.reward, sourceElement);
+    markOnboardingStep("interact");
     sourceElement?.classList.add("active");
     showToast("已同步点赞到圈子");
   } catch (error) {
@@ -2317,6 +2558,7 @@ async function submitCommunityComment(pin, form) {
     if (data.profile) profile = data.profile;
     syncCharacter();
     if (data.reward) showReward(data.reward, form.querySelector("button"));
+    markOnboardingStep("interact");
     showToast("评论已发布到圈子");
     communityLoaded = false;
     await loadCommunity({ refresh: true });
@@ -2491,6 +2733,7 @@ function bindCommentEditor(modalRoot) {
       if (resp?.profile) profile = resp.profile;
       if (resp?.content) mergeUpdatedContent(resp.content);
       if (resp?.reward) showReward(resp.reward, submitBtn);
+      markOnboardingStep("interact");
       syncCharacter();
       renderCurrentRoute();
       // mark assist log as used (no need to discard on close anymore)
@@ -2581,6 +2824,7 @@ async function startTravel() {
     renderCurrentRoute();
     pet?.setMessage?.(data.message || "看山出发啦", { autoHide: 2200 });
     playTravelDeparture(data.travel);
+    markOnboardingStep("travel");
     showToast(`${travelThemeText(data.travel.theme)}出发`);
     scheduleTravelReturnCheck();
   } catch (error) {
@@ -2880,9 +3124,12 @@ async function adoptPet() {
     profile = data.profile;
     await loadTravelStatus();
     syncCharacter();
+    removeOnboardingGuide();
+    onboardingSnoozedUntil = Date.now() + 4200;
     renderCurrentRoute();
     showToast("刘看山已到家");
     character?.setMessage("你好，我是刘看山~", { autoHide: 2600 });
+    scheduleOnboardingGuide(4400);
     window.requestAnimationFrame(() => playHomecomingEffect());
   } catch (error) {
     showToast(error.message || "领养失败");
@@ -2942,6 +3189,12 @@ async function submitContentEvent(item, actionType, sourceElement) {
     await loadTravelStatus();
     syncCharacter();
     showReward(data.reward, sourceElement);
+    if (["read", "watch"].includes(normalizedAction)) {
+      markOnboardingStep("consume");
+    }
+    if (["like", "comment", "collect"].includes(normalizedAction)) {
+      markOnboardingStep("interact");
+    }
     renderCurrentRoute();
   } catch (error) {
     showToast(error.message || "事件提交失败");
@@ -3036,6 +3289,7 @@ function renderCurrentRoute() {
     renderRecommend();
   }
   window.requestAnimationFrame(() => syncCharacter());
+  scheduleOnboardingGuide();
 }
 
 window.addEventListener("popstate", renderCurrentRoute);
