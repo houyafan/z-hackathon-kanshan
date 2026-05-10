@@ -15,7 +15,7 @@ import sqlite3
 import threading
 import time
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,6 +27,17 @@ CONFIG_PATH = Path(os.environ.get("CONFIG_PATH") or ROOT / "p0_mock" / "config.j
 BUNDLED_CONFIG_PATH = ROOT / "p0_mock" / "config.json"
 DEFAULT_USER_ID = 10001
 SESSION_COOKIE_NAME = "lks_session"
+APP_TZ = timezone(timedelta(hours=8), "Asia/Shanghai")
+
+
+def now_dt():
+    """Return app wall-clock time in Beijing as a naive datetime.
+
+    The existing persistence/comparison code stores naive ISO strings. Keeping
+    this naive avoids breaking comparisons while making the app independent of
+    the host/container timezone.
+    """
+    return datetime.now(APP_TZ).replace(tzinfo=None)
 
 
 def env_bool(name):
@@ -255,11 +266,11 @@ class LLMError(Exception):
 
 
 def now_text():
-    return datetime.now().isoformat(timespec="seconds")
+    return now_dt().isoformat(timespec="seconds")
 
 
 def future_text(**kwargs):
-    return (datetime.now() + timedelta(**kwargs)).isoformat(timespec="seconds")
+    return (now_dt() + timedelta(**kwargs)).isoformat(timespec="seconds")
 
 
 def parse_time(value):
@@ -268,7 +279,7 @@ def parse_time(value):
     try:
         parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
         if parsed.tzinfo is not None:
-            return parsed.astimezone().replace(tzinfo=None)
+            return parsed.astimezone(APP_TZ).replace(tzinfo=None)
         return parsed
     except ValueError:
         return datetime.min
@@ -1190,7 +1201,7 @@ def fetch_session(conn, session_id):
     ).fetchone()
     if row is None:
         return None
-    if parse_time(row["expires_at"]) <= datetime.now():
+    if parse_time(row["expires_at"]) <= now_dt():
         conn.execute("DELETE FROM auth_session WHERE session_id = ?", (session_id,))
         return None
     if AUTH_MODE == "oauth" and int(row["user_id"]) == DEFAULT_USER_ID:
@@ -1225,7 +1236,7 @@ def consume_oauth_state(conn, state):
         """,
         (state,),
     ).fetchone()
-    if row is None or parse_time(row["expires_at"]) <= datetime.now():
+    if row is None or parse_time(row["expires_at"]) <= now_dt():
         return None
     conn.execute(
         "UPDATE oauth_state SET consumed_at = ? WHERE state = ?",
@@ -1283,7 +1294,7 @@ def fetch_oauth_token(conn, user_id):
         "SELECT * FROM zhihu_oauth_token WHERE user_id = ?",
         (user_id,),
     ).fetchone()
-    if row is None or parse_time(row["expires_at"]) <= datetime.now():
+    if row is None or parse_time(row["expires_at"]) <= now_dt():
         return None
     return row
 
@@ -1763,10 +1774,10 @@ def apply_health_decay(conn, profile):
     if not last_at:
         return profile
     try:
-        last_dt = datetime.fromisoformat(last_at)
+        last_dt = parse_time(last_at)
     except (TypeError, ValueError):
         return profile
-    now = datetime.now()
+    now = now_dt()
     elapsed_hours = (now - last_dt).total_seconds() / 3600.0
     if DECAY_SPEEDUP > 0:
         elapsed_hours *= DECAY_SPEEDUP
@@ -2075,7 +2086,7 @@ def write_growth_log(conn, user_id, source_id, change_type, delta, before_value,
 
 def grant_daily_signin(conn, user_id):
     """Grant daily signin reward if not yet signed today."""
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = now_dt().strftime("%Y-%m-%d")
     conn.execute(
         "INSERT OR IGNORE INTO pet_daily_stat (user_id, stat_date, created_at, updated_at) "
         "VALUES (?, ?, ?, ?)",
@@ -2143,8 +2154,8 @@ def grant_pat(conn, user_id):
     ).fetchone()
     if last_pat is not None:
         try:
-            last_dt = datetime.fromisoformat(last_pat["created_at"])
-            elapsed = (datetime.now() - last_dt).total_seconds()
+            last_dt = parse_time(last_pat["created_at"])
+            elapsed = (now_dt() - last_dt).total_seconds()
             if elapsed < PAT_COOLDOWN_SECONDS:
                 return {
                     "error": "PAT_COOLDOWN",
@@ -2152,7 +2163,7 @@ def grant_pat(conn, user_id):
                 }
         except Exception:
             pass
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = now_dt().strftime("%Y-%m-%d")
     today_count = conn.execute(
         "SELECT COUNT(*) FROM pet_growth_log "
         "WHERE user_id = ? AND source_type = 'pat' AND substr(created_at, 1, 10) = ?",
@@ -2237,7 +2248,7 @@ def apply_pet_decay(conn, user_id, profile=None):
     if inactive_start == datetime.min:
         return None
 
-    inactive_seconds = max(0, (datetime.now() - inactive_start).total_seconds())
+    inactive_seconds = max(0, (now_dt() - inactive_start).total_seconds())
     inactive_hours_exact = inactive_seconds / 3600
     inactive_hours = int(inactive_hours_exact)
     rules = conn.execute(
@@ -2381,7 +2392,7 @@ def apply_follow_moment_reward(conn, user_id, new_count):
     level_row = fetch_level(conn, new_total_exp)
     new_level = level_row["level"] if level_row else old["level"]
     new_stage = level_row["stage"] if level_row else old["stage"]
-    source_id = f"follow_moments:{int(datetime.now().timestamp() * 1000)}"
+    source_id = f"follow_moments:{int(time.time() * 1000)}"
 
     conn.execute(
         """
@@ -2574,14 +2585,14 @@ def sync_follow_moments(user_id, page=0, per_page=10):
         batch_id = uuid.uuid4().hex
         retry_ids = []
         if new_moment_ids:
-            now = datetime.now()
+            now = now_dt()
             for r in conn.execute(
                 "SELECT id, llm_retry_count, updated_at FROM zhihu_follow_moment "
                 "WHERE user_id = ? AND llm_summary_status = 'failed' AND llm_retry_count < 3",
                 (user_id,),
             ).fetchall():
                 try:
-                    last = datetime.fromisoformat(r["updated_at"]) if r["updated_at"] else now - timedelta(seconds=99999)
+                    last = parse_time(r["updated_at"]) if r["updated_at"] else now - timedelta(seconds=99999)
                 except Exception:
                     last = now - timedelta(seconds=99999)
                 wait_secs = 30 * (2 ** int(r["llm_retry_count"] or 0))
@@ -2746,7 +2757,7 @@ def mark_follow_moments_notified(user_id):
 
 
 def apply_content_event(payload, user_id):
-    event_id = str(payload.get("eventId") or f"evt_{int(datetime.now().timestamp() * 1000)}")
+    event_id = str(payload.get("eventId") or f"evt_{int(time.time() * 1000)}")
     content_id = str(payload.get("contentId") or "")
     content_type = str(payload.get("contentType") or "")
     action_type = str(payload.get("actionType") or "")
@@ -2922,7 +2933,7 @@ def apply_content_event(payload, user_id):
 
         # Auto-grant 3-reads daily quest reward (PRD §（二）.B 表)
         if action_type in ("read", "watch"):
-            today_str = datetime.now().strftime("%Y-%m-%d")
+            today_str = now_dt().strftime("%Y-%m-%d")
             stat = conn.execute(
                 "SELECT valid_read_count, valid_watch_count, quest_3reads_claimed "
                 "FROM pet_daily_stat WHERE user_id = ? AND stat_date = ?",
@@ -3221,7 +3232,7 @@ def refresh_travel_status(conn, user_id):
         return None, None
 
     changed = False
-    if profile["travel_status"] == "cooldown" and parse_time(profile["cooldown_until"]) <= datetime.now():
+    if profile["travel_status"] == "cooldown" and parse_time(profile["cooldown_until"]) <= now_dt():
         conn.execute(
             """
             UPDATE pet_profile
@@ -3235,7 +3246,7 @@ def refresh_travel_status(conn, user_id):
         changed = True
 
     travel = fetch_current_travel(conn, user_id)
-    if travel and travel["status"] == "traveling" and parse_time(travel["expected_return_at"]) <= datetime.now():
+    if travel and travel["status"] == "traveling" and parse_time(travel["expected_return_at"]) <= now_dt():
         conn.execute(
             """
             UPDATE pet_travel_event
@@ -3280,7 +3291,7 @@ def travel_block_reason(profile, active_travel):
         return "刘看山正在游历中"
     if active_travel and active_travel["status"] == "returned":
         return "刘看山已经归来，先领取带回的内容"
-    if profile["travel_status"] == "cooldown" and parse_time(profile["cooldown_until"]) > datetime.now():
+    if profile["travel_status"] == "cooldown" and parse_time(profile["cooldown_until"]) > now_dt():
         return "刘看山刚旅行回来，正在休息冷却"
     if profile["level"] < 2:
         return "Lv.2 后可以出门游历"
@@ -3678,7 +3689,7 @@ def start_travel(user_id, requested_theme="auto"):
             empty_message = "你还没有关注动态，看山先在家里陪你" if theme == "polar" else "热榜暂时没有取到内容"
             return 409, {"error": "TRAVEL_CONTENT_EMPTY", "message": empty_message, "decayNotice": decay_notice}
 
-        travel_id = f"travel_{user_id}_{int(datetime.now().timestamp() * 1000)}"
+        travel_id = f"travel_{user_id}_{int(time.time() * 1000)}"
         started_at = now_text()
         expected_return_at = future_text(seconds=duration_sec)
         conn.execute(
@@ -3762,7 +3773,7 @@ def return_travel(user_id, force=True):
             conn.rollback()
             return 409, {"error": "NO_ACTIVE_TRAVEL", "message": "当前没有进行中的游历"}
         if travel["status"] == "traveling":
-            if not force and parse_time(travel["expected_return_at"]) > datetime.now():
+            if not force and parse_time(travel["expected_return_at"]) > now_dt():
                 conn.rollback()
                 return 409, {"error": "TRAVEL_NOT_FINISHED", "message": "刘看山还在路上"}
             meta = theme_meta(travel["theme"])
@@ -4138,7 +4149,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             qs = parse_qs(parsed.query)
             user_id = session["user_id"]
-            stat_date = (qs.get("date") or [datetime.now().date().isoformat()])[0]
+            stat_date = (qs.get("date") or [now_dt().date().isoformat()])[0]
             with connect_db() as conn:
                 row = conn.execute(
                     "SELECT * FROM pet_daily_stat WHERE user_id = ? AND stat_date = ?",
@@ -4575,7 +4586,7 @@ class Handler(BaseHTTPRequestHandler):
                             (comment_text, used_as_is, now_text(), assist_log_id),
                         )
             event_payload = {
-                "eventId": f"comment_{user_id}_{int(datetime.now().timestamp() * 1000)}",
+                "eventId": f"comment_{user_id}_{int(time.time() * 1000)}",
                 "contentId": content_id,
                 "contentType": content_type,
                 "actionType": "comment",

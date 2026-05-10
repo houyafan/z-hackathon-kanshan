@@ -7,6 +7,7 @@ ENV PORT=5173
 ENV DB_PATH=/app/data/liukanshan_p0.sqlite
 ENV CONFIG_PATH=/app/config/config.json
 ENV LOCAL_AUTH_BYPASS=false
+ENV TZ=Asia/Shanghai
 
 WORKDIR /app
 

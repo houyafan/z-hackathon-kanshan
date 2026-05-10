@@ -873,6 +873,12 @@ function growthSourceText(sourceType) {
 
 function formatGrowthTime(value) {
   if (!value) return "";
+  const text = String(value);
+  const naiveMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})/);
+  const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/.test(text);
+  if (naiveMatch && !hasTimezone) {
+    return `${Number(naiveMatch[2])}-${naiveMatch[3]} ${naiveMatch[4]}:${naiveMatch[5]}`;
+  }
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return `${date.getMonth() + 1}-${String(date.getDate()).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
