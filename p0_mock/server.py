@@ -163,6 +163,7 @@ FOLLOW_MOMENT_MAX_EXP_PER_SYNC = 10
 FOLLOW_MOMENT_MOOD = 1
 FOLLOW_MOMENT_MAX_MOOD_PER_SYNC = 5
 TRAVEL_MIN_SATIETY = 60
+DECAY_ACTIVE_ACTIONS = ("read", "watch", "like", "comment", "collect")
 TRAVEL_DEFAULT_ENERGY_COST = 10
 TRAVEL_COOLDOWN_MINUTES = 10
 TRAVEL_CLAIM_EXP = 8
@@ -259,7 +260,10 @@ def parse_time(value):
     if not value:
         return datetime.min
     try:
-        return datetime.fromisoformat(value)
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if parsed.tzinfo is not None:
+            return parsed.astimezone().replace(tzinfo=None)
+        return parsed
     except ValueError:
         return datetime.min
 
@@ -311,6 +315,31 @@ def add_column_if_missing(conn, table_name, column_name, definition):
     conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
 
 
+def seed_decay_config(conn):
+    rules = [
+        ("8h", 8, -3, -2, "今天还没一起看点内容呢"),
+        ("24h", 24, -8, -6, "看山的学识值有点低啦"),
+        ("48h", 48, -15, -12, "看山想和你一起补充新知识"),
+    ]
+    for decay_window, inactive_hours, satiety_delta, mood_delta, message in rules:
+        conn.execute(
+            """
+            INSERT INTO pet_decay_config
+              (decay_window, inactive_hours, satiety_delta, mood_delta, message, enabled, created_at, updated_at)
+            VALUES
+              (?, ?, ?, ?, ?, 1, ?, ?)
+            ON CONFLICT(decay_window) DO UPDATE SET
+              inactive_hours = excluded.inactive_hours,
+              satiety_delta = excluded.satiety_delta,
+              mood_delta = excluded.mood_delta,
+              message = excluded.message,
+              enabled = 1,
+              updated_at = excluded.updated_at
+            """,
+            (decay_window, inactive_hours, satiety_delta, mood_delta, message, now_text(), now_text()),
+        )
+
+
 def migrate_db(conn):
     add_column_if_missing(conn, "pet_profile", "health", "INTEGER NOT NULL DEFAULT 100 CHECK (health BETWEEN 0 AND 100)")
     add_column_if_missing(conn, "pet_profile", "travel_energy", "INTEGER NOT NULL DEFAULT 0 CHECK (travel_energy >= 0)")
@@ -330,6 +359,56 @@ def migrate_db(conn):
     add_column_if_missing(conn, "pet_travel_handbook", "llm_highlights", "TEXT DEFAULT NULL")
     add_column_if_missing(conn, "pet_travel_handbook", "llm_summary_model", "TEXT DEFAULT NULL")
     add_column_if_missing(conn, "pet_travel_handbook", "llm_summary_updated_at", "TEXT DEFAULT NULL")
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pet_decay_config (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          decay_window TEXT NOT NULL,
+          inactive_hours INTEGER NOT NULL CHECK (inactive_hours > 0),
+          satiety_delta INTEGER NOT NULL CHECK (satiety_delta <= 0),
+          mood_delta INTEGER NOT NULL CHECK (mood_delta <= 0),
+          message TEXT NOT NULL,
+          enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE (decay_window)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pet_state_decay_log (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL,
+          decay_window TEXT NOT NULL,
+          inactive_since TEXT NOT NULL,
+          checked_at TEXT NOT NULL,
+          inactive_hours INTEGER NOT NULL CHECK (inactive_hours >= 0),
+          satiety_delta INTEGER NOT NULL,
+          mood_delta INTEGER NOT NULL,
+          before_satiety INTEGER NOT NULL CHECK (before_satiety BETWEEN 0 AND 100),
+          after_satiety INTEGER NOT NULL CHECK (after_satiety BETWEEN 0 AND 100),
+          before_mood INTEGER NOT NULL CHECK (before_mood BETWEEN 0 AND 100),
+          after_mood INTEGER NOT NULL CHECK (after_mood BETWEEN 0 AND 100),
+          message TEXT DEFAULT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE (user_id, decay_window, inactive_since)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_pet_decay_config_enabled_hours
+          ON pet_decay_config (enabled, inactive_hours)
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_pet_state_decay_log_user_time
+          ON pet_state_decay_log (user_id, created_at)
+        """
+    )
+    seed_decay_config(conn)
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS pet_travel_external_content (
@@ -1336,7 +1415,7 @@ def fallback_hot_items(limit):
         },
         {
             "rank": 6,
-            "title": "本地兜底数据：刘看山虚拟宠物每日喂养榜单",
+            "title": "本地兜底数据：刘看山虚拟宠物每日学识榜单",
             "url": "https://www.zhihu.com/hot",
             "thumbnailUrl": "",
             "summary": "示例条目，用于本地无 access_secret 时凑齐 6 条素材，不会出现在线上热榜。",
@@ -1534,6 +1613,173 @@ def write_growth_log(conn, user_id, source_id, change_type, delta, before_value,
         """,
         (user_id, source_type, source_id, change_type, delta, before_value, after_value, reason, now_text()),
     )
+
+
+def last_content_active_at(conn, user_id):
+    placeholders = ",".join("?" for _ in DECAY_ACTIVE_ACTIONS)
+    row = conn.execute(
+        f"""
+        SELECT MAX(occurred_at) AS last_active_at
+        FROM pet_content_event
+        WHERE user_id = ?
+          AND action_type IN ({placeholders})
+          AND reward_status = 'granted'
+        """,
+        (user_id, *DECAY_ACTIVE_ACTIONS),
+    ).fetchone()
+    return row["last_active_at"] if row and row["last_active_at"] else None
+
+
+def decay_notice_payload(logs, inactive_hours):
+    if not logs:
+        return None
+    total_satiety = sum(item["satietyDelta"] for item in logs)
+    total_mood = sum(item["moodDelta"] for item in logs)
+    latest_message = logs[-1]["message"]
+    return {
+        "applied": True,
+        "inactiveHours": inactive_hours,
+        "totalSatietyDelta": total_satiety,
+        "totalMoodDelta": total_mood,
+        "message": latest_message,
+        "logs": logs,
+    }
+
+
+def apply_pet_decay(conn, user_id, profile=None):
+    profile = profile or fetch_profile(conn, user_id)
+    if profile is None or not profile["adopted"]:
+        return None
+
+    last_active_at = last_content_active_at(conn, user_id)
+    inactive_since = last_active_at or profile["last_growth_at"] or profile["created_at"]
+    inactive_start = parse_time(inactive_since)
+    if inactive_start == datetime.min:
+        return None
+
+    inactive_seconds = max(0, (datetime.now() - inactive_start).total_seconds())
+    inactive_hours_exact = inactive_seconds / 3600
+    inactive_hours = int(inactive_hours_exact)
+    rules = conn.execute(
+        """
+        SELECT *
+        FROM pet_decay_config
+        WHERE enabled = 1
+        ORDER BY inactive_hours ASC, id ASC
+        """
+    ).fetchall()
+    if not rules:
+        return None
+
+    current_satiety = int(profile["satiety"])
+    current_mood = int(profile["mood"])
+    applied_logs = []
+    checked_at = now_text()
+
+    for rule in rules:
+        if inactive_hours_exact < int(rule["inactive_hours"]):
+            continue
+        exists = conn.execute(
+            """
+            SELECT 1
+            FROM pet_state_decay_log
+            WHERE user_id = ?
+              AND decay_window = ?
+              AND inactive_since = ?
+            LIMIT 1
+            """,
+            (user_id, rule["decay_window"], inactive_since),
+        ).fetchone()
+        if exists:
+            continue
+
+        before_satiety = current_satiety
+        before_mood = current_mood
+        after_satiety = max(0, min(100, before_satiety + int(rule["satiety_delta"])))
+        after_mood = max(0, min(100, before_mood + int(rule["mood_delta"])))
+        actual_satiety_delta = after_satiety - before_satiety
+        actual_mood_delta = after_mood - before_mood
+        if actual_satiety_delta == 0 and actual_mood_delta == 0:
+            continue
+
+        source_id = f"decay:{user_id}:{inactive_since}:{rule['decay_window']}"
+        cursor = conn.execute(
+            """
+            INSERT OR IGNORE INTO pet_state_decay_log
+              (user_id, decay_window, inactive_since, checked_at, inactive_hours,
+               satiety_delta, mood_delta, before_satiety, after_satiety,
+               before_mood, after_mood, message, created_at)
+            VALUES
+              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                user_id,
+                rule["decay_window"],
+                inactive_since,
+                checked_at,
+                inactive_hours,
+                actual_satiety_delta,
+                actual_mood_delta,
+                before_satiety,
+                after_satiety,
+                before_mood,
+                after_mood,
+                rule["message"],
+                checked_at,
+            ),
+        )
+        if cursor.rowcount:
+            write_growth_log(
+                conn,
+                user_id,
+                source_id,
+                "satiety",
+                actual_satiety_delta,
+                before_satiety,
+                after_satiety,
+                f"长时间未互动，学识值自然衰减：{rule['decay_window']}",
+                "decay",
+            )
+            write_growth_log(
+                conn,
+                user_id,
+                source_id,
+                "mood",
+                actual_mood_delta,
+                before_mood,
+                after_mood,
+                f"长时间未互动，心情自然衰减：{rule['decay_window']}",
+                "decay",
+            )
+            current_satiety = after_satiety
+            current_mood = after_mood
+            applied_logs.append(
+                {
+                    "decayWindow": rule["decay_window"],
+                    "inactiveSince": inactive_since,
+                    "inactiveHours": inactive_hours,
+                    "satietyDelta": actual_satiety_delta,
+                    "moodDelta": actual_mood_delta,
+                    "beforeSatiety": before_satiety,
+                    "afterSatiety": after_satiety,
+                    "beforeMood": before_mood,
+                    "afterMood": after_mood,
+                    "message": rule["message"],
+                }
+            )
+
+    if applied_logs:
+        conn.execute(
+            """
+            UPDATE pet_profile
+            SET satiety = ?,
+                mood = ?,
+                updated_at = ?
+            WHERE user_id = ?
+            """,
+            (current_satiety, current_mood, now_text(), user_id),
+        )
+    return decay_notice_payload(applied_logs, inactive_hours)
 
 
 def apply_follow_moment_reward(conn, user_id, new_count):
@@ -1793,6 +2039,8 @@ def apply_content_event(payload, user_id):
 
         try:
             conn.execute("BEGIN")
+            decay_notice = apply_pet_decay(conn, user_id, profile)
+            profile = fetch_profile(conn, user_id)
             conn.execute(
                 """
                 INSERT INTO pet_content_event
@@ -1886,7 +2134,7 @@ def apply_content_event(payload, user_id):
         increment_content_counter(conn, content_id, action_type)
 
         write_growth_log(conn, user_id, event_id, "total_exp", reward["exp"], old["total_exp"], new_total_exp, "内容消费获得经验")
-        write_growth_log(conn, user_id, event_id, "satiety", reward["satiety"], old["satiety"], new_satiety, "内容消费提升饱食度")
+        write_growth_log(conn, user_id, event_id, "satiety", reward["satiety"], old["satiety"], new_satiety, "内容消费提升学识值")
         write_growth_log(conn, user_id, event_id, "mood", reward["mood"], old["mood"], new_mood, "互动提升心情")
         if new_level != old["level"]:
             write_growth_log(conn, user_id, event_id, "level", new_level - old["level"], old["level"], new_level, "累计经验触发升级")
@@ -1941,6 +2189,7 @@ def apply_content_event(payload, user_id):
             },
             "profile": camel_profile(new_profile, user_id),
             "content": camel_content(updated_content) if updated_content else None,
+            "decayNotice": decay_notice,
         }
 
 
@@ -2121,7 +2370,7 @@ def travel_block_reason(profile, active_travel):
     if profile["level"] < 2:
         return "Lv.2 后可以出门游历"
     if profile["satiety"] < TRAVEL_MIN_SATIETY:
-        return f"饱食度达到 {TRAVEL_MIN_SATIETY} 后可以出门"
+        return f"学识值达到 {TRAVEL_MIN_SATIETY} 后可以出门"
     if profile["travel_energy"] < TRAVEL_DEFAULT_ENERGY_COST:
         return f"游历精力达到 {TRAVEL_DEFAULT_ENERGY_COST} 后可以出门"
     return None
@@ -2505,6 +2754,7 @@ def schedule_travel_summary(user_id, travel_id, theme):
 
 
 def travel_status_payload(conn, user_id):
+    decay_notice = apply_pet_decay(conn, user_id)
     profile, travel = refresh_travel_status(conn, user_id)
     reason = travel_block_reason(profile, travel)
     handbook_count = conn.execute(
@@ -2517,17 +2767,19 @@ def travel_status_payload(conn, user_id):
         "canTravel": reason is None,
         "blockReason": reason,
         "handbookCount": handbook_count,
+        "decayNotice": decay_notice,
     }
 
 
 def start_travel(user_id, requested_theme="auto"):
     with connect_db() as conn:
         conn.execute("BEGIN")
+        decay_notice = apply_pet_decay(conn, user_id)
         profile, active_travel = refresh_travel_status(conn, user_id)
         reason = travel_block_reason(profile, active_travel)
         if reason:
-            conn.rollback()
-            return 409, {"error": "TRAVEL_NOT_READY", "message": reason}
+            conn.commit()
+            return 409, {"error": "TRAVEL_NOT_READY", "message": reason, "decayNotice": decay_notice}
 
         theme = choose_travel_theme(conn, user_id, requested_theme)
         theme_row = fetch_theme_config(conn, theme)
@@ -2537,9 +2789,9 @@ def start_travel(user_id, requested_theme="auto"):
         material_count = 6 if theme == "hotspot" else 5
         materials = select_travel_materials(conn, user_id, theme, material_count)
         if not materials:
-            conn.rollback()
+            conn.commit()
             empty_message = "你还没有关注动态，看山先在家里陪你" if theme == "polar" else "热榜暂时没有取到内容"
-            return 409, {"error": "TRAVEL_CONTENT_EMPTY", "message": empty_message}
+            return 409, {"error": "TRAVEL_CONTENT_EMPTY", "message": empty_message, "decayNotice": decay_notice}
 
         travel_id = f"travel_{user_id}_{int(datetime.now().timestamp() * 1000)}"
         started_at = now_text()
@@ -2613,6 +2865,7 @@ def start_travel(user_id, requested_theme="auto"):
             "travel": camel_travel(travel, conn, include_contents=False),
             "profile": camel_profile(fetch_profile(conn, user_id), user_id),
             "message": meta["start"],
+            "decayNotice": decay_notice,
         }
 
 
@@ -2988,7 +3241,11 @@ class Handler(BaseHTTPRequestHandler):
                 return
             user_id = session["user_id"]
             with connect_db() as conn:
-                self.send_json(200, {"profile": camel_profile(fetch_profile(conn, user_id), user_id)})
+                decay_notice = apply_pet_decay(conn, user_id)
+                self.send_json(200, {
+                    "profile": camel_profile(fetch_profile(conn, user_id), user_id),
+                    "decayNotice": decay_notice,
+                })
             return
         if path == "/api/p0/pet/daily-stat":
             session = self.require_auth_json()
@@ -3247,6 +3504,7 @@ class Handler(BaseHTTPRequestHandler):
                 conn.execute("DELETE FROM pet_travel_event WHERE user_id = ?", (user_id,))
                 conn.execute("DELETE FROM pet_growth_log WHERE user_id = ?", (user_id,))
                 conn.execute("DELETE FROM pet_content_event WHERE user_id = ?", (user_id,))
+                conn.execute("DELETE FROM pet_state_decay_log WHERE user_id = ?", (user_id,))
                 conn.execute("DELETE FROM pet_daily_stat WHERE user_id = ?", (user_id,))
                 conn.execute("DELETE FROM pet_profile WHERE user_id = ?", (user_id,))
                 self.send_json(200, {"profile": camel_profile(fetch_profile(conn, user_id), user_id)})

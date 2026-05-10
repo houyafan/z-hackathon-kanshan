@@ -140,10 +140,21 @@ function playHomecomingEffect() {
 function rewardText(reward) {
   const parts = [];
   if (reward.exp) parts.push(`经验 +${reward.exp}`);
-  if (reward.satiety) parts.push(`饱食度 +${reward.satiety}`);
+  if (reward.satiety) parts.push(`学识值 +${reward.satiety}`);
   if (reward.mood) parts.push(`心情 +${reward.mood}`);
   if (reward.travelEnergy) parts.push(`精力 +${reward.travelEnergy}`);
   return parts.join("，");
+}
+
+function handleDecayNotice(decayNotice) {
+  if (!decayNotice?.applied) return;
+  const parts = [];
+  if (decayNotice.totalSatietyDelta) parts.push(`学识值 ${decayNotice.totalSatietyDelta}`);
+  if (decayNotice.totalMoodDelta) parts.push(`心情 ${decayNotice.totalMoodDelta}`);
+  const suffix = parts.length ? `（${parts.join("，")}）` : "";
+  const message = `${decayNotice.message || "看山想和你一起补充新知识"}${suffix}`;
+  showToast(message);
+  character?.setMessage?.(message, { autoHide: 5200 });
 }
 
 function showToast(message) {
@@ -524,7 +535,7 @@ function renderPetHoverCard() {
     ? `${travelThemeText(activeTravel.theme)} · ${formatCountdown(activeTravel.expectedReturnAt)}`
     : activeTravel?.status === "returned"
       ? `${travelThemeText(activeTravel.theme)} · 已带回内容`
-      : travelState?.blockReason || "阅读内容积攒精力后出门";
+      : travelState?.blockReason || "阅读内容积攒学识和精力后出门";
   card.innerHTML = `
     <div class="pet-hover-head">
       <span class="pet-mini">山</span>
@@ -536,7 +547,7 @@ function renderPetHoverCard() {
     <div class="pet-hover-stats">
       <div><small>经验</small><strong>${profile.totalExp}</strong></div>
       <div><small>心情</small><strong>${profile.mood}</strong></div>
-      <div><small>饱食</small><strong>${profile.satiety}</strong></div>
+      <div><small>学识</small><strong>${profile.satiety}</strong></div>
       <div><small>精力</small><strong>${profile.travelEnergy ?? 0}</strong></div>
     </div>
     <div class="pet-hover-travel">
@@ -640,6 +651,7 @@ async function loadAuth() {
 async function loadProfile() {
   const data = await api("/api/p0/pet/profile");
   profile = data.profile;
+  handleDecayNotice(data.decayNotice);
   syncCharacter();
   return profile;
 }
@@ -652,6 +664,7 @@ async function loadTravelStatus() {
   const data = await api("/api/p1/travel/status");
   profile = data.profile || profile;
   travelState = data;
+  handleDecayNotice(data.decayNotice);
   scheduleTravelReturnCheck();
   syncCharacter();
   return travelState;
@@ -1005,7 +1018,7 @@ function syncCharacter() {
           fadeOutDuration: 1.6,
           gateCloseDuration: 0.7,
         },
-        messages: ["读到好内容啦", "收到", "看山也在学习"],
+        messages: ["读到好内容啦", "学识值补充中", "看山也在学习"],
       });
     } catch (error) {
       container.classList.add("character-fallback-visible");
@@ -1152,7 +1165,7 @@ function petPanel() {
       <div class="pet-stats">
         <div class="stat-box"><small>阶段</small><strong>${stageText(profile.stage)}</strong></div>
         <div class="stat-box"><small>累计经验</small><strong>${profile.totalExp}</strong></div>
-        <div class="stat-box"><small>饱食度</small><strong>${profile.satiety}</strong></div>
+        <div class="stat-box"><small>学识值</small><strong>${profile.satiety}</strong></div>
         <div class="stat-box"><small>心情值</small><strong>${profile.mood}</strong></div>
         <div class="stat-box"><small>游历精力</small><strong>${profile.travelEnergy ?? 0}</strong></div>
         <div class="stat-box"><small>游历状态</small><strong>${travelStatusText(profile.travelStatus)}</strong></div>
@@ -1929,6 +1942,7 @@ async function startTravel() {
       body: JSON.stringify({ theme: "auto" }),
     });
     profile = data.profile;
+    handleDecayNotice(data.decayNotice);
     travelState = {
       ...(travelState || {}),
       activeTravel: data.travel,
@@ -1943,6 +1957,7 @@ async function startTravel() {
     scheduleTravelReturnCheck();
   } catch (error) {
     if (error.profile) profile = error.profile;
+    handleDecayNotice(error.decayNotice);
     if (error.activeTravel || error.blockReason) travelState = error;
     syncCharacter();
     renderCurrentRoute();
@@ -2248,6 +2263,7 @@ async function submitContentEvent(item, actionType, sourceElement) {
       body: JSON.stringify(payload),
     });
     profile = data.profile;
+    handleDecayNotice(data.decayNotice);
     mergeUpdatedContent(data.content);
     await loadTravelStatus();
     syncCharacter();
