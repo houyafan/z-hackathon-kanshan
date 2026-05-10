@@ -31,6 +31,7 @@ let leaderboardError = null;
 let leaderboardPanelOpen = false;
 let leaderboardPositionTimer = null;
 let leaderboardPromise = null;
+let leaderboardLockedScrollY = 0;
 let adminOverview = null;
 let levelVisuals = null;
 let levelVisualsPromise = null;
@@ -1655,11 +1656,11 @@ function renderLeaderboardPanel() {
         <button class="${leaderboardType === "pet_level" ? "active" : ""}" data-leaderboard-type="pet_level">等级榜</button>
         <button class="${leaderboardType === "travel_count" ? "active" : ""}" data-leaderboard-type="travel_count">游历榜</button>
       </div>
-      ${currentUserRankCard()}
       ${body}
     </section>
   `;
   removeOnboardingGuide();
+  setLeaderboardScrollLock(true);
   panel.querySelector("[data-leaderboard-close]").addEventListener("click", closeLeaderboardPanel);
   panel.onclick = (event) => {
     if (event.target === panel) closeLeaderboardPanel();
@@ -1668,6 +1669,30 @@ function renderLeaderboardPanel() {
     button.addEventListener("click", () => switchLeaderboard(button.dataset.leaderboardType));
   });
   bindSidebarLeaderboard();
+}
+
+function setLeaderboardScrollLock(locked) {
+  if (locked && document.body.classList.contains("leaderboard-scroll-lock")) return;
+  if (!locked && !document.body.classList.contains("leaderboard-scroll-lock")) return;
+  if (locked) {
+    leaderboardLockedScrollY = window.scrollY || window.pageYOffset || 0;
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${leaderboardLockedScrollY}px`;
+    document.body.style.left = "0";
+    document.body.style.right = "0";
+    document.body.style.width = "100%";
+  } else {
+    const restoreY = leaderboardLockedScrollY;
+    document.body.style.position = "";
+    document.body.style.top = "";
+    document.body.style.left = "";
+    document.body.style.right = "";
+    document.body.style.width = "";
+    leaderboardLockedScrollY = 0;
+    window.scrollTo(0, restoreY);
+  }
+  document.documentElement.classList.toggle("leaderboard-scroll-lock", locked);
+  document.body.classList.toggle("leaderboard-scroll-lock", locked);
 }
 
 function positionLeaderboardPanel() {
@@ -1717,6 +1742,7 @@ function closeLeaderboardPanel() {
   window.clearInterval(leaderboardPositionTimer);
   leaderboardPositionTimer = null;
   document.getElementById("leaderboardPanel")?.remove();
+  setLeaderboardScrollLock(false);
 }
 
 async function switchLeaderboard(type) {
