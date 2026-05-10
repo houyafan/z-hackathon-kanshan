@@ -2667,6 +2667,158 @@ button {
   }
 }
 
+.story-intro-modal,
+.level-ending-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 9100;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(14, 28, 50, 0.48);
+  backdrop-filter: blur(8px);
+}
+
+.story-intro-dialog,
+.level-ending-dialog {
+  position: relative;
+  width: min(680px, 100%);
+  max-height: min(720px, calc(100vh - 48px));
+  overflow: auto;
+  padding: 30px;
+  border: 1px solid rgba(22, 119, 255, 0.22);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 28px 86px rgba(10, 35, 78, 0.28);
+  animation: storyDialogIn 0.35s ease both;
+}
+
+.story-orbit,
+.ending-stars {
+  position: absolute;
+  top: 20px;
+  right: 22px;
+  width: 96px;
+  height: 96px;
+  border: 1px solid rgba(22, 119, 255, 0.24);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.story-orbit::before,
+.story-orbit::after,
+.ending-stars::before,
+.ending-stars::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.story-orbit::before,
+.ending-stars::before {
+  inset: 20px;
+  border: 1px dashed rgba(22, 119, 255, 0.28);
+}
+
+.story-orbit::after,
+.ending-stars::after {
+  left: 16px;
+  top: 22px;
+  width: 7px;
+  height: 7px;
+  background: #1677ff;
+  box-shadow: 48px 34px 0 #ffb020, 72px 10px 0 #00b578;
+}
+
+.story-kicker {
+  width: fit-content;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #eaf3ff;
+  color: #1677ff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.story-intro-dialog h1,
+.level-ending-dialog h1 {
+  margin: 14px 120px 18px 0;
+  color: #101828;
+  font-size: 30px;
+  line-height: 1.25;
+}
+
+.story-typewriter,
+.level-ending-dialog p {
+  margin: 0;
+  color: #344054;
+  font-size: 16px;
+  line-height: 1.9;
+  white-space: pre-wrap;
+}
+
+.story-typewriter::after {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 1.15em;
+  margin-left: 3px;
+  vertical-align: -0.18em;
+  background: #1677ff;
+  animation: storyCursorBlink 0.85s steps(2, start) infinite;
+}
+
+.story-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.story-secondary,
+.story-primary {
+  height: 38px;
+  border-radius: 8px;
+  padding: 0 16px;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.story-secondary {
+  border: 1px solid #d8e1ec;
+  background: #fff;
+  color: #667085;
+}
+
+.story-primary {
+  border: 0;
+  background: #1677ff;
+  color: #fff;
+}
+
+@keyframes storyDialogIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes storyCursorBlink {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  46%,
+  100% {
+    opacity: 0;
+  }
+}
+
 .leaderboard-side-card .leaderboard-tabs {
   padding: 12px 0 0;
 }
@@ -3738,6 +3890,7 @@ button {
 
 .level-up-preview small,
 .level-up-preview strong,
+.level-up-preview em,
 .level-up-preview span {
   display: block;
 }
@@ -3754,11 +3907,80 @@ button {
   font-size: 15px;
 }
 
+.level-up-preview em {
+  margin-top: 6px;
+  color: #1f4f8f;
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
 .level-up-preview span {
   margin-top: 5px;
   color: #667085;
   font-size: 12px;
   line-height: 1.45;
+}
+
+.level-ending-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: #f1f4f8;
+  color: #667085;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.level-ending-dialog {
+  border-color: rgba(255, 176, 32, 0.36);
+}
+
+.level-ending-dialog .ending-hero {
+  display: grid;
+  grid-template-columns: 116px minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+  margin: 8px 0 20px;
+  padding: 14px;
+  border: 1px solid rgba(255, 176, 32, 0.22);
+  border-radius: 12px;
+  background: #fffaf0;
+}
+
+.level-ending-dialog .ending-hero img {
+  width: 116px;
+  height: 116px;
+  border-radius: 10px;
+  object-fit: cover;
+}
+
+.level-ending-dialog .ending-hero strong,
+.level-ending-dialog .ending-hero span {
+  display: block;
+}
+
+.level-ending-dialog .ending-hero strong {
+  color: #101828;
+  font-size: 20px;
+}
+
+.level-ending-dialog .ending-hero span {
+  margin-top: 8px;
+  color: #7a4a00;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.6;
+}
+
+.level-ending-dialog .story-primary {
+  display: block;
+  margin: 24px 0 0 auto;
 }
 
 .roaming-character.roaming-evolving.pet-level-up::before {
@@ -4862,4 +5084,58 @@ button {
   font-size: 12px;
   color: #2bb27a;
   font-weight: 500;
+}
+
+@media (max-width: 640px) {
+  .story-intro-modal,
+  .level-ending-modal {
+    padding: 14px;
+  }
+
+  .story-intro-dialog,
+  .level-ending-dialog {
+    padding: 22px 18px;
+    max-height: calc(100vh - 28px);
+  }
+
+  .story-orbit,
+  .ending-stars {
+    width: 72px;
+    height: 72px;
+    opacity: 0.72;
+  }
+
+  .story-intro-dialog h1,
+  .level-ending-dialog h1 {
+    margin-right: 76px;
+    font-size: 24px;
+  }
+
+  .story-typewriter,
+  .level-ending-dialog p {
+    font-size: 14px;
+    line-height: 1.8;
+  }
+
+  .story-actions {
+    flex-direction: column-reverse;
+  }
+
+  .story-secondary,
+  .story-primary {
+    width: 100%;
+  }
+
+  .level-ending-dialog .ending-hero {
+    grid-template-columns: 84px minmax(0, 1fr);
+  }
+
+  .level-ending-dialog .ending-hero img {
+    width: 84px;
+    height: 84px;
+  }
+
+  .level-ending-dialog .ending-hero strong {
+    font-size: 17px;
+  }
 }

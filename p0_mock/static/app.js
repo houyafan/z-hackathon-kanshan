@@ -48,6 +48,7 @@ let rewardWalkEnabled = savedRewardWalk !== "0";
 const MODEL_PATH = "/3d-liukanshan-roaming/liukanshan-slot.glb?v=2";
 const ONBOARDING_VERSION = "v2";
 const ONBOARDING_KEY = `liukanshan_onboarding_${ONBOARDING_VERSION}`;
+const STORY_INTRO_VERSION = "v1";
 const ADMIN_USER_TOKENS = new Set(["p2wcex", "sunny-27-1-97"]);
 const ADMIN_USER_UIDS = new Set(["1908940156829918831", "2013197829758268031"]);
 const ANALYTICS_VISIT_KEY = "liukanshan_analytics_visit_id";
@@ -59,6 +60,7 @@ let onboardingSnoozedUntil = 0;
 let analyticsQueue = [];
 let analyticsFlushTimer = null;
 let analyticsLastPagePath = "";
+let storyIntroTypingTimer = null;
 const ONBOARDING_BLOCKING_SELECTOR = [
   ".content-modal",
   ".growth-log-modal",
@@ -66,7 +68,75 @@ const ONBOARDING_BLOCKING_SELECTOR = [
   ".travel-handbook-modal",
   ".travel-material-modal",
   ".share-card-overlay",
+  ".story-intro-modal",
+  ".level-ending-modal",
 ].join(", ");
+
+const STORY_INTRO_TEXT = [
+  "在知识宇宙的边缘，有一颗名叫「知乎星」的星球。",
+  "很久以前，这颗星球因为人们不再分享、不再阅读，光芒渐渐黯淡，变成了宇宙里一颗不起眼的灰色小点。而住在这颗星球上的小狐狸「刘看山」，也失去了所有能量，变成了一只只能眨眼睛的「星途小白」。",
+  "直到知乎向全宇宙发出邀请：谁能陪人类一起阅读、收集知识的星光，谁就能重新点亮这颗星球。于是，刘看山来到了你的首页，开启了他的星程。",
+].join("\n\n");
+
+const LEVEL_MILESTONES = {
+  1: {
+    title: "星途起点",
+    quote: "你好呀，我是刘看山。我的星球需要你的阅读星光，能陪我一起点亮它吗？",
+    feature: "旅程开启：刘看山正式来到你的首页，等待一起点亮知乎星。",
+  },
+  2: {
+    title: "星章萌新",
+    quote: "谢谢你的第一束星光！看，我身上已经有了代表勇气的星章啦！",
+    feature: "获得第一个徽章：完成首次阅读后，刘看山开始积累阅读成就。",
+  },
+  3: {
+    title: "星光信使",
+    quote: "收到了你的知识碎片！我已经能带着星光，在宇宙中送信啦～",
+    feature: "传递知识：看山从懵懂萌新，成长为知识星光的小信使。",
+  },
+  4: {
+    title: "行星记录员",
+    quote: "我戴上了记录帽！每一篇你读过的文章，我都帮你记在星星里啦！",
+    feature: "记录阅读轨迹：看山开始帮你收藏一路读过的知识星点。",
+  },
+  5: {
+    title: "星际见习官",
+    quote: "我通过了见习考核！以后就让我陪你一起，去更远的知识宇宙吧！",
+    feature: "探索伙伴成型：解锁更高阶内容探索的陪伴感。",
+  },
+  6: {
+    title: "星图导航员",
+    quote: "戴上护目镜，我能看清知识的星路啦！跟着我，再也不会迷路～",
+    feature: "星图导航：面对多元内容时，看山会成为你的阅读导航者。",
+  },
+  7: {
+    title: "深空开拓者",
+    quote: "我拿到了深空任务旗！我们要向更深处的知识宇宙进发了！",
+    feature: "深空探索：参与社区活动后，看山开启更远的探索阶段。",
+  },
+  8: {
+    title: "知识探测者",
+    quote: "我戴上了探测头灯！有了它，再暗的知识角落我都能找到～",
+    feature: "知识探测：深度阅读会帮看山发现更隐秘的优质内容。",
+  },
+  9: {
+    title: "星际领航员",
+    quote: "我的法杖亮起来了！现在，我能带着星光，指引其他迷路的旅行者啦！",
+    feature: "社区领航：看山开始成为社区里的阅读领航伙伴。",
+  },
+  10: {
+    title: "宇宙知识领航者",
+    quote: "谢谢你，和你一起，我终于重新点亮了知乎星！从今往后，我们一起，做宇宙里最亮的那颗知识星吧。",
+    feature: "终极养成达成：知乎星重新被知识星光点亮。",
+  },
+};
+
+const LEVEL_10_ENDING_TEXT = [
+  "知乎星重新亮起来了。",
+  "那些曾经黯淡的环形山、知识海和星轨，因为你一次次阅读、互动和分享，又有了明亮的轮廓。",
+  "刘看山不再是只能眨眼睛的星途小白。他带着你收集的知识星光，成为了「宇宙知识领航者」。",
+  "从今天起，他会继续陪你在知乎里读下去、问下去、发现下去。你们点亮的不只是一颗星球，也是一段属于自己的阅读旅程。",
+].join("\n\n");
 
 function randomId(prefix = "evt") {
   const value = window.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(16).slice(2)}`;
@@ -316,10 +386,11 @@ function spawnFloatChip(text, x, y, level = false) {
 }
 
 function playHomecomingEffect() {
+  const milestone = LEVEL_MILESTONES[1];
   const layer = effectLayer();
   const card = document.createElement("div");
   card.className = "pet-home-card";
-  card.innerHTML = "<strong>刘看山到家啦</strong><span>从今天开始，它会陪你一起读好内容</span>";
+  card.innerHTML = `<strong>Lv.1 · ${escapeHTML(milestone.title)}</strong><span>${escapeHTML(milestone.quote)}</span>`;
   layer.appendChild(card);
   removeAfter(card, 3200);
 
@@ -510,6 +581,85 @@ function removeOnboardingGuide() {
   document.querySelectorAll(".onboarding-highlight").forEach((element) => {
     element.classList.remove("onboarding-highlight");
   });
+}
+
+function storyIntroKey() {
+  const userKey = currentUser?.userToken || currentUser?.uid || currentUser?.userId || "guest";
+  return `liukanshan_story_intro_${STORY_INTRO_VERSION}_${userKey}`;
+}
+
+function hasSeenStoryIntro() {
+  return localStorage.getItem(storyIntroKey()) === "1";
+}
+
+function markStoryIntroSeen() {
+  localStorage.setItem(storyIntroKey(), "1");
+}
+
+function clearStoryTypingTimer() {
+  if (storyIntroTypingTimer) {
+    window.clearInterval(storyIntroTypingTimer);
+    storyIntroTypingTimer = null;
+  }
+}
+
+function closeStoryIntro(markSeen = true) {
+  clearStoryTypingTimer();
+  document.querySelector(".story-intro-modal")?.remove();
+  if (markSeen) markStoryIntroSeen();
+  scheduleOnboardingGuide(320);
+}
+
+function typeStoryText(target, text, done) {
+  clearStoryTypingTimer();
+  let index = 0;
+  target.textContent = "";
+  storyIntroTypingTimer = window.setInterval(() => {
+    index += 1;
+    target.textContent = text.slice(0, index);
+    if (index >= text.length) {
+      clearStoryTypingTimer();
+      done?.();
+    }
+  }, 38);
+}
+
+function maybeShowStoryIntro() {
+  if (!currentUser || profile?.adopted || hasSeenStoryIntro() || document.querySelector(".story-intro-modal")) {
+    return false;
+  }
+  removeOnboardingGuide();
+  const modal = document.createElement("div");
+  modal.className = "story-intro-modal";
+  modal.innerHTML = `
+    <section class="story-intro-dialog" role="dialog" aria-modal="true" aria-label="刘看山背景故事">
+      <div class="story-orbit" aria-hidden="true"></div>
+      <div class="story-kicker">刘看山背景故事</div>
+      <h1>知乎星等待重新点亮</h1>
+      <p class="story-typewriter" data-story-text></p>
+      <div class="story-actions" data-story-actions hidden>
+        <button type="button" class="story-secondary" data-story-later>稍后再说</button>
+        <button type="button" class="story-primary" data-story-adopt>领养刘看山</button>
+      </div>
+    </section>
+  `;
+  document.body.appendChild(modal);
+  const textNode = modal.querySelector("[data-story-text]");
+  const actions = modal.querySelector("[data-story-actions]");
+  typeStoryText(textNode, STORY_INTRO_TEXT, () => {
+    actions.hidden = false;
+  });
+  modal.querySelector("[data-story-later]").addEventListener("click", () => {
+    closeStoryIntro(true);
+  });
+  modal.querySelector("[data-story-adopt]").addEventListener("click", () => {
+    markStoryIntroSeen();
+    adoptPet();
+  });
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal && !actions.hidden) closeStoryIntro(true);
+  });
+  return true;
 }
 
 function hasOnboardingBlockingOverlay() {
@@ -3830,6 +3980,7 @@ async function adoptPet() {
     profile = data.profile;
     await loadTravelStatus();
     syncCharacter();
+    closeStoryIntro(true);
     removeOnboardingGuide();
     onboardingSnoozedUntil = Date.now() + 4200;
     renderCurrentRoute();
@@ -3922,6 +4073,9 @@ function showReward(reward, sourceElement) {
   showToast(message);
   if (reward.levelUp) {
     showLevelUpPreview(reward).catch((error) => console.warn("level preview failed", error));
+    if (Number(reward.toLevel) >= 10 && Number(reward.fromLevel || 0) < 10) {
+      window.setTimeout(() => showLevelEndingModal(), 1100);
+    }
   }
   if (character && reward.levelUp) {
     const centerX = window.innerWidth / 2;
@@ -3950,21 +4104,57 @@ function showReward(reward, sourceElement) {
 async function showLevelUpPreview(reward) {
   await loadLevelVisuals();
   const visual = visualForLevel(reward.toLevel) || currentLevelVisual();
+  const milestone = LEVEL_MILESTONES[Number(reward.toLevel)] || {};
   const image = visual?.imageUrl || visual?.thumbnailUrl;
-  if (!visual || !image) return;
+  if (!visual && !milestone.title) return;
   document.querySelector(".level-up-preview")?.remove();
   const panel = document.createElement("div");
-  panel.className = `level-up-preview level-${visual.effectStyle || "cute"}`;
+  panel.className = `level-up-preview level-${visual?.effectStyle || "cute"}`;
   panel.innerHTML = `
-    <img src="${escapeHTML(image)}" alt="${escapeHTML(visual.title || `Lv.${reward.toLevel} 刘看山`)}">
+    ${image ? `<img src="${escapeHTML(image)}" alt="${escapeHTML(milestone.title || visual?.title || `Lv.${reward.toLevel} 刘看山`)}">` : ""}
     <div>
-      <small>解锁新形象</small>
-      <strong>Lv.${reward.toLevel} · ${escapeHTML(visual.title || "刘看山")}</strong>
-      <span>${escapeHTML(visual.description || "继续阅读，解锁更酷的看山")}</span>
+      <small>${Number(reward.toLevel) >= 10 ? "终极形态解锁" : "解锁新阶段"}</small>
+      <strong>Lv.${reward.toLevel} · ${escapeHTML(milestone.title || visual?.title || "刘看山")}</strong>
+      <em>${escapeHTML(milestone.quote || "看山又长大了一点。")}</em>
+      <span>${escapeHTML(milestone.feature || visual?.description || "继续阅读，解锁更酷的看山")}</span>
     </div>
   `;
   document.body.appendChild(panel);
-  removeAfter(panel, 4600);
+  removeAfter(panel, Number(reward.toLevel) >= 10 ? 6800 : 5200);
+}
+
+async function showLevelEndingModal() {
+  await loadLevelVisuals().catch(() => {});
+  const visual = visualForLevel(10) || currentLevelVisual();
+  const image = visual?.imageUrl || visual?.thumbnailUrl;
+  document.querySelector(".level-ending-modal")?.remove();
+  const modal = document.createElement("div");
+  modal.className = "level-ending-modal";
+  modal.innerHTML = `
+    <section class="level-ending-dialog level-${escapeHTML(visual?.effectStyle || "legendary")}" role="dialog" aria-modal="true" aria-label="刘看山终极结局">
+      <button type="button" class="level-ending-close" aria-label="关闭">×</button>
+      <div class="ending-stars" aria-hidden="true"></div>
+      <div class="story-kicker">终极彩蛋</div>
+      <h1>知乎星，重新亮起</h1>
+      <div class="ending-hero">
+        ${image ? `<img src="${escapeHTML(image)}" alt="Lv.10 宇宙知识领航者">` : ""}
+        <div>
+          <strong>Lv.10 · 宇宙知识领航者</strong>
+          <span>${escapeHTML(LEVEL_MILESTONES[10].quote)}</span>
+        </div>
+      </div>
+      <p>${escapeHTML(LEVEL_10_ENDING_TEXT)}</p>
+      <button type="button" class="story-primary" data-ending-close>继续探索知乎星</button>
+    </section>
+  `;
+  document.body.appendChild(modal);
+  removeOnboardingGuide();
+  const close = () => closeBlockingModal(modal);
+  modal.querySelector(".level-ending-close").addEventListener("click", close);
+  modal.querySelector("[data-ending-close]").addEventListener("click", close);
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal) close();
+  });
 }
 
 function playRewardEffect(reward, sourceElement, message) {
@@ -4006,6 +4196,7 @@ function renderCurrentRoute() {
   window.requestAnimationFrame(() => syncCharacter());
   trackPageView(path);
   window.requestAnimationFrame(observePetPanelExposure);
+  if (maybeShowStoryIntro()) return;
   scheduleOnboardingGuide();
 }
 
