@@ -2798,6 +2798,45 @@ button {
   font-size: 12px;
 }
 
+.leaderboard-share-box {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(22, 119, 255, 0.14);
+}
+
+.leaderboard-share-box p {
+  margin: 0;
+  color: #1f2329;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.leaderboard-share-box em {
+  display: block;
+  color: #667085;
+  font-size: 11px;
+  font-style: normal;
+  line-height: 1.5;
+}
+
+.leaderboard-share-box button {
+  height: 34px;
+  border: 0;
+  border-radius: 8px;
+  background: #1677ff;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.leaderboard-share-box button:disabled {
+  cursor: default;
+  opacity: 0.68;
+}
+
 .leaderboard-my-card.muted {
   color: #8491a5;
   font-size: 13px;

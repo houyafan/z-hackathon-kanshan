@@ -1329,11 +1329,17 @@ function currentUserRankCard(data = leaderboardData) {
   if (!item) {
     return `<div class="leaderboard-my-card muted">${leaderboardType === "travel_count" ? "你还没有完成游历" : "你暂未进入榜单"}</div>`;
   }
+  const shareCopy = `我现在的刘看山是 Lv.${item.level}「${item.levelTitle || profileLevelTitle()}」，邀请你也来体验知乎黑客松项目「刘看山 3D 虚拟宠物」。`;
   return `
     <div class="leaderboard-my-card">
       <span>我的名次</span>
       <strong>No.${item.rank}</strong>
       <small>Lv.${item.level} · ${formatCount(item.totalExp)} 经验 · 游历 ${formatCount(item.travelCount)} 次</small>
+      <div class="leaderboard-share-box">
+        <p>发到「黑客松脑洞补给站」后，刘看山会自动升 1 级，并获得一次游历资格。</p>
+        <em>${escapeHTML(shareCopy)}</em>
+        <button type="button" data-leaderboard-share>发圈子并升级</button>
+      </div>
     </div>
   `;
 }
@@ -1366,10 +1372,17 @@ function leaderboardSideCard() {
 
 function sidebarCards(options = {}) {
   const includeLeaderboard = Boolean(options.includeLeaderboard);
+  if (includeLeaderboard) {
+    return `
+      ${leaderboardSideCard()}
+      ${petPanel()}
+      ${creatorCard()}
+      ${hotCard()}
+    `;
+  }
   return `
     ${creatorCard()}
     ${petPanel()}
-    ${includeLeaderboard ? leaderboardSideCard() : ""}
     ${hotCard()}
   `;
 }
@@ -1392,6 +1405,11 @@ function ensureSidebarLeaderboard() {
 }
 
 function bindSidebarLeaderboard() {
+  document.querySelectorAll("[data-leaderboard-share]").forEach((button) => {
+    if (button.dataset.bound) return;
+    button.dataset.bound = "1";
+    button.addEventListener("click", () => publishLeaderboardShare(button));
+  });
   document.querySelectorAll("[data-inline-leaderboard-type]").forEach((button) => {
     if (button.dataset.bound) return;
     button.dataset.bound = "1";
@@ -1412,6 +1430,33 @@ function bindSidebarLeaderboard() {
       if (leaderboardPanelOpen) renderLeaderboardPanel();
     });
   });
+}
+
+async function publishLeaderboardShare(button) {
+  if (!profile?.adopted || !button || button.disabled) return;
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = "发送中...";
+  try {
+    const data = await api("/api/p1/community/leaderboard-share", {
+      method: "POST",
+      body: JSON.stringify({ projectUrl: window.location.origin }),
+    });
+    if (data.profile) profile = data.profile;
+    await loadTravelStatus();
+    leaderboardLoaded = false;
+    leaderboardData = null;
+    await loadLeaderboard(leaderboardType, { refresh: true });
+    communityLoaded = false;
+    syncCharacter();
+    if (data.reward) showReward(data.reward, button);
+    renderCurrentRoute();
+    showToast("已在「黑客松脑洞补给站」发了一条圈子，刘看山已升级并获得一次游历资格");
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = originalText || "发圈子并升级";
+    showToast(error.message || "发圈子失败");
+  }
 }
 
 function renderLeaderboardPanel() {

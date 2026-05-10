@@ -196,6 +196,7 @@ TRAVEL_COOLDOWN_MINUTES = 10
 TRAVEL_CLAIM_EXP = 8
 TRAVEL_CLAIM_MOOD = 5
 TRAVEL_CLAIM_ENERGY = 1
+LEADERBOARD_SHARE_TRAVEL_ENERGY = TRAVEL_DEFAULT_ENERGY_COST
 
 DAILY_SIGNIN_SATIETY = 5
 DAILY_SIGNIN_MOOD = 3
@@ -1806,6 +1807,96 @@ def publish_community_pin(title, content, image_urls=None):
             "ring_id": COMMUNITY_RING_ID,
         },
     )
+
+
+def leaderboard_share_copy(user, profile_payload, rank_item, project_url):
+    user_name = (user["fullname"] if user is not None and "fullname" in user.keys() else "") or "知乎用户"
+    level = profile_payload.get("level") or 1
+    level_title = profile_payload.get("levelTitle") or "新手探索员"
+    total_exp = profile_payload.get("totalExp") or 0
+    rank_text = f"No.{rank_item['rank']}" if rank_item else "正在冲榜"
+    travel_count = rank_item.get("travelCount", 0) if rank_item else 0
+    project_line = f"\n体验地址：{project_url}" if project_url else ""
+    title = f"我的刘看山升到 Lv.{level}「{level_title}」了"
+    content = (
+        "【我的刘看山成长战报】\n"
+        f"我是 {user_name}，当前刘看山等级是 Lv.{level}「{level_title}」，"
+        f"累计 {total_exp} 经验，排行榜 {rank_text}，已经游历 {travel_count} 次。\n\n"
+        "我在体验知乎黑客松项目「刘看山 3D 虚拟宠物」：阅读、点赞、评论都会让刘看山成长，"
+        "攒够精力还能出门游历带回内容。\n\n"
+        "邀请你也来领养一只刘看山，一起把刷知乎变成养成游戏。"
+        f"{project_line}"
+    )
+    return title, content
+
+
+def grant_leaderboard_share_reward(conn, user_id):
+    profile = fetch_profile(conn, user_id)
+    if profile is None or not profile["adopted"]:
+        return 409, {"error": "PET_NOT_ADOPTED", "message": "请先领养刘看山"}
+    old = profile
+    max_level = max(item["level"] for item in LEVEL_VISUALS)
+    target_level = min(int(old["level"]) + 1, max_level)
+    target_row = conn.execute(
+        "SELECT * FROM pet_level_config WHERE level = ?",
+        (target_level,),
+    ).fetchone()
+    target_required_exp = int(target_row["required_total_exp"]) if target_row else int(old["total_exp"])
+    new_total_exp = max(int(old["total_exp"]), target_required_exp)
+    new_stage = target_row["stage"] if target_row else old["stage"]
+    new_travel_energy = int(old["travel_energy"]) + LEADERBOARD_SHARE_TRAVEL_ENERGY
+    share_id = f"leaderboard-share-{uuid.uuid4().hex[:12]}"
+    clear_cooldown = old["travel_status"] == "cooldown"
+    conn.execute(
+        """
+        UPDATE pet_profile
+        SET total_exp = ?,
+            level = ?,
+            stage = ?,
+            travel_energy = ?,
+            travel_status = CASE WHEN ? THEN 'home' ELSE travel_status END,
+            cooldown_until = CASE WHEN ? THEN NULL ELSE cooldown_until END,
+            last_growth_at = ?,
+            updated_at = ?
+        WHERE user_id = ?
+        """,
+        (
+            new_total_exp,
+            target_level,
+            new_stage,
+            new_travel_energy,
+            1 if clear_cooldown else 0,
+            1 if clear_cooldown else 0,
+            now_text(),
+            now_text(),
+            user_id,
+        ),
+    )
+    exp_delta = new_total_exp - int(old["total_exp"])
+    level_delta = target_level - int(old["level"])
+    if exp_delta:
+        write_growth_log(conn, user_id, share_id, "total_exp", exp_delta, old["total_exp"], new_total_exp, "排行榜发圈子升级奖励", "manual")
+    write_growth_log(conn, user_id, share_id, "travel_energy", LEADERBOARD_SHARE_TRAVEL_ENERGY, old["travel_energy"], new_travel_energy, "排行榜发圈子获得一次游历资格", "manual")
+    if level_delta:
+        write_growth_log(conn, user_id, share_id, "level", level_delta, old["level"], target_level, "排行榜发圈子直接升级", "manual")
+    if new_stage != old["stage"]:
+        write_growth_log(conn, user_id, share_id, "stage", 0, old["stage"], new_stage, "等级变化触发阶段切换", "manual")
+    return 200, {
+        "reward": {
+            "exp": exp_delta,
+            "satiety": 0,
+            "mood": 0,
+            "travelEnergy": LEADERBOARD_SHARE_TRAVEL_ENERGY,
+            "levelUp": bool(level_delta),
+            "fromLevel": old["level"],
+            "toLevel": target_level,
+            "stageChanged": new_stage != old["stage"],
+            "fromStage": old["stage"],
+            "toStage": new_stage,
+        },
+        "profile": camel_profile(fetch_profile(conn, user_id), user_id),
+        "shareId": share_id,
+    }
 
 
 def normalize_zhihu_web_url(url):
@@ -5110,6 +5201,45 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as error:
                 status = 409 if str(error) == "COMMUNITY_CONFIG_MISSING" else 502
                 self.send_json(status, {"error": "COMMUNITY_PUBLISH_FAILED", "message": str(error)})
+            return
+
+        if path == "/api/p1/community/leaderboard-share":
+            session = self.require_auth_json()
+            if session is None:
+                return
+            project_url = normalize_zhihu_web_url(body.get("projectUrl") or body.get("project_url") or "")
+            user_id = session["user_id"]
+            with connect_db() as conn:
+                profile_row = fetch_profile(conn, user_id)
+                if profile_row is None or not profile_row["adopted"]:
+                    self.send_json(409, {"error": "PET_NOT_ADOPTED", "message": "请先领养刘看山"})
+                    return
+                user = fetch_user(conn, user_id)
+                profile_payload = camel_profile(profile_row, user_id, fetch_level_visual(conn, profile_row["level"]))
+                rank_item = leaderboard_payload(conn, user_id, "pet_level", 100).get("currentUserItem")
+            title, content = leaderboard_share_copy(user, profile_payload, rank_item, project_url)
+            try:
+                upstream = publish_community_pin(title, content, [])
+            except Exception as error:
+                status = 409 if str(error) == "COMMUNITY_CONFIG_MISSING" else 502
+                self.send_json(status, {"error": "COMMUNITY_PUBLISH_FAILED", "message": str(error)})
+                return
+            with connect_db() as conn:
+                conn.execute("BEGIN")
+                status, reward_payload = grant_leaderboard_share_reward(conn, user_id)
+                if status != 200:
+                    conn.rollback()
+                    self.send_json(status, reward_payload)
+                    return
+                conn.commit()
+            self.send_json(200, {
+                "ok": True,
+                "ringName": "黑客松脑洞补给站",
+                "contentToken": (upstream.get("data") or {}).get("content_token"),
+                "title": title,
+                "content": content,
+                **reward_payload,
+            })
             return
 
         if path == "/api/p1/travel/start":
