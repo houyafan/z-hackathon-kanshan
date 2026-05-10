@@ -286,7 +286,9 @@ def cache_control_for(path):
         return "no-store"
     if path.suffix == ".glb":
         return "public, max-age=31536000, immutable"
-    if path.suffix in (".js", ".css", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"):
+    if path.suffix in (".js", ".css"):
+        return "no-store"
+    if path.suffix in (".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"):
         return "public, max-age=86400"
     return "no-store"
 
