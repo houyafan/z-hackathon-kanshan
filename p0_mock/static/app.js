@@ -30,6 +30,7 @@ let leaderboardLoaded = false;
 let leaderboardError = null;
 let leaderboardPanelOpen = false;
 let leaderboardPositionTimer = null;
+let leaderboardPromise = null;
 let modelPreloadPromise = null;
 let _activeCommentAssist = null;
 let noticeTimer = null;
@@ -826,19 +827,25 @@ async function loadLeaderboard(type = leaderboardType, { refresh = false } = {})
   if (leaderboardData?.rankType === leaderboardType && leaderboardLoaded && !refresh) {
     return leaderboardData;
   }
+  if (leaderboardPromise && !refresh) return leaderboardPromise;
   leaderboardLoaded = false;
   leaderboardError = null;
   const endpoint = leaderboardType === "travel_count"
     ? "/api/p1/leaderboard/travel-count?limit=50"
     : "/api/p1/leaderboard/pet-level?limit=50";
-  try {
+  leaderboardPromise = (async () => {
     leaderboardData = await api(endpoint);
     leaderboardLoaded = true;
     return leaderboardData;
+  })();
+  try {
+    return await leaderboardPromise;
   } catch (error) {
     leaderboardLoaded = true;
     leaderboardError = error;
     throw error;
+  } finally {
+    leaderboardPromise = null;
   }
 }
 
@@ -993,6 +1000,82 @@ function currentUserRankCard(data = leaderboardData) {
       <small>Lv.${item.level} · ${formatCount(item.totalExp)} 经验 · 游历 ${formatCount(item.travelCount)} 次</small>
     </div>
   `;
+}
+
+function leaderboardSideCard() {
+  const items = leaderboardData?.rankType === leaderboardType ? (leaderboardData.items || []).slice(0, 5) : [];
+  const myRank = profile?.adopted ? currentUserRankCard() : "";
+  const body = !profile?.adopted
+    ? `<div class="leaderboard-empty">领养刘看山后即可参与排行榜</div>`
+    : !leaderboardLoaded
+      ? `<div class="leaderboard-empty">榜单加载中</div>`
+      : leaderboardError
+        ? `<div class="leaderboard-empty">${escapeHTML(leaderboardError.message || "榜单加载失败")}</div>`
+        : items.length
+          ? `<div class="leaderboard-list">${items.map(leaderboardItem).join("")}</div>`
+          : `<div class="leaderboard-empty">${escapeHTML(leaderboardEmptyText())}</div>`;
+  return `
+    <section class="card side-card leaderboard-side-card" data-sidebar-leaderboard>
+      <div class="side-title">
+        <span>宠物排行榜</span>
+        <small>${leaderboardTitle()}</small>
+      </div>
+      <div class="leaderboard-tabs">
+        <button class="${leaderboardType === "pet_level" ? "active" : ""}" data-inline-leaderboard-type="pet_level">等级榜</button>
+        <button class="${leaderboardType === "travel_count" ? "active" : ""}" data-inline-leaderboard-type="travel_count">游历榜</button>
+      </div>
+      ${myRank}
+      ${body}
+    </section>
+  `;
+}
+
+function sidebarCards() {
+  return `
+    ${creatorCard()}
+    ${petPanel()}
+    ${leaderboardSideCard()}
+    ${hotCard()}
+  `;
+}
+
+function replaceSidebarLeaderboards() {
+  document.querySelectorAll("[data-sidebar-leaderboard]").forEach((card) => {
+    const wrapper = document.createElement("div");
+    wrapper.innerHTML = leaderboardSideCard().trim();
+    card.replaceWith(wrapper.firstChild);
+  });
+  bindSidebarLeaderboard();
+}
+
+function ensureSidebarLeaderboard() {
+  if (!document.querySelector("[data-sidebar-leaderboard]") || !profile?.adopted) return;
+  if (leaderboardData?.rankType === leaderboardType && leaderboardLoaded) return;
+  loadLeaderboard(leaderboardType)
+    .then(replaceSidebarLeaderboards)
+    .catch(replaceSidebarLeaderboards);
+}
+
+function bindSidebarLeaderboard() {
+  document.querySelectorAll("[data-inline-leaderboard-type]").forEach((button) => {
+    if (button.dataset.bound) return;
+    button.dataset.bound = "1";
+    button.addEventListener("click", async () => {
+      const nextType = button.dataset.inlineLeaderboardType === "travel_count" ? "travel_count" : "pet_level";
+      if (leaderboardType === nextType && leaderboardLoaded) return;
+      leaderboardType = nextType;
+      leaderboardLoaded = false;
+      leaderboardError = null;
+      replaceSidebarLeaderboards();
+      try {
+        await loadLeaderboard(leaderboardType, { refresh: true });
+      } catch (error) {
+        // The refreshed card renders the error message from leaderboardError.
+      }
+      replaceSidebarLeaderboards();
+      if (leaderboardPanelOpen) renderLeaderboardPanel();
+    });
+  });
 }
 
 function renderLeaderboardPanel() {
@@ -1514,41 +1597,6 @@ function hotCard() {
   `;
 }
 
-function authorPlatformCard() {
-  return `
-    <section class="card side-card author-platform-card">
-      <div class="side-title">盐言作者平台</div>
-      <div class="author-platform-banner">
-        <span><strong>写好故事，赚高收益！</strong>已有 100 万+作者入驻</span>
-        <i class="author-platform-medal" aria-hidden="true"></i>
-      </div>
-      <button class="outline-btn">去投稿 ›</button>
-    </section>
-  `;
-}
-
-function recommendFollowCard() {
-  const users = [
-    ["知乎城市指南", "发现本地新问题"],
-    ["刘看山陪读员", "和你一起读好内容"],
-    ["盐选故事会", "每日精选短篇"],
-  ];
-  return `
-    <section class="card side-card">
-      <div class="side-title">推荐关注</div>
-      <ul class="follow-list">
-        ${users.map(([name, desc]) => `
-          <li>
-            <span class="follow-avatar"></span>
-            <span><strong>${name}</strong><small>${desc}</small></span>
-            <button>关注</button>
-          </li>
-        `).join("")}
-      </ul>
-    </section>
-  `;
-}
-
 function svgIcon(className, body, viewBox = "0 0 24 24") {
   return `<svg class="${className}" viewBox="${viewBox}" aria-hidden="true" focusable="false">${body}</svg>`;
 }
@@ -1848,11 +1896,7 @@ function renderCommunity() {
           : `<section class="card follow-empty">${escapeHTML(emptyText)}</section>`}
       </section>
       <aside class="side-stack">
-        ${creatorCard()}
-        ${petPanel()}
-        ${hotCard()}
-        ${authorPlatformCard()}
-        ${recommendFollowCard()}
+        ${sidebarCards()}
       </aside>
     </main>
   `;
@@ -1869,11 +1913,7 @@ function renderRecommend() {
         ${feedItems.map(feedCard).join("")}
       </section>
       <aside class="side-stack">
-        ${creatorCard()}
-        ${petPanel()}
-        ${hotCard()}
-        ${authorPlatformCard()}
-        ${recommendFollowCard()}
+        ${sidebarCards()}
       </aside>
     </main>
   `;
@@ -1904,11 +1944,7 @@ function renderFollow() {
           : `<section class="card follow-empty">${followMomentsLoaded ? emptyText : "关注动态加载中"}</section>`}
       </section>
       <aside class="side-stack">
-        ${creatorCard()}
-        ${petPanel()}
-        ${hotCard()}
-        ${authorPlatformCard()}
-        ${recommendFollowCard()}
+        ${sidebarCards()}
       </aside>
     </main>
   `;
@@ -1935,11 +1971,7 @@ function renderHot() {
           : `<div class="zh-hot-empty">${hotItemsLoaded ? "暂无热榜" : "热榜加载中"}</div>`}
       </section>
       <aside class="side-stack">
-        ${creatorCard()}
-        ${petPanel()}
-        ${hotCard()}
-        ${authorPlatformCard()}
-        ${recommendFollowCard()}
+        ${sidebarCards()}
       </aside>
     </main>
   `;
@@ -1992,6 +2024,7 @@ function renderPeople() {
         <aside class="side-stack">
           ${creatorCard()}
           ${petPanel()}
+          ${leaderboardSideCard()}
           ${renderDailyQuests(dailyStat)}
           <section class="card side-card">
             <div class="creator-stat">
@@ -2035,6 +2068,8 @@ function bindCommon() {
     button.addEventListener("click", resetPet);
   });
   bindPetHoverCard();
+  bindSidebarLeaderboard();
+  ensureSidebarLeaderboard();
 }
 
 function bindRecommend() {
