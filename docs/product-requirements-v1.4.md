@@ -20,15 +20,15 @@
 | 内容消费养成 | 阅读/观看/点赞/评论/收藏触发成长 | 已完成 | 已支持文章、想法、视频、小说和赞评藏 |
 | 成长数值 | 经验、等级、阶段、学识值、心情 | 已完成 | 累计经验决定等级，成长日志和每日统计已落库 |
 | 游历精力 | 内容消费积累游历精力 | 已完成 | 当前内容事件会增加 `travel_energy` |
-| 健康值 | 长期内容消费维持健康，低健康休眠 | 部分完成 | 字段已入库，健康衰减和休眠业务未实现 |
+| 健康值 | 长期内容消费维持健康，低健康休眠 | 已完成 | `apply_health_decay` 168h 阈值 + 每日 -N、`maybe_enter_sleep`/`maybe_progress_wake` 进入休眠及消费 N 条内容唤醒、`schedule_wake_message` LLM 生成休眠/唤醒文案 |
 | 3D 刘看山表现 | 悬浮展示、气泡、拖拽、出场、升级、特效 | 已完成 | 已实现 3D 模型、出场、升级、残影、光带、挥手、拖拽移动/旋转 |
 | 旅行基础闭环 | 出门、归来、带回内容、领取奖励、手账 | 已完成 | start/return/claim/handbook 全部接通，奖励改为旅行行级单次发放 |
 | 旅行方式 | 默认只保留极地旅行、热点旅行 | 已完成 | `polar/hotspot` 已上线，并改为对接真实数据源（关注动态 / 知乎热榜） |
 | 旅行手札 LLM | 手札总结由 LLM 生成 | 已完成 | 火山方舟模型异步生成 `summary / pet_quote / highlights`，失败回落模板 |
-| 评论 LLM 辅助 | 评论时生成刘看山口吻建议 | 待开发 | 当前评论只触发养成事件，没有 AI 评论建议 |
-| 关注动态 | 关注内容更新后刘看山提醒 | 部分完成 | 已接 `user_moments` 同步、入库、气泡提醒；真实 LLM 总结 worker 仍待开发 |
-| LLM 对接文档 | LLM 总结/评论辅助对接说明 | 部分完成 | 已有关注动态 LLM README + 第八章旅行手札对接说明，评论辅助文档待补 |
-| 宠物等级排行榜 | 展示全站/好友/圈子宠物等级榜单 | 待开发 | V1.3 新增需求，当前无排行榜接口和表 |
+| 评论 LLM 辅助 | 评论时生成刘看山口吻建议 | 已完成 | `/api/p1/comment/assist` SSE 流式接口、`pet_comment_assist_log` 表、前端编辑框 + AI 按钮 + `submit/discard` 闭环、`prompts/comment_assist.md` |
+| 关注动态 | 关注内容更新后刘看山提醒 | 已完成 | 同步入库 + 气泡提醒 + 双层 LLM（每条 `follow_moment_each` + 整体 `pet_follow_moment_overview`），失败带 `llm_retry_count` 指数回退重试 |
+| LLM 对接文档 | LLM 总结/评论辅助对接说明 | 已完成 | 旅行手札（第八章）、评论辅助（本表）、关注动态（第八章 R4）三套 prompt + 接口约束都已沉淀 |
+| 宠物等级排行榜 | 展示全站/好友/圈子宠物等级榜单 | 已完成 | `/api/p1/leaderboard/pet-level` + `/leaderboard/travel-count` 双榜单接口、前端排行榜面板（等级榜 / 游历榜 Tab） |
 | 长时间不互动衰减 | 用户一段时间不点赞、评论、看文章时扣学识值和心情 | 已完成 | 已实现 8/24/48 小时懒计算衰减、配置表、日志表与 `decay` 流水 |
 | 等级 2D 效果图 | 每个等级有对应 2D 效果图，高等级更酷炫 | 部分完成 | 已有资源 atlas，缺按等级配置、展示和升级解锁映射 |
 | 排行榜发圈子裂变 | 排行榜支持发圈子，带项目地址和推荐话术，发圈后直接升级 | 待开发 | 当前只有圈子入口 UI 文案，无真实发布和奖励闭环 |
@@ -328,8 +328,8 @@ V1.4 版本
 | --- | --- | --- | --- |
 | R1 | 旅行方式收敛 | 默认只保留 `极地旅行`、`热点旅行` 两种方式 | 已完成（同时把数据源切到关注动态 / 知乎热榜） |
 | R2 | 旅行手札 LLM 总结 | 旅行手札内容需要结合 LLM，由 LLM 生成总结性内容 | 已完成（异步背景线程生成；输出含 highlights） |
-| R3 | 评论 LLM 辅助 | 用户评论内容时，LLM 接收内容信息，生成刘看山口吻的 AI 回答 | 待开发 |
-| R4 | 关注动态 LLM 总结 | 关注内容有更新时，也需要结合 LLM 生成刘看山式提醒 | 部分完成（字段、气泡、入库已就位；总结 worker 待开发） |
+| R3 | 评论 LLM 辅助 | 用户评论内容时，LLM 接收内容信息，生成刘看山口吻的 AI 回答 | 已完成（SSE 流式 + 一键采纳 + 提交后才触发养成奖励） |
+| R4 | 关注动态 LLM 总结 | 关注内容有更新时，也需要结合 LLM 生成刘看山式提醒 | 已完成（双层 LLM：每条 summary + 批次 overview；失败带 retry/error 字段指数回退） |
 
 当前代码已具备 P1 游历完整闭环：出门 → 后台异步触发 LLM → 归来 → 手账展示 LLM 现场汇报（summary + pet_quote + highlights）→ 领奖。主题已迁移为 `polar / hotspot`，并把素材来源从 mock 内容池切换到 `zhihu_follow_moment` / `fetch_hot_items`。详见本章节「（八）P1 实施备注」。
 
@@ -464,7 +464,7 @@ LLM 输出建议：
 - 用户可以一键采用，也可以编辑后再提交。
 - LLM 生成建议本身不直接触发评论奖励，只有用户真实提交评论后才触发养成奖励。
 
-实现状态：待开发。当前评论按钮仅触发互动事件和养成奖励，没有评论编辑框、AI 评论建议接口或建议采纳流程。
+实现状态：已完成。`/api/p1/comment/assist` 走 Server-Sent Events 流式输出（`prompts/comment_assist.md`），前端边写边显示在编辑框，用户可一键采纳、改写或换一句。`/api/p1/comment/submit` 接受 `commentText + assistLogId`，提交成功后才触发评论养成奖励并把 log 标记为 `used`，符合「LLM 建议本身不直接发奖励」的约束；用户关闭弹窗或不采用走 `/api/p1/comment/discard` 标记 `discarded`。LLM 失败兜底返回温和文案，编辑框依旧可手写提交。
 
 ### （五）关注动态 + LLM
 
@@ -494,7 +494,7 @@ LLM 输出示例：
 - 内容不足时使用兜底提醒。
 - LLM 失败不影响普通关注提醒。
 
-实现状态：部分完成。当前已实现知乎关注动态同步、`zhihu_follow_moment` 入库、LLM 字段预留、气泡提醒和关注 tab 高亮；真实 LLM 总结 worker/接口仍待开发。
+实现状态：已完成。`sync_follow_moments` 拉取后，`schedule_follow_summary` daemon 线程对每条动态调用 `follow_moment_each` 生成 ≤70 字 summary，再用 `follow_moment_overview` 生成本批次「扫一眼关注 tab」聚合句写入 `pet_follow_moment_overview`；前端气泡 / 关注 Tab 优先展示 LLM overview，无 overview 时回落普通关注提醒。失败带 `llm_retry_count` + `llm_error` 指数回退（30s × 2^n，最多 3 次）。
 
 ### （六）数据模型补充建议
 
@@ -527,29 +527,43 @@ LLM 输出示例：
 
 #### 2. 评论辅助
 
-建议新增 `pet_comment_assist_log`：
+`pet_comment_assist_log` 实际表结构（与设计稿略有差异，字段名以代码为准）：
 
 | 字段 | 说明 | 当前状态 |
 | --- | --- | --- |
-| `user_id` | 用户 ID | 待开发 |
-| `content_id` | 内容 ID | 待开发 |
-| `content_type` | 内容类型 | 待开发 |
-| `input_payload` | LLM 输入 JSON | 待开发 |
-| `suggested_comment` | 生成的评论建议 | 待开发 |
-| `status` | `ready/failed/used/discarded` | 待开发 |
-| `model` | 使用的模型 | 待开发 |
-| `created_at` | 创建时间 | 待开发 |
+| `user_id` | 用户 ID | 已完成 |
+| `content_id` | 内容 ID | 已完成 |
+| `content_type` | 内容类型 | 已完成 |
+| `prompt_payload` | LLM 输入 JSON（实际字段名，非 `input_payload`） | 已完成 |
+| `suggested_comment` | 生成的评论建议 | 已完成 |
+| `status` | `streaming/ready/failed/used/discarded`（实际多了一个流式中间态 `streaming`） | 已完成 |
+| `model` | 使用的模型 | 已完成 |
+| `final_comment` | 用户最终提交版本（实际新增） | 已完成 |
+| `used_as_is` | 是否原样采纳，0/1（实际新增） | 已完成 |
+| `created_at` / `updated_at` | 时间戳 | 已完成 |
 
 #### 3. 关注动态
 
-已有 `zhihu_follow_moment` 的 LLM 字段可继续复用，后续补充重试字段：
+已有 `zhihu_follow_moment` 的 LLM 字段可继续复用，重试字段也已落库：
 
 ```sql
 ALTER TABLE zhihu_follow_moment ADD COLUMN llm_retry_count INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE zhihu_follow_moment ADD COLUMN llm_error TEXT DEFAULT NULL;
 ```
 
-当前状态：字段 `llm_summary_status/llm_summary/llm_summary_model/llm_summary_updated_at` 已完成，重试字段和真实 LLM 调用待开发。
+另新增 `pet_follow_moment_overview`（实际实现）：
+
+| 字段 | 说明 |
+| --- | --- |
+| `user_id` | 用户 ID |
+| `sync_batch_id` | 本次 `sync_follow_moments` 批次 ID |
+| `overview_text` | 「扫一眼关注 tab」聚合句（≤80 字） |
+| `moment_count` | 本批参与汇总的动态数 |
+| `status` | `ready/failed/skipped` |
+| `model` | 使用的模型 |
+| `consumed_at` | 用户已消费/已展示时间，NULL 即未读 |
+
+当前状态：所有字段已完成，每条 summary + 批次 overview + retry/error 全链路打通。
 
 ### （七）验收标准
 
@@ -561,10 +575,10 @@ ALTER TABLE zhihu_follow_moment ADD COLUMN llm_error TEXT DEFAULT NULL;
 | 旅行手札 | 归来后手札展示 LLM 总结、刘看山语录与 3-5 条 highlights | 已完成 |
 | 旅行 LLM 失败 | 状态置 `failed`，前端展示模板兜底，旅行流程不失败 | 已完成 |
 | 旅行奖励 | 不论带回素材数为 5 还是 6，单次旅行奖励固定（行级，避免 N 倍放大） | 已完成 |
-| 评论辅助 | 点击评论辅助后，返回刘看山口吻评论建议 | 待开发 |
-| 评论奖励 | 只有用户真实提交评论后才触发经验/心情奖励 | 部分完成 |
-| 关注动态 | 有新关注动态时，优先展示 LLM 总结提醒 | 部分完成 |
-| 关注 LLM 失败 | 降级为普通关注 tab 提醒 | 部分完成 |
+| 评论辅助 | 点击评论辅助后，返回刘看山口吻评论建议 | 已完成 |
+| 评论奖励 | 只有用户真实提交评论后才触发经验/心情奖励 | 已完成 |
+| 关注动态 | 有新关注动态时，优先展示 LLM 总结提醒 | 已完成 |
+| 关注 LLM 失败 | 降级为普通关注 tab 提醒 | 已完成 |
 
 ### （八）P1 实施备注
 
@@ -603,9 +617,10 @@ ALTER TABLE zhihu_follow_moment ADD COLUMN llm_error TEXT DEFAULT NULL;
 
 #### 5. 已知遗留
 
-- 关注动态 LLM 总结 worker（R4）尚未真正调用 LLM，沿用预留字段
-- 评论 LLM 辅助（R3）整体待开发
-- 健康值衰减、休眠机制、社交联动、权益兑换均未实现（与本次 P1 范围无关）
+- 健康值衰减 / 休眠 / 唤醒已完成（`apply_health_decay` + `maybe_enter_sleep` + `maybe_progress_wake` + LLM `wake_message`）
+- 关注动态 LLM 总结 worker（R4）已完成（双层 LLM + retry/error 字段）
+- 评论 LLM 辅助（R3）已完成（SSE 流式 + 一键采纳 + 提交触发奖励）
+- 社交联动、权益兑换仍未实现（与本次 P1 范围无关）
 
 ## 九、V1.3 新增需求：排行、衰减、2D 成长图、裂变与埋点
 
@@ -615,7 +630,7 @@ ALTER TABLE zhihu_follow_moment ADD COLUMN llm_error TEXT DEFAULT NULL;
 
 | 编号 | 功能 | 需求说明 | 当前状态 |
 | --- | --- | --- | --- |
-| V1.3-R1 | 宠物等级排行榜 | 增加排行榜，展示宠物等级榜单 | 待开发 |
+| V1.3-R1 | 宠物等级排行榜 | 增加排行榜，展示宠物等级榜单 | 已完成（实际实现等级榜 + 游历榜双 Tab，接口 `/api/p1/leaderboard/pet-level` 与 `/leaderboard/travel-count`） |
 | V1.3-R2 | 长时间不互动衰减 | 用户多久不互动（点赞、评论、看文章）后，扣对应学识值和心情 | 已完成 |
 | V1.3-R3 | 等级 2D 效果图 | 每个等级有对应 2D 效果图，高等级更酷炫 | 待开发 |
 | V1.3-R4 | 排行榜发圈子裂变 | 排行榜支持发圈子，内容包含看山 2D 图、项目体验话术和项目地址；发圈后给予更高升级激励，直接升级 | 待开发 |
@@ -655,11 +670,16 @@ V1.3 先支持一个核心榜单：
 | 当前等级 2D 图 | 来自等级 2D 配置 |
 | 是否当前用户 | 用于高亮当前用户 |
 
-#### 4. 推荐接口
+#### 4. 推荐接口（已实现）
+
+实际已上线两条：
 
 ```http
-GET /api/p1/leaderboard/pet-level?scope=global&limit=50
+GET /api/p1/leaderboard/pet-level?limit=50
+GET /api/p1/leaderboard/travel-count?limit=50
 ```
+
+`scope` 参数暂未拆分（当前固定 global），后续接好友/圈子时再扩展。
 
 返回示例：
 
@@ -838,6 +858,91 @@ INDEX(user_id, checked_at);
 UNIQUE(level);
 ```
 
+#### 4. 实施设计（V1.4 补）
+
+> 当前现状：`server.py:level_2d_image()` 写死返回 `/static/assets/pet-level/level-XX.png`，但该目录不存在；`pet_level_visual_config` 表也未建。排行榜面板等级头像位会请求 404。
+
+##### 4.1 目标
+
+- 排行榜（已上线）、宠物状态面板、升级反馈、旅行手札封面、发圈子分享卡（V1.3-R4）五个场景拿到的是「同一份按等级映射的稳定 2D 图」。
+- 视觉与等级元数据（经验/解锁）解耦，运营可单独热更换图、改 effect_style。
+
+##### 4.2 资源策略
+
+不画 30+ 张全等级图，分档 + 装饰位组合，最大化复用：
+
+| 档位 | 等级 | 形象底图 | 装饰/光效 | 资源数量 |
+| --- | --- | --- | --- | --- |
+| `cute` | 1-3 | 幼崽看山（站立） | 无 | 1 |
+| `explore` | 4-6 | 成长看山（带背包/旅行帽） | 1 套小道具 | 1 |
+| `cool` | 7-9 | 成年看山（极地/热点造型） | 主题光效 | 1 |
+| `legendary` | 10+ | 进阶看山 | 限定光环 + 称号条 | 1 |
+
+每档底图 1 张 PNG（512×512，透明底），等级序号 + 称号文案在前端渲染时叠加，单档可服务多等级。Lv.10+ 同图，但叠加金色等级数字制造稀缺感。
+
+资源放置约定：
+
+```
+p0_mock/static/assets/pet-level/
+  cute.png          # Lv.1-3
+  explore.png       # Lv.4-6
+  cool.png          # Lv.7-9
+  legendary.png     # Lv.10+
+  cute-share-bg.png      # 发圈子分享卡背景，9:16
+  explore-share-bg.png
+  cool-share-bg.png
+  legendary-share-bg.png
+```
+
+需求方先落 4 张底图（也可让 AI 出图，过设计 review）即可上线整套体系；后续运营随时可换图。
+
+##### 4.3 数据库 schema 收敛
+
+把"等级 → 视觉"做成可热更新的配置表，但只存「档位指针」，不存"每个等级一张图"，避免重复：
+
+```sql
+CREATE TABLE IF NOT EXISTS pet_level_visual_config (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  level INTEGER NOT NULL,                 -- 1, 2, 3, ...
+  stage TEXT NOT NULL,                    -- cub/growing/adult/advanced
+  title TEXT NOT NULL,                    -- 展示称号，如「初识看山」「极地探险家」
+  effect_style TEXT NOT NULL              -- cute/explore/cool/legendary
+    CHECK (effect_style IN ('cute','explore','cool','legendary')),
+  image_url TEXT NOT NULL,                -- /static/assets/pet-level/{effect_style}.png
+  thumbnail_url TEXT DEFAULT NULL,        -- 排行榜小图，可空，空则用 image_url
+  share_bg_url TEXT NOT NULL,             -- /static/assets/pet-level/{effect_style}-share-bg.png
+  description TEXT DEFAULT NULL,          -- 等级视觉描述（兜底文案）
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (level)
+);
+```
+
+种子数据（init_p0.sql 末尾追加）：插入 Lv.1-12 的映射，level 与 effect_style 按 4.2 档位映射；称号文案从 `pet_level_config.title` 复制，effect 的视觉描述写在 `description`。
+
+##### 4.4 后端改动
+
+1. 新增 `fetch_level_visual(conn, level)` ：单条查询，未配置时回退到「最近一档」（取 `level <= ?` 倒序第一条），保证未来高等级也有图可用。
+2. 现有 `level_2d_image(level)` **改为读 `pet_level_visual_config`**，返回 `image_url`。无配置时回退默认 `cute.png`。
+3. `camel_leaderboard_item` / `camel_profile` 输出 `level2dImage`、`level2dThumbnail`、`levelTitle`、`levelEffectStyle`、`shareBgImage` 五个字段，前端按场景挑用。
+4. 新增 `GET /api/p1/pet/level-visuals`：一次性返回所有档位映射，前端在升级动画里做"下一级长这样"预览。
+
+##### 4.5 前端复用点
+
+| 场景 | 字段 | 处理 |
+| --- | --- | --- |
+| 排行榜 item | `level2dImage` + `levelTitle` | 替换现有 `leaderboard-visual` div 的占位 emoji，加 `level-${effectStyle}` class 触发不同光效 CSS |
+| 宠物状态面板 | `level2dImage` | 头像位展示 + 当前 effect_style 决定边框颜色 |
+| 升级反馈 | 调 `/api/p1/pet/level-visuals` 取下一档图 | "升到 Lv.4 看山会带上探险包"预览 |
+| 旅行手札封面 | `level2dImage` | 手札顶部右上角小挂件 |
+| 发圈子分享卡（R4） | `shareBgImage` + `level2dImage` | share_card.js 新增 leaderboard 模板 |
+
+##### 4.6 验收
+
+- 排行榜 50 条 item 头像位都有图；档位过渡正确（Lv.3→Lv.4 视觉明显升级）。
+- 把 `pet_profile.level` 手动改到 99，仍能拿到 legendary 档兜底图，不报 404。
+- 未配置等级（如 Lv.50）走 `level <= ?` 回退，不抛异常。
+
 ### （五）排行榜发圈子裂变
 
 #### 1. 产品目标
@@ -940,6 +1045,207 @@ UNIQUE(share_id);
 INDEX(user_id, created_at);
 INDEX(circle_post_id);
 ```
+
+#### 6. 实施设计（V1.4 补）
+
+> 已具备基础：`publish_community_pin(title, content, image_urls)` 已封装 `/openapi/publish/pin`；`/api/p1/community/publish` 已挂在 POST 路由；`share_card.js` 有 9:16 截图能力；前端排行榜面板已上线。
+> 还缺：分享流水表、奖励规则、排行榜入口按钮、新分享卡模板、配额校验、回执驱动的奖励发放。
+
+##### 6.1 用户旅程
+
+```
+打开排行榜
+  → 用户在自己卡片上看到「发圈子」按钮（只对当前用户可见）
+  → 点击：弹出分享卡预览（享卡 = 9:16，背景为 share_bg_url，叠加 2D 图、Lv、排名、slogan、二维码占位）
+  → 用户编辑/确认文案
+  → 点「发布到圈子」
+  → 服务端：校验配额 → 上传图 → 调 community publish → 拿 post_id → 发奖励 → 返回奖励详情
+  → 前端：奖励弹窗（升级动画 + 经验跳数）+ 跳转圈子查看刚发的帖子
+  → 失败：toast 报错，不扣配额
+```
+
+##### 6.2 分享卡模板（复用 share_card.js）
+
+新增模板 `renderLeaderboardShareHtml({ level, rankNo, image2dUrl, shareBgUrl, fullname, projectUrl, slogan })`：
+
+```
+9:16 750×1280
+┌─────────────────────────────┐
+│  [share_bg_url 主题背景]      │
+│                              │
+│      [2D 看山图，居中大图]     │
+│      Lv.{level} · {title}    │
+│      第 {rankNo} 名           │
+│                              │
+│  ─────                       │
+│  "我把刘看山养到 Lv.{level}！" │
+│  内容越读，看山越强            │
+│                              │
+│  [二维码占位] {projectUrl}    │
+│  知乎 · 刘看山虚拟宠物         │
+└─────────────────────────────┘
+```
+
+调用 `window.generateLeaderboardShareCard({ level, rankNo, ... })`，返回 dataURL；上传步骤见 6.4。
+
+##### 6.3 数据库 schema
+
+完整建表语句（落到 `init_p0.sql` 末尾）：
+
+```sql
+CREATE TABLE IF NOT EXISTS pet_circle_share_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  share_id TEXT NOT NULL UNIQUE,                  -- 业务 ID（前端生成 uuid，幂等键）
+  user_id INTEGER NOT NULL,
+  rank_type TEXT NOT NULL                         -- pet_level / travel_count
+    CHECK (rank_type IN ('pet_level','travel_count')),
+  rank_no INTEGER DEFAULT NULL,                   -- 分享时刻排名快照
+  level_before INTEGER NOT NULL,
+  level_after INTEGER NOT NULL DEFAULT 0,
+  project_url TEXT NOT NULL,
+  share_text TEXT NOT NULL,
+  share_image_url TEXT DEFAULT NULL,              -- 上传后的 CDN/本地地址
+  circle_post_id TEXT DEFAULT NULL,               -- community publish 返回的 pin id
+  publish_status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (publish_status IN ('pending','published','failed')),
+  reward_status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (reward_status IN ('pending','granted','ignored','failed')),
+  reward_type TEXT DEFAULT NULL                   -- level_up / rare_item
+    CHECK (reward_type IS NULL OR reward_type IN ('level_up','rare_item')),
+  reward_exp INTEGER NOT NULL DEFAULT 0,
+  error_message TEXT DEFAULT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_circle_share_user_time
+  ON pet_circle_share_log(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_circle_share_post
+  ON pet_circle_share_log(circle_post_id);
+CREATE INDEX IF NOT EXISTS idx_circle_share_user_status
+  ON pet_circle_share_log(user_id, reward_status);
+```
+
+##### 6.4 后端接口设计
+
+新增两个接口，全程走服务端代理（不允许前端直连 community）：
+
+**接口 A — 上传分享图**
+
+```http
+POST /api/p1/leaderboard/share-image
+Content-Type: application/json
+
+{
+  "shareId": "<uuid 前端生成>",
+  "imageDataUrl": "data:image/png;base64,..."   # html2canvas 输出
+}
+
+200 OK
+{ "shareId": "...", "imageUrl": "/static/share/circle-<shareId>.png" }
+```
+
+存到 `p0_mock/static/share/circle-<shareId>.png`（仓库 `.gitignore` 加规则），上线时改 OSS。`shareId` 必须是 v4 uuid，做路径白名单。
+
+**接口 B — 发布并发奖励**
+
+```http
+POST /api/p1/leaderboard/share-circle
+Content-Type: application/json
+
+{
+  "shareId": "<同上>",
+  "rankType": "pet_level",
+  "rankNo": 8,
+  "shareText": "我把刘看山养到 Lv.8 啦……",
+  "projectUrl": "https://ahipkiokdnvl.sealosbja.site/",
+  "imageUrl": "/static/share/circle-<shareId>.png"
+}
+
+200 OK
+{
+  "shareId": "...",
+  "publishStatus": "published",
+  "circlePostId": "pin_xxx",
+  "reward": {
+    "type": "level_up",
+    "fromLevel": 8,
+    "toLevel": 9,
+    "expGranted": 450
+  }
+}
+
+409 Conflict
+{ "error": "DAILY_QUOTA_EXCEEDED" | "WEEKLY_QUOTA_EXCEEDED" | "DUPLICATE_SHARE_ID" }
+```
+
+服务端流程（一切在单事务里，幂等键 `share_id`）：
+
+1. `BEGIN IMMEDIATE` 写锁
+2. 校验：`share_id` 不存在；当日 `pet_circle_share_log WHERE user_id=? AND DATE(created_at)=DATE('now') AND reward_status='granted'` 数 ≥ 1 → 409；本周 ≥ 3 → 409
+3. 插一行 `pet_circle_share_log(publish_status='pending', reward_status='pending')`
+4. 拼 `final_share_text = share_text + "\n\n体验：" + project_url`，确保不被前端去掉项目链接
+5. 调 `publish_community_pin(title=share_text 前 30 字, content=final_share_text, image_urls=[absolute_image_url])`
+6. 成功：`UPDATE ... SET publish_status='published', circle_post_id=?`；失败：`publish_status='failed', error_message=?` → 直接返回不发奖励
+7. 发奖励（见 6.5），`UPDATE reward_status='granted'/'ignored'`
+8. `COMMIT`
+
+##### 6.5 奖励规则
+
+| 场景 | 处理 | 流水 |
+| --- | --- | --- |
+| 当前等级 < 最高定义等级（暂定 12） | 计算 `nextLevelExp - currentExp`，发放等量经验，刚好升 1 级 | `reward_type='level_up', reward_exp=...`，写 `pet_growth_log(source_type='circle_share', change_type='exp', delta=...)` |
+| 已是最高等级 | `reward_type='rare_item'`，发"限定光环"道具（暂用心情 +20 占位） | `reward_status='granted', reward_exp=0` |
+| 当日已领取 1 次 | 发布成功但不发奖励 | `reward_status='ignored'` |
+
+约束：
+
+- `pet_growth_log` 复用现有表，`source_type` 加 `circle_share`（已在 CHECK 约束里？需 migrate）
+- 同 `share_id` 多次 POST 走幂等返回首次结果，不重复发奖励
+- 升级奖励要走 `apply_level_up_with_log` 类路径，复用现有升级路径逻辑（如有等级上限拦截）
+
+##### 6.6 前端入口
+
+只在排行榜的"我的卡片"上显示发圈子按钮（不能给别人发别人的等级）：
+
+```js
+// 排行榜面板，已存在 currentUserRankCard
+// 改为：
+function currentUserRankCard(data) {
+  // ...原内容
+  if (data.currentUserRank && profile.adopted) {
+    return `
+      <div class="leaderboard-my-card">
+        <!-- 现有展示 -->
+        <button class="leaderboard-share-btn" data-share-circle>
+          🎉 发圈子，再升一级
+        </button>
+        <span class="leaderboard-share-quota muted" data-share-quota>
+          今日 ${todayUsed}/1
+        </span>
+      </div>`;
+  }
+}
+```
+
+点击 → `openLeaderboardShareCardPreview()` → 内部调 `generateLeaderboardShareCard()` → 拿到 dataURL 后调 A → 拿到 imageUrl 后调 B → 成功播升级动画。
+
+##### 6.7 安全 / 防滥用
+
+- `shareId` 必须是 v4 uuid（正则校验），文件名做白名单防路径穿越
+- 上传图大小 ≤ 1.5MB，类型必须是 PNG
+- `share_text` 服务端兜底插入项目 URL，前端可改文案但项目链接不可去
+- 配额（每日 1、每周 3）走数据库聚合查询，不依赖前端 `todayUsed`
+- 用户未领养 / 未绑定 OAuth → 直接 403
+- community publish 失败时记 `error_message`，不发奖励且让前端可重试（同 share_id 失败的可继续重试，成功后转 published）
+
+##### 6.8 验收
+
+- 用户在排行榜「我的卡片」上能看到发圈子按钮，点击可预览分享卡。
+- 点发布后：圈子里出现帖子（含图片 + 项目链接）、刘看山等级 +1、奖励弹窗有动画。
+- 同一 share_id 重发请求 → 返回首次结果，不重复发奖励。
+- 当日发完一次后，按钮变灰显示「今日已领取，明天再来」。
+- LLM/community 不可用时：发布失败有 toast，未扣配额，可重试。
+- 已是最高等级用户发圈子：拿到 `rare_item` 奖励，等级不再上涨。
 
 ### （六）新用户首次进入体验引导
 
