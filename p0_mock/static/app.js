@@ -20,6 +20,12 @@ let communityContents = [];
 let communityPromise = null;
 let communityLoaded = false;
 let communityError = null;
+let leaderboardType = "pet_level";
+let leaderboardData = null;
+let leaderboardLoaded = false;
+let leaderboardError = null;
+let leaderboardPanelOpen = false;
+let leaderboardPositionTimer = null;
 let modelPreloadPromise = null;
 let noticeTimer = null;
 let noticeRemaining = 0;
@@ -476,6 +482,12 @@ function bindPetHoverCard() {
       openTravelHandbook();
     });
   });
+  bindOnce("[data-hover-leaderboard]", (button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openLeaderboardPanel();
+    });
+  });
   bindOnce("[data-hover-reward-walk]", (input) => {
     input.addEventListener("click", (event) => event.stopPropagation());
     input.addEventListener("change", (event) => {
@@ -534,6 +546,7 @@ function renderPetHoverCard() {
       <a href="/people/p2wcex">个人页</a>
       ${travelAction}
       <button data-hover-handbook>旅行手账</button>
+      <button data-hover-leaderboard>排行榜</button>
       <button data-hover-reset>重置</button>
     </div>
     <label class="pet-hover-toggle">
@@ -714,8 +727,187 @@ async function loadCommunity({ refresh = false } = {}) {
       communityError = error;
       console.warn("Community load failed", error);
       throw error;
-    });
+  });
   return communityPromise;
+}
+
+async function loadLeaderboard(type = leaderboardType, { refresh = false } = {}) {
+  leaderboardType = type === "travel_count" ? "travel_count" : "pet_level";
+  if (leaderboardData?.rankType === leaderboardType && leaderboardLoaded && !refresh) {
+    return leaderboardData;
+  }
+  leaderboardLoaded = false;
+  leaderboardError = null;
+  const endpoint = leaderboardType === "travel_count"
+    ? "/api/p1/leaderboard/travel-count?limit=50"
+    : "/api/p1/leaderboard/pet-level?limit=50";
+  try {
+    leaderboardData = await api(endpoint);
+    leaderboardLoaded = true;
+    return leaderboardData;
+  } catch (error) {
+    leaderboardLoaded = true;
+    leaderboardError = error;
+    throw error;
+  }
+}
+
+function leaderboardTitle(type = leaderboardType) {
+  return type === "travel_count" ? "游历榜" : "等级榜";
+}
+
+function leaderboardEmptyText(type = leaderboardType) {
+  return type === "travel_count"
+    ? "还没有完成游历的看山，攒够精力让它出门吧。"
+    : "还没有看山上榜，领养后阅读和互动就能成长。";
+}
+
+function leaderboardVisual(item) {
+  const level = Number(item?.level || 1);
+  return `
+    <div class="leaderboard-visual level-${Math.min(level, 10)}">
+      <span>山</span>
+      <small>Lv.${level}</small>
+    </div>
+  `;
+}
+
+function leaderboardItem(item) {
+  const isTravel = leaderboardType === "travel_count";
+  const metric = isTravel
+    ? `<strong>${formatCount(item.travelCount)} 次</strong><small>已领取 ${formatCount(item.claimedTravelCount)} 次</small>`
+    : `<strong>Lv.${item.level}</strong><small>${formatCount(item.totalExp)} 经验</small>`;
+  return `
+    <article class="leaderboard-item ${item.isCurrentUser ? "is-current" : ""} rank-${item.rank <= 3 ? item.rank : "normal"}">
+      <div class="leaderboard-rank">${item.rank}</div>
+      ${leaderboardVisual(item)}
+      <div class="leaderboard-user">
+        <strong>${escapeHTML(item.fullname || "知乎用户")}</strong>
+        <small>${escapeHTML(item.petName || "刘看山")} · ${escapeHTML(stageText(item.stage))}</small>
+      </div>
+      <div class="leaderboard-metric">
+        ${metric}
+      </div>
+    </article>
+  `;
+}
+
+function currentUserRankCard(data = leaderboardData) {
+  const item = data?.currentUserItem;
+  if (!profile?.adopted) {
+    return `<div class="leaderboard-my-card muted">领养刘看山后即可参与排行榜</div>`;
+  }
+  if (!item) {
+    return `<div class="leaderboard-my-card muted">${leaderboardType === "travel_count" ? "你还没有完成游历" : "你暂未进入榜单"}</div>`;
+  }
+  return `
+    <div class="leaderboard-my-card">
+      <span>我的名次</span>
+      <strong>No.${item.rank}</strong>
+      <small>Lv.${item.level} · ${formatCount(item.totalExp)} 经验 · 游历 ${formatCount(item.travelCount)} 次</small>
+    </div>
+  `;
+}
+
+function renderLeaderboardPanel() {
+  let panel = document.getElementById("leaderboardPanel");
+  if (!panel) {
+    panel = document.createElement("section");
+    panel.id = "leaderboardPanel";
+    panel.className = "leaderboard-panel";
+    document.body.appendChild(panel);
+  }
+  const items = leaderboardData?.rankType === leaderboardType ? (leaderboardData.items || []) : [];
+  const body = !leaderboardLoaded
+    ? `<div class="leaderboard-empty">榜单加载中</div>`
+    : leaderboardError
+      ? `<div class="leaderboard-empty">${escapeHTML(leaderboardError.message || "榜单加载失败")}</div>`
+      : items.length
+        ? `<div class="leaderboard-list">${items.map(leaderboardItem).join("")}</div>`
+        : `<div class="leaderboard-empty">${escapeHTML(leaderboardEmptyText())}</div>`;
+  panel.innerHTML = `
+    <div class="leaderboard-head">
+      <div>
+        <small>刘看山排行榜</small>
+        <strong>${leaderboardTitle()}</strong>
+      </div>
+      <button aria-label="关闭排行榜" data-leaderboard-close>×</button>
+    </div>
+    <div class="leaderboard-tabs">
+      <button class="${leaderboardType === "pet_level" ? "active" : ""}" data-leaderboard-type="pet_level">等级榜</button>
+      <button class="${leaderboardType === "travel_count" ? "active" : ""}" data-leaderboard-type="travel_count">游历榜</button>
+    </div>
+    ${currentUserRankCard()}
+    ${body}
+  `;
+  panel.querySelector("[data-leaderboard-close]").addEventListener("click", closeLeaderboardPanel);
+  panel.querySelectorAll("[data-leaderboard-type]").forEach((button) => {
+    button.addEventListener("click", () => switchLeaderboard(button.dataset.leaderboardType));
+  });
+  positionLeaderboardPanel();
+}
+
+function positionLeaderboardPanel() {
+  const panel = document.getElementById("leaderboardPanel");
+  const pet = characterElement();
+  if (!panel || !pet) return;
+  if (window.innerWidth <= 720) {
+    panel.style.left = "12px";
+    panel.style.right = "12px";
+    panel.style.top = "auto";
+    panel.style.bottom = "14px";
+    return;
+  }
+  const rect = pet.getBoundingClientRect();
+  const panelWidth = 360;
+  const gap = 14;
+  const left = rect.left >= panelWidth + gap
+    ? rect.left - panelWidth - gap
+    : Math.min(window.innerWidth - panelWidth - 16, rect.right + gap);
+  const top = Math.max(78, Math.min(window.innerHeight - 520, rect.top + 12));
+  panel.style.left = `${Math.max(16, left)}px`;
+  panel.style.right = "auto";
+  panel.style.top = `${top}px`;
+  panel.style.bottom = "auto";
+}
+
+async function openLeaderboardPanel(type = leaderboardType) {
+  if (!profile?.adopted) {
+    showToast("领养刘看山后查看排行榜");
+    return;
+  }
+  leaderboardPanelOpen = true;
+  leaderboardType = type === "travel_count" ? "travel_count" : "pet_level";
+  renderLeaderboardPanel();
+  character?.setMessage?.("看看大家的看山都长到哪儿啦", { autoHide: 2200 });
+  window.clearInterval(leaderboardPositionTimer);
+  leaderboardPositionTimer = window.setInterval(positionLeaderboardPanel, 500);
+  try {
+    await loadLeaderboard(leaderboardType, { refresh: true });
+  } catch (error) {
+    showToast(error.message || "排行榜加载失败");
+  }
+  if (leaderboardPanelOpen) renderLeaderboardPanel();
+}
+
+function closeLeaderboardPanel() {
+  leaderboardPanelOpen = false;
+  window.clearInterval(leaderboardPositionTimer);
+  leaderboardPositionTimer = null;
+  document.getElementById("leaderboardPanel")?.remove();
+}
+
+async function switchLeaderboard(type) {
+  const nextType = type === "travel_count" ? "travel_count" : "pet_level";
+  if (leaderboardType === nextType && leaderboardLoaded) return;
+  leaderboardType = nextType;
+  renderLeaderboardPanel();
+  try {
+    await loadLeaderboard(leaderboardType, { refresh: true });
+  } catch (error) {
+    showToast(error.message || "排行榜加载失败");
+  }
+  if (leaderboardPanelOpen) renderLeaderboardPanel();
 }
 
 function syncCharacter() {
@@ -724,12 +916,14 @@ function syncCharacter() {
 
   if (!profile?.adopted) {
     container.style.display = "none";
+    closeLeaderboardPanel();
     renderPetHoverCard();
     return;
   }
 
   container.style.display = "block";
   renderPetHoverCard();
+  if (leaderboardPanelOpen) window.requestAnimationFrame(positionLeaderboardPanel);
   const idleMessage = `Lv.${profile.level} ${stageText(profile.stage)}`;
   if (!character) {
     try {
@@ -2012,6 +2206,7 @@ async function resetPet() {
     });
     profile = data.profile;
     travelState = null;
+    closeLeaderboardPanel();
     const element = characterElement();
     if (element) {
       element.style.display = "none";

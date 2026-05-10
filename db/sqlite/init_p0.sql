@@ -341,6 +341,12 @@ CREATE INDEX IF NOT EXISTS idx_zhihu_follow_moment_llm
 CREATE INDEX IF NOT EXISTS idx_pet_travel_event_user_status
   ON pet_travel_event (user_id, status, started_at DESC);
 
+CREATE INDEX IF NOT EXISTS idx_pet_profile_level_rank
+  ON pet_profile (adopted, level DESC, total_exp DESC, updated_at ASC);
+
+CREATE INDEX IF NOT EXISTS idx_pet_travel_event_rank
+  ON pet_travel_event (status, user_id, returned_at DESC, claimed_at DESC);
+
 CREATE INDEX IF NOT EXISTS idx_pet_travel_handbook_user
   ON pet_travel_handbook (user_id, created_at DESC);
 

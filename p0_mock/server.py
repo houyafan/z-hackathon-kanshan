@@ -619,6 +619,106 @@ def camel_content(row, include_full=False):
     return content
 
 
+def level_2d_image(level):
+    try:
+        safe_level = max(1, min(int(level), 99))
+    except (TypeError, ValueError):
+        safe_level = 1
+    return f"/static/assets/pet-level/level-{safe_level:02d}.png"
+
+
+def camel_leaderboard_item(row, rank, current_user_id):
+    return {
+        "rank": rank,
+        "userId": row["user_id"],
+        "fullname": row["fullname"] or f"知乎用户 {row['user_id']}",
+        "avatarPath": row["avatar_path"] or "",
+        "petName": row["pet_name"] or "刘看山",
+        "level": row["level"],
+        "stage": row["stage"],
+        "totalExp": row["total_exp"],
+        "travelCount": row["travel_count"] or 0,
+        "claimedTravelCount": row["claimed_travel_count"] or 0,
+        "lastTravelAt": row["last_travel_at"] if "last_travel_at" in row.keys() else None,
+        "level2dImage": level_2d_image(row["level"]),
+        "isCurrentUser": int(row["user_id"]) == int(current_user_id),
+    }
+
+
+def leaderboard_payload(conn, current_user_id, rank_type, limit=50):
+    limit = max(1, min(int(limit), 100))
+    if rank_type == "travel_count":
+        rows = conn.execute(
+            """
+            SELECT
+              p.user_id,
+              u.fullname,
+              u.avatar_path,
+              p.pet_name,
+              p.level,
+              p.stage,
+              p.total_exp,
+              COUNT(t.id) AS travel_count,
+              SUM(CASE WHEN t.status = 'claimed' THEN 1 ELSE 0 END) AS claimed_travel_count,
+              MAX(COALESCE(t.returned_at, t.claimed_at, t.started_at)) AS last_travel_at
+            FROM pet_profile p
+            JOIN pet_travel_event t ON t.user_id = p.user_id
+            LEFT JOIN zhihu_user u ON u.uid = p.user_id
+            WHERE p.adopted = 1
+              AND t.status IN ('returned', 'claimed')
+            GROUP BY p.user_id
+            ORDER BY
+              travel_count DESC,
+              claimed_travel_count DESC,
+              last_travel_at DESC,
+              p.level DESC,
+              p.user_id ASC
+            """
+        ).fetchall()
+    else:
+        rank_type = "pet_level"
+        rows = conn.execute(
+            """
+            SELECT
+              p.user_id,
+              u.fullname,
+              u.avatar_path,
+              p.pet_name,
+              p.level,
+              p.stage,
+              p.total_exp,
+              COALESCE(t.travel_count, 0) AS travel_count,
+              COALESCE(t.claimed_travel_count, 0) AS claimed_travel_count,
+              t.last_travel_at AS last_travel_at
+            FROM pet_profile p
+            LEFT JOIN zhihu_user u ON u.uid = p.user_id
+            LEFT JOIN (
+              SELECT
+                user_id,
+                COUNT(*) AS travel_count,
+                SUM(CASE WHEN status = 'claimed' THEN 1 ELSE 0 END) AS claimed_travel_count,
+                MAX(COALESCE(returned_at, claimed_at, started_at)) AS last_travel_at
+              FROM pet_travel_event
+              WHERE status IN ('returned', 'claimed')
+              GROUP BY user_id
+            ) t ON t.user_id = p.user_id
+            WHERE p.adopted = 1
+            ORDER BY p.level DESC, p.total_exp DESC, p.updated_at ASC, p.user_id ASC
+            """
+        ).fetchall()
+
+    ranked_items = [camel_leaderboard_item(row, index + 1, current_user_id) for index, row in enumerate(rows)]
+    current_item = next((item for item in ranked_items if item["isCurrentUser"]), None)
+    return {
+        "rankType": rank_type,
+        "scope": "global",
+        "limit": limit,
+        "items": ranked_items[:limit],
+        "currentUserRank": current_item["rank"] if current_item else None,
+        "currentUserItem": current_item,
+    }
+
+
 def camel_follow_moment(row):
     if row is None:
         return None
@@ -2954,6 +3054,17 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as error:
                 status = 409 if str(error) == "COMMUNITY_CONFIG_MISSING" else 502
                 self.send_json(status, {"error": "COMMUNITY_COMMENTS_FAILED", "message": str(error)})
+            return
+
+        if path in ("/api/p1/leaderboard/pet-level", "/api/p1/leaderboard/travel-count"):
+            session = self.require_auth_json()
+            if session is None:
+                return
+            qs = parse_qs(parsed.query)
+            limit = max(1, min(int((qs.get("limit") or [50])[0]), 100))
+            rank_type = "travel_count" if path.endswith("/travel-count") else "pet_level"
+            with connect_db() as conn:
+                self.send_json(200, leaderboard_payload(conn, session["user_id"], rank_type, limit))
             return
 
         if path == "/api/p1/travel/status":
