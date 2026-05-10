@@ -2948,6 +2948,118 @@ button {
   font-size: 26px;
 }
 
+.admin-chart-section {
+  overflow: hidden;
+}
+
+.admin-chart-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 160px));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.admin-chart-summary div {
+  padding: 12px 14px;
+  border: 1px solid #e8eef7;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.admin-chart-summary small,
+.admin-chart-summary strong {
+  display: block;
+}
+
+.admin-chart-summary small {
+  color: #667085;
+  font-size: 12px;
+}
+
+.admin-chart-summary strong {
+  margin-top: 4px;
+  color: #121212;
+  font-size: 22px;
+}
+
+.admin-line-chart {
+  width: 100%;
+  height: auto;
+  margin-top: 12px;
+}
+
+.admin-line-chart line {
+  stroke: #edf2fb;
+  stroke-width: 1;
+}
+
+.admin-chart-x,
+.admin-chart-y {
+  fill: #8491a5;
+  font-size: 11px;
+}
+
+.admin-chart-x {
+  text-anchor: middle;
+}
+
+.admin-chart-y {
+  text-anchor: end;
+}
+
+.admin-line,
+.admin-point {
+  fill: none;
+  vector-effect: non-scaling-stroke;
+}
+
+.admin-line {
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.admin-line-register,
+.admin-point-register {
+  stroke: #1677ff;
+}
+
+.admin-line-login,
+.admin-point-login {
+  stroke: #00b578;
+}
+
+.admin-point {
+  fill: #fff;
+  stroke-width: 2;
+}
+
+.admin-chart-legend {
+  display: flex;
+  gap: 14px;
+  color: #4e5969;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.admin-chart-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.admin-chart-legend span::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #1677ff;
+}
+
+.admin-chart-legend .login::before {
+  background: #00b578;
+}
+
 .admin-section,
 .admin-denied {
   margin-top: 12px;

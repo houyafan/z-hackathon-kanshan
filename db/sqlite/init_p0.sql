@@ -186,6 +186,17 @@ CREATE TABLE IF NOT EXISTS pet_daily_stat (
   UNIQUE (user_id, stat_date)
 );
 
+CREATE TABLE IF NOT EXISTS project_daily_metric (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  stat_date TEXT NOT NULL,
+  registered_user_count INTEGER NOT NULL DEFAULT 0 CHECK (registered_user_count >= 0),
+  login_count INTEGER NOT NULL DEFAULT 0 CHECK (login_count >= 0),
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+  UNIQUE (stat_date)
+);
+
 CREATE TABLE IF NOT EXISTS pet_decay_config (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   decay_window TEXT NOT NULL,
@@ -386,6 +397,9 @@ CREATE INDEX IF NOT EXISTS idx_pet_growth_log_source
 
 CREATE INDEX IF NOT EXISTS idx_pet_daily_stat_date
   ON pet_daily_stat (stat_date);
+
+CREATE INDEX IF NOT EXISTS idx_project_daily_metric_date
+  ON project_daily_metric (stat_date);
 
 CREATE INDEX IF NOT EXISTS idx_pet_decay_config_enabled_hours
   ON pet_decay_config (enabled, inactive_hours);

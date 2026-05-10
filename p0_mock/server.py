@@ -607,6 +607,7 @@ def migrate_db(conn):
     add_column_if_missing(conn, "pet_profile", "last_travel_at", "TEXT DEFAULT NULL")
     add_column_if_missing(conn, "pet_content_event", "travel_energy_reward", "INTEGER NOT NULL DEFAULT 0 CHECK (travel_energy_reward >= 0)")
     add_column_if_missing(conn, "pet_daily_stat", "travel_energy_gained", "INTEGER NOT NULL DEFAULT 0 CHECK (travel_energy_gained >= 0)")
+    migrate_project_daily_metric(conn)
     migrate_travel_themes(conn)
     migrate_comment_assist_log(conn)
     migrate_follow_moment_overview(conn)
@@ -675,6 +676,53 @@ def migrate_db(conn):
         """
     )
     seed_decay_config(conn)
+
+
+def migrate_project_daily_metric(conn):
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS project_daily_metric (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          stat_date TEXT NOT NULL,
+          registered_user_count INTEGER NOT NULL DEFAULT 0 CHECK (registered_user_count >= 0),
+          login_count INTEGER NOT NULL DEFAULT 0 CHECK (login_count >= 0),
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE (stat_date)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_project_daily_metric_date ON project_daily_metric (stat_date)"
+    )
+    conn.execute(
+        """
+        INSERT INTO project_daily_metric
+          (stat_date, registered_user_count, login_count, created_at, updated_at)
+        SELECT stat_date, SUM(registered_user_count), SUM(login_count), MIN(created_at), ?
+        FROM (
+          SELECT substr(created_at, 1, 10) AS stat_date,
+                 COUNT(*) AS registered_user_count,
+                 0 AS login_count,
+                 MIN(created_at) AS created_at
+          FROM zhihu_user
+          WHERE created_at IS NOT NULL
+          GROUP BY substr(created_at, 1, 10)
+          UNION ALL
+          SELECT substr(created_at, 1, 10) AS stat_date,
+                 0 AS registered_user_count,
+                 COUNT(*) AS login_count,
+                 MIN(created_at) AS created_at
+          FROM auth_session
+          WHERE created_at IS NOT NULL
+          GROUP BY substr(created_at, 1, 10)
+        )
+        WHERE stat_date IS NOT NULL AND stat_date != ''
+        GROUP BY stat_date
+        ON CONFLICT(stat_date) DO NOTHING
+        """,
+        (now_text(),),
+    )
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS pet_travel_external_content (
@@ -1370,13 +1418,46 @@ def leaderboard_payload(conn, current_user_id, rank_type, limit=50):
     }
 
 
+def project_daily_metric_series(conn, days=14):
+    days = max(1, min(int(days or 14), 90))
+    end_date = now_dt().date()
+    start_date = end_date - timedelta(days=days - 1)
+    rows = conn.execute(
+        """
+        SELECT stat_date, registered_user_count, login_count
+        FROM project_daily_metric
+        WHERE stat_date >= ? AND stat_date <= ?
+        ORDER BY stat_date ASC
+        """,
+        (start_date.isoformat(), end_date.isoformat()),
+    ).fetchall()
+    by_date = {row["stat_date"]: row for row in rows}
+    series = []
+    for offset in range(days):
+        stat_date = (start_date + timedelta(days=offset)).isoformat()
+        row = by_date.get(stat_date)
+        series.append({
+            "date": stat_date,
+            "registeredUsers": int(row["registered_user_count"] if row else 0),
+            "logins": int(row["login_count"] if row else 0),
+        })
+    return series
+
+
 def admin_overview_payload(conn):
+    today = now_dt().date().isoformat()
+    today_metric = conn.execute(
+        "SELECT registered_user_count, login_count FROM project_daily_metric WHERE stat_date = ?",
+        (today,),
+    ).fetchone()
     stats = {
         "users": conn.execute("SELECT COUNT(*) AS c FROM zhihu_user").fetchone()["c"],
         "adoptedPets": conn.execute("SELECT COUNT(*) AS c FROM pet_profile WHERE adopted = 1").fetchone()["c"],
         "contents": conn.execute("SELECT COUNT(*) AS c FROM zhihu_content_pool WHERE status = 'published'").fetchone()["c"],
         "growthEvents": conn.execute("SELECT COUNT(*) AS c FROM pet_growth_log").fetchone()["c"],
         "travels": conn.execute("SELECT COUNT(*) AS c FROM pet_travel_event").fetchone()["c"],
+        "todayRegisteredUsers": int(today_metric["registered_user_count"] if today_metric else 0),
+        "todayLogins": int(today_metric["login_count"] if today_metric else 0),
     }
     level_rows = conn.execute(
         """
@@ -1403,7 +1484,12 @@ def admin_overview_payload(conn):
         }
         for row in level_rows
     ]
-    return {"stats": stats, "levels": levels, "adminTokens": sorted(ADMIN_USER_TOKENS)}
+    return {
+        "stats": stats,
+        "levels": levels,
+        "projectDailyMetrics": project_daily_metric_series(conn, 14),
+        "adminTokens": sorted(ADMIN_USER_TOKENS),
+    }
 
 
 def camel_follow_moment(row):
@@ -1482,10 +1568,32 @@ def is_admin_user(user_row):
     return False
 
 
+def record_project_daily_metric(conn, registered_delta=0, login_delta=0, at_text=None):
+    registered_delta = max(0, int(registered_delta or 0))
+    login_delta = max(0, int(login_delta or 0))
+    if not registered_delta and not login_delta:
+        return
+    current = at_text or now_text()
+    stat_date = current[:10]
+    conn.execute(
+        """
+        INSERT INTO project_daily_metric
+          (stat_date, registered_user_count, login_count, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(stat_date) DO UPDATE SET
+          registered_user_count = registered_user_count + excluded.registered_user_count,
+          login_count = login_count + excluded.login_count,
+          updated_at = excluded.updated_at
+        """,
+        (stat_date, registered_delta, login_delta, current, current),
+    )
+
+
 def upsert_zhihu_user(conn, user):
     uid = int(user.get("uid") or user.get("userId"))
     user_token = zhihu_user_token(user) or None
     fullname = str(user.get("fullname") or "知乎用户")
+    existed = conn.execute("SELECT 1 FROM zhihu_user WHERE uid = ?", (uid,)).fetchone() is not None
     conn.execute(
         """
         INSERT INTO zhihu_user
@@ -1520,6 +1628,8 @@ def upsert_zhihu_user(conn, user):
             now_text(),
         ),
     )
+    if not existed:
+        record_project_daily_metric(conn, registered_delta=1)
     return fetch_user(conn, uid)
 
 
@@ -1552,6 +1662,7 @@ def save_oauth_token(conn, user_id, token):
 
 def create_session(conn, user_id):
     session_id = secrets.token_urlsafe(32)
+    created_at = now_text()
     conn.execute(
         """
         INSERT INTO auth_session
@@ -1559,8 +1670,9 @@ def create_session(conn, user_id):
         VALUES
           (?, ?, ?, ?, ?)
         """,
-        (session_id, user_id, future_text(hours=SESSION_TTL_HOURS), now_text(), now_text()),
+        (session_id, user_id, future_text(hours=SESSION_TTL_HOURS), created_at, created_at),
     )
+    record_project_daily_metric(conn, login_delta=1, at_text=created_at)
     return session_id
 
 

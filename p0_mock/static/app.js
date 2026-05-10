@@ -2420,6 +2420,62 @@ function adminStatCard(label, value) {
   `;
 }
 
+function adminDailyMetricChart(items = []) {
+  const rows = Array.isArray(items) ? items : [];
+  const width = 760;
+  const height = 260;
+  const pad = { top: 24, right: 26, bottom: 42, left: 42 };
+  const plotWidth = width - pad.left - pad.right;
+  const plotHeight = height - pad.top - pad.bottom;
+  const maxValue = Math.max(1, ...rows.flatMap((item) => [Number(item.registeredUsers || 0), Number(item.logins || 0)]));
+  const xFor = (index) => pad.left + (rows.length <= 1 ? plotWidth / 2 : (index / (rows.length - 1)) * plotWidth);
+  const yFor = (value) => pad.top + plotHeight - (Number(value || 0) / maxValue) * plotHeight;
+  const points = (key) => rows.map((item, index) => `${xFor(index).toFixed(1)},${yFor(item[key]).toFixed(1)}`).join(" ");
+  const last = rows[rows.length - 1] || {};
+  const yTicks = [0, Math.ceil(maxValue / 2), maxValue];
+  const dateLabel = (date) => {
+    const parts = String(date || "").split("-");
+    return parts.length === 3 ? `${Number(parts[1])}/${Number(parts[2])}` : String(date || "");
+  };
+  return `
+    <section class="card admin-section admin-chart-section">
+      <div class="side-title">
+        <span>每日注册 / 登录</span>
+        <small>近 ${rows.length || 14} 天项目访问趋势</small>
+      </div>
+      <div class="admin-chart-summary">
+        <div><small>今日注册</small><strong>${formatCount(last.registeredUsers || 0)}</strong></div>
+        <div><small>今日登录</small><strong>${formatCount(last.logins || 0)}</strong></div>
+      </div>
+      <svg class="admin-line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="每日注册和登录折线图">
+        ${yTicks.map((tick) => `
+          <g>
+            <line x1="${pad.left}" y1="${yFor(tick).toFixed(1)}" x2="${width - pad.right}" y2="${yFor(tick).toFixed(1)}"></line>
+            <text class="admin-chart-y" x="${pad.left - 10}" y="${(yFor(tick) + 4).toFixed(1)}">${formatCount(tick)}</text>
+          </g>
+        `).join("")}
+        ${rows.map((item, index) => index % Math.max(1, Math.ceil(rows.length / 7)) === 0 || index === rows.length - 1 ? `
+          <text class="admin-chart-x" x="${xFor(index).toFixed(1)}" y="${height - 12}">${escapeHTML(dateLabel(item.date))}</text>
+        ` : "").join("")}
+        <polyline class="admin-line admin-line-register" points="${points("registeredUsers")}"></polyline>
+        <polyline class="admin-line admin-line-login" points="${points("logins")}"></polyline>
+        ${rows.map((item, index) => `
+          <circle class="admin-point admin-point-register" cx="${xFor(index).toFixed(1)}" cy="${yFor(item.registeredUsers).toFixed(1)}" r="3">
+            <title>${escapeHTML(item.date)} 注册 ${formatCount(item.registeredUsers || 0)}</title>
+          </circle>
+          <circle class="admin-point admin-point-login" cx="${xFor(index).toFixed(1)}" cy="${yFor(item.logins).toFixed(1)}" r="3">
+            <title>${escapeHTML(item.date)} 登录 ${formatCount(item.logins || 0)}</title>
+          </circle>
+        `).join("")}
+      </svg>
+      <div class="admin-chart-legend">
+        <span class="register">注册用户</span>
+        <span class="login">登录项目</span>
+      </div>
+    </section>
+  `;
+}
+
 function renderAdmin() {
   if (!isAdminUser()) {
     app.innerHTML = `
@@ -2445,6 +2501,7 @@ function renderAdmin() {
   }
   const stats = adminOverview?.stats || {};
   const levels = adminOverview?.levels || [];
+  const projectDailyMetrics = adminOverview?.projectDailyMetrics || [];
   app.innerHTML = `
     ${shell("admin")}
     <main class="admin-page">
@@ -2464,6 +2521,7 @@ function renderAdmin() {
         ${adminStatCard("成长日志", stats.growthEvents ?? "-")}
         ${adminStatCard("游历记录", stats.travels ?? "-")}
       </section>
+      ${adminDailyMetricChart(projectDailyMetrics)}
       <section class="card admin-section">
         <div class="side-title"><span>等级配置</span><small>当前只读，后续开放编辑</small></div>
         <div class="admin-level-table">
@@ -2479,7 +2537,7 @@ function renderAdmin() {
       <section class="card admin-section">
         <div class="side-title"><span>预留能力</span><small>下一阶段</small></div>
         <div class="admin-placeholder-grid">
-          <div><strong>埋点看板</strong><small>留存时长、路径、互动漏斗</small></div>
+          <div><strong>埋点看板</strong><small>已接入注册 / 登录趋势，后续补留存、路径、互动漏斗</small></div>
           <div><strong>等级编辑</strong><small>称号、阶段、2D 图、升级阈值</small></div>
           <div><strong>运营开关</strong><small>奖励、衰减、游历资格配置</small></div>
         </div>
