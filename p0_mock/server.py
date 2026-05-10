@@ -643,6 +643,23 @@ def camel_profile(row, user_id=DEFAULT_USER_ID):
     }
 
 
+def camel_growth_log(row):
+    if row is None:
+        return None
+    return {
+        "id": row["id"],
+        "userId": row["user_id"],
+        "sourceType": row["source_type"],
+        "sourceId": row["source_id"],
+        "changeType": row["change_type"],
+        "delta": row["delta"],
+        "beforeValue": row["before_value"],
+        "afterValue": row["after_value"],
+        "reason": row["reason"],
+        "createdAt": row["created_at"],
+    }
+
+
 def parse_json_array(value):
     if not value:
         return []
@@ -3260,6 +3277,32 @@ class Handler(BaseHTTPRequestHandler):
                     (user_id, stat_date),
                 ).fetchone()
                 self.send_json(200, {"dailyStat": row_to_dict(row)})
+            return
+
+        if path == "/api/p0/pet/growth-logs":
+            session = self.require_auth_json()
+            if session is None:
+                return
+            qs = parse_qs(parsed.query)
+            limit = max(1, min(int((qs.get("limit") or [60])[0]), 200))
+            user_id = session["user_id"]
+            with connect_db() as conn:
+                decay_notice = apply_pet_decay(conn, user_id)
+                rows = conn.execute(
+                    """
+                    SELECT *
+                    FROM pet_growth_log
+                    WHERE user_id = ?
+                    ORDER BY created_at DESC, id DESC
+                    LIMIT ?
+                    """,
+                    (user_id, limit),
+                ).fetchall()
+                self.send_json(200, {
+                    "logs": [camel_growth_log(row) for row in rows],
+                    "profile": camel_profile(fetch_profile(conn, user_id), user_id),
+                    "decayNotice": decay_notice,
+                })
             return
 
         if path == "/api/p0/contents":

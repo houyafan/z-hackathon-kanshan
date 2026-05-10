@@ -500,6 +500,12 @@ function bindPetHoverCard() {
       openLeaderboardPanel();
     });
   });
+  bindOnce("[data-hover-growth-log]", (button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openGrowthLog();
+    });
+  });
   bindOnce("[data-hover-reward-walk]", (input) => {
     input.addEventListener("click", (event) => event.stopPropagation());
     input.addEventListener("change", (event) => {
@@ -557,6 +563,7 @@ function renderPetHoverCard() {
     <div class="pet-hover-actions">
       ${travelAction}
       <button data-hover-handbook>旅行手账</button>
+      <button data-hover-growth-log>成长日志</button>
       <button data-hover-leaderboard>排行榜</button>
       <button data-hover-reset>重置</button>
     </div>
@@ -775,6 +782,96 @@ function leaderboardEmptyText(type = leaderboardType) {
   return type === "travel_count"
     ? "还没有完成游历的看山，攒够精力让它出门吧。"
     : "还没有看山上榜，领养后阅读和互动就能成长。";
+}
+
+function growthChangeText(changeType) {
+  return {
+    total_exp: "经验",
+    satiety: "学识值",
+    mood: "心情",
+    level: "等级",
+    stage: "阶段",
+  }[changeType] || changeType || "状态";
+}
+
+function growthSourceText(sourceType) {
+  return {
+    content_event: "内容消费",
+    daily_task: "每日任务",
+    manual: "系统奖励",
+    decay: "自然衰减",
+  }[sourceType] || sourceType || "成长事件";
+}
+
+function formatGrowthTime(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return `${date.getMonth() + 1}-${String(date.getDate()).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+function growthLogItem(log) {
+  const delta = Number(log.delta || 0);
+  const positive = delta > 0;
+  const neutral = delta === 0;
+  const sign = positive ? "+" : "";
+  const valueChange = `${escapeHTML(String(log.beforeValue))} → ${escapeHTML(String(log.afterValue))}`;
+  return `
+    <article class="growth-log-item ${positive ? "positive" : neutral ? "neutral" : "negative"}">
+      <div class="growth-log-main">
+        <span>${escapeHTML(growthSourceText(log.sourceType))}</span>
+        <strong>${escapeHTML(growthChangeText(log.changeType))} ${sign}${escapeHTML(String(delta))}</strong>
+        ${log.reason ? `<p>${escapeHTML(log.reason)}</p>` : ""}
+      </div>
+      <div class="growth-log-side">
+        <small>${escapeHTML(formatGrowthTime(log.createdAt))}</small>
+        <em>${valueChange}</em>
+      </div>
+    </article>
+  `;
+}
+
+function renderGrowthLogModal(logs = []) {
+  document.querySelector(".growth-log-modal")?.remove();
+  const modal = document.createElement("div");
+  modal.className = "growth-log-modal";
+  modal.innerHTML = `
+    <div class="growth-log-dialog" role="dialog" aria-modal="true" aria-label="看山成长日志">
+      <button class="content-close" aria-label="关闭">×</button>
+      <div class="content-type">看山成长日志</div>
+      <h1>成长与衰减记录</h1>
+      <div class="growth-log-summary">
+        <div><small>当前等级</small><strong>Lv.${profile?.level || 1}</strong></div>
+        <div><small>学识值</small><strong>${profile?.satiety ?? "-"}</strong></div>
+        <div><small>心情值</small><strong>${profile?.mood ?? "-"}</strong></div>
+      </div>
+      <div class="growth-log-list">
+        ${logs.length ? logs.map(growthLogItem).join("") : `<p class="empty-growth-log">还没有成长记录，阅读、点赞或评论后会出现在这里。</p>`}
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  modal.querySelector(".content-close").addEventListener("click", () => modal.remove());
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal) modal.remove();
+  });
+}
+
+async function openGrowthLog() {
+  if (!profile?.adopted) {
+    showToast("领养刘看山后查看成长日志");
+    return;
+  }
+  renderGrowthLogModal([]);
+  try {
+    const data = await api("/api/p0/pet/growth-logs?limit=80");
+    profile = data.profile || profile;
+    handleDecayNotice(data.decayNotice);
+    renderGrowthLogModal(data.logs || []);
+  } catch (error) {
+    showToast(error.message || "成长日志加载失败");
+    document.querySelector(".growth-log-modal")?.remove();
+  }
 }
 
 function leaderboardVisual(item) {
@@ -1173,6 +1270,7 @@ function petPanel() {
       <div class="travel-panel-actions">
         ${travelAction}
         <button class="outline-btn" data-hover-handbook>旅行手账</button>
+        <button class="outline-btn" data-hover-growth-log>成长日志</button>
       </div>
       <button class="reset-pet-btn" data-reset-pet>重置刘看山</button>
     </section>
