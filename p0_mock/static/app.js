@@ -1415,6 +1415,12 @@ function leaderboardBody(items) {
 }
 
 function currentUserRankCard(data = leaderboardData) {
+  if (!leaderboardLoaded && !leaderboardError) {
+    return `<div class="leaderboard-my-card muted">我的排行加载中</div>`;
+  }
+  if (leaderboardError) {
+    return `<div class="leaderboard-my-card muted">我的排行暂时加载失败</div>`;
+  }
   const item = data?.currentUserItem;
   if (!profile?.adopted) {
     return `<div class="leaderboard-my-card muted">领养刘看山后即可参与排行榜</div>`;
@@ -1437,7 +1443,6 @@ function currentUserRankCard(data = leaderboardData) {
 
 function leaderboardSideCard() {
   const items = leaderboardData?.rankType === leaderboardType ? (leaderboardData.items || []).slice(0, 5) : [];
-  const myRank = profile?.adopted ? currentUserRankCard() : "";
   const body = !profile?.adopted
     ? `<div class="leaderboard-empty">领养刘看山后即可参与排行榜</div>`
     : !leaderboardLoaded
@@ -1455,7 +1460,6 @@ function leaderboardSideCard() {
         <button class="${leaderboardType === "pet_level" ? "active" : ""}" data-inline-leaderboard-type="pet_level">等级榜</button>
         <button class="${leaderboardType === "travel_count" ? "active" : ""}" data-inline-leaderboard-type="travel_count">游历榜</button>
       </div>
-      ${myRank}
       ${body}
     </section>
   `;
@@ -1465,8 +1469,8 @@ function sidebarCards(options = {}) {
   const includeLeaderboard = Boolean(options.includeLeaderboard);
   if (includeLeaderboard) {
     return `
-      ${leaderboardSideCard()}
       ${petPanel()}
+      ${leaderboardSideCard()}
       ${creatorCard()}
       ${hotCard()}
     `;
@@ -1484,11 +1488,23 @@ function replaceSidebarLeaderboards() {
     wrapper.innerHTML = leaderboardSideCard().trim();
     card.replaceWith(wrapper.firstChild);
   });
+  replacePetPanels();
   bindSidebarLeaderboard();
 }
 
+function replacePetPanels() {
+  document.querySelectorAll("[data-pet-panel]").forEach((card) => {
+    const wrapper = document.createElement("div");
+    wrapper.innerHTML = petPanel().trim();
+    card.replaceWith(wrapper.firstChild);
+  });
+  bindPetHoverCard();
+  bindSidebarLeaderboard();
+  bindPanelBasics();
+}
+
 function ensureSidebarLeaderboard() {
-  if (!document.querySelector("[data-sidebar-leaderboard]") || !profile?.adopted) return;
+  if ((!document.querySelector("[data-sidebar-leaderboard]") && !document.querySelector("[data-pet-panel]")) || !profile?.adopted) return;
   if (leaderboardData?.rankType === leaderboardType && leaderboardLoaded) return;
   loadLeaderboard(leaderboardType)
     .then(replaceSidebarLeaderboards)
@@ -1576,7 +1592,6 @@ function renderLeaderboardPanel() {
       <button class="${leaderboardType === "pet_level" ? "active" : ""}" data-leaderboard-type="pet_level">等级榜</button>
       <button class="${leaderboardType === "travel_count" ? "active" : ""}" data-leaderboard-type="travel_count">游历榜</button>
     </div>
-    ${currentUserRankCard()}
     ${body}
   `;
   panel.querySelector("[data-leaderboard-close]").addEventListener("click", closeLeaderboardPanel);
@@ -1993,7 +2008,7 @@ function ensurePatHandler() {
 function petPanel() {
   if (!profile?.adopted) {
     return `
-      <section class="card side-card pet-panel">
+      <section class="card side-card pet-panel" data-pet-panel>
         <div class="pet-title"><span class="pet-mini">山</span><span>刘看山还没到家</span></div>
         <button class="adopt-btn" data-adopt>领养刘看山</button>
       </section>
@@ -2012,7 +2027,7 @@ function petPanel() {
     ? `<button class="reset-pet-btn" data-reset-pet>重置刘看山</button>`
     : "";
   return `
-    <section class="card side-card pet-panel">
+    <section class="card side-card pet-panel" data-pet-panel>
       <div class="pet-title">
         <span class="pet-mini pet-mini-image level-${escapeHTML(visual?.effectStyle || "cute")}">
           ${visualImage ? `<img src="${escapeHTML(visualImage)}" alt="${escapeHTML(visual.title || "刘看山等级形象")}">` : "山"}
@@ -2020,6 +2035,12 @@ function petPanel() {
         <span>${escapeHTML(petDisplayName())}</span>
         <span class="level-pill">Lv.${profile.level}</span>
       </div>
+      <div class="travel-panel-actions">
+        ${travelAction}
+        <button class="outline-btn" data-hover-handbook>旅行手账</button>
+        <button class="outline-btn" data-hover-growth-log>成长日志</button>
+      </div>
+      ${currentUserRankCard()}
       <div class="pet-level-showcase level-${escapeHTML(visual?.effectStyle || "cute")}">
         ${visualImage ? `<img src="${escapeHTML(visualImage)}" alt="${escapeHTML(visual.title || "刘看山等级形象")}">` : ""}
         <div>
@@ -2034,11 +2055,6 @@ function petPanel() {
         <div class="stat-box"><small>心情值</small><strong>${profile.mood}</strong></div>
         <div class="stat-box"><small>游历精力</small><strong>${profile.travelEnergy ?? 0}</strong></div>
         <div class="stat-box"><small>游历状态</small><strong>${travelStatusText(profile.travelStatus)}</strong></div>
-      </div>
-      <div class="travel-panel-actions">
-        ${travelAction}
-        <button class="outline-btn" data-hover-handbook>旅行手账</button>
-        <button class="outline-btn" data-hover-growth-log>成长日志</button>
       </div>
       ${resetButton}
     </section>
@@ -2627,13 +2643,21 @@ function renderPeople() {
   }
 }
 
-function bindCommon() {
+function bindPanelBasics() {
   document.querySelectorAll("[data-adopt]").forEach((button) => {
+    if (button.dataset.basicBound) return;
+    button.dataset.basicBound = "1";
     button.addEventListener("click", adoptPet);
   });
   document.querySelectorAll("[data-reset-pet]").forEach((button) => {
+    if (button.dataset.basicBound) return;
+    button.dataset.basicBound = "1";
     button.addEventListener("click", resetPet);
   });
+}
+
+function bindCommon() {
+  bindPanelBasics();
   bindPetHoverCard();
   bindSidebarLeaderboard();
   ensureSidebarLeaderboard();

@@ -2443,6 +2443,10 @@ button {
   margin: 10px 0;
 }
 
+.pet-panel > .travel-panel-actions {
+  margin: 12px 0 0;
+}
+
 .pet-hover-toggle {
   display: flex;
   align-items: center;
@@ -2808,6 +2812,11 @@ button {
   border: 1px solid rgba(22, 119, 255, 0.16);
   border-radius: 10px;
   background: linear-gradient(135deg, #eef7ff 0%, #fff5fb 100%);
+}
+
+.pet-panel .leaderboard-my-card {
+  margin: 12px 0;
+  border-radius: 8px;
 }
 
 .leaderboard-my-card span,
