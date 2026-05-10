@@ -666,6 +666,12 @@ function profileBubbleTitle(currentProfile = profile) {
   return `Lv.${currentProfile.level} ${profileLevelTitle(currentProfile)}`;
 }
 
+function petDisplayName() {
+  const userName = (currentUser?.fullname || "").trim();
+  const petName = profile?.petName || "刘看山";
+  return userName ? `${userName}的${petName}` : petName;
+}
+
 function travelStatusText(status) {
   return {
     home: "留守",
@@ -1938,7 +1944,7 @@ function petPanel() {
         <span class="pet-mini pet-mini-image level-${escapeHTML(visual?.effectStyle || "cute")}">
           ${visualImage ? `<img src="${escapeHTML(visualImage)}" alt="${escapeHTML(visual.title || "刘看山等级形象")}">` : "山"}
         </span>
-        <span>${profile.petName}</span>
+        <span>${escapeHTML(petDisplayName())}</span>
         <span class="level-pill">Lv.${profile.level}</span>
       </div>
       <div class="pet-level-showcase level-${escapeHTML(visual?.effectStyle || "cute")}">
