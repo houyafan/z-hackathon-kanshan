@@ -48,11 +48,17 @@ const MODEL_PATH = "/3d-liukanshan-roaming/liukanshan-slot.glb?v=2";
 const ONBOARDING_VERSION = "v1";
 const ONBOARDING_KEY = `liukanshan_onboarding_${ONBOARDING_VERSION}`;
 const ADMIN_USER_TOKENS = new Set(["p2wcex", "sunny-27-1-97"]);
+const ADMIN_USER_UIDS = new Set(["1908940156829918831", "2013197829758268031"]);
 let onboardingTimer = null;
 let onboardingSnoozedUntil = 0;
 
 function isAdminUser(user = currentUser) {
-  return Boolean(user?.isAdmin || ADMIN_USER_TOKENS.has(String(user?.userToken || "").trim()));
+  if (!user) return false;
+  if (user.isAdmin) return true;
+  if (ADMIN_USER_TOKENS.has(String(user.userToken || "").trim())) return true;
+  const uid = user.uid ?? user.userId;
+  if (uid != null && ADMIN_USER_UIDS.has(String(uid))) return true;
+  return false;
 }
 
 function effectLayer() {
@@ -1695,7 +1701,7 @@ function shell(active) {
         <a class="${active === "recommend" ? "active" : ""}" href="/">推荐</a>
         <a class="${active === "hot" ? "active" : ""}" href="/hot">热榜</a>
         <a class="new-badge ${active === "community" ? "active" : ""}" href="/community">黑客松脑洞补给站</a>
-        ${isAdminUser() ? `<a class="${active === "admin" ? "active" : ""}" href="/admin">管理后台</a>` : ""}
+        ${isAdminUser() ? `<a class="${active === "admin" ? "active" : ""}" href="/admin">管理平台</a>` : ""}
       </nav>
       <div class="search">
         <input value="${active === "people" ? "中国女子在西班牙被刺身亡" : "朋友圈文案"}" aria-label="搜索">

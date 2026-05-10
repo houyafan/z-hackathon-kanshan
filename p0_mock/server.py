@@ -30,6 +30,7 @@ DEFAULT_USER_ID = 10001
 SESSION_COOKIE_NAME = "lks_session"
 APP_TZ = timezone(timedelta(hours=8), "Asia/Shanghai")
 ADMIN_USER_TOKENS = {"p2wcex", "sunny-27-1-97"}
+ADMIN_USER_UIDS = {1908940156829918831, 2013197829758268031}
 
 
 def now_dt():
@@ -1461,7 +1462,15 @@ def is_admin_user(user_row):
         return False
     keys = user_row.keys() if hasattr(user_row, "keys") else []
     token = str(user_row["user_token"] if "user_token" in keys else "").strip()
-    return token in ADMIN_USER_TOKENS
+    if token in ADMIN_USER_TOKENS:
+        return True
+    if "uid" in keys:
+        try:
+            if int(user_row["uid"]) in ADMIN_USER_UIDS:
+                return True
+        except (TypeError, ValueError):
+            pass
+    return False
 
 
 def upsert_zhihu_user(conn, user):
@@ -4645,7 +4654,7 @@ class Handler(BaseHTTPRequestHandler):
         with connect_db() as conn:
             user = fetch_user(conn, session["user_id"])
         if not is_admin_user(user):
-            self.send_error(403, "当前账号无管理权限")
+            self.send_error(403, "Forbidden", "当前账号无管理权限")
             return None
         return session
 
