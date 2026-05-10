@@ -54,6 +54,7 @@ let onboardingSnoozedUntil = 0;
 const ONBOARDING_BLOCKING_SELECTOR = [
   ".content-modal",
   ".growth-log-modal",
+  ".leaderboard-modal",
   ".travel-handbook-modal",
   ".travel-material-modal",
   ".share-card-overlay",
@@ -341,7 +342,7 @@ function onboardingSteps() {
       title: "看看排行榜",
       body: "等级榜和游历榜会展示大家的看山成长进度。",
       primaryText: "去推荐页",
-      target: "[data-sidebar-leaderboard]",
+      target: "[data-open-leaderboard]",
       route: "/",
       action: "leaderboard",
     },
@@ -1511,7 +1512,6 @@ function sidebarCards(options = {}) {
   if (includeLeaderboard) {
     return `
       ${petPanel()}
-      ${leaderboardSideCard()}
       ${creatorCard()}
       ${hotCard()}
     `;
@@ -1553,6 +1553,11 @@ function ensureSidebarLeaderboard() {
 }
 
 function bindSidebarLeaderboard() {
+  document.querySelectorAll("[data-open-leaderboard]").forEach((button) => {
+    if (button.dataset.bound) return;
+    button.dataset.bound = "1";
+    button.addEventListener("click", () => openLeaderboardPanel());
+  });
   document.querySelectorAll("[data-leaderboard-share]").forEach((button) => {
     if (button.dataset.bound) return;
     button.dataset.bound = "1";
@@ -1610,9 +1615,9 @@ async function publishLeaderboardShare(button) {
 function renderLeaderboardPanel() {
   let panel = document.getElementById("leaderboardPanel");
   if (!panel) {
-    panel = document.createElement("section");
+    panel = document.createElement("div");
     panel.id = "leaderboardPanel";
-    panel.className = "leaderboard-panel";
+    panel.className = "leaderboard-modal";
     document.body.appendChild(panel);
   }
   const items = leaderboardData?.rankType === leaderboardType ? (leaderboardData.items || []) : [];
@@ -1622,24 +1627,31 @@ function renderLeaderboardPanel() {
       ? `<div class="leaderboard-empty">${escapeHTML(leaderboardError.message || "榜单加载失败")}</div>`
       : leaderboardBody(items);
   panel.innerHTML = `
-    <div class="leaderboard-head">
-      <div>
-        <small>刘看山排行榜</small>
-        <strong>${leaderboardTitle()}</strong>
+    <section class="leaderboard-panel leaderboard-dialog" role="dialog" aria-modal="true" aria-label="刘看山排行榜">
+      <div class="leaderboard-head">
+        <div>
+          <small>刘看山排行榜</small>
+          <strong>${leaderboardTitle()}</strong>
+        </div>
+        <button aria-label="关闭排行榜" data-leaderboard-close>×</button>
       </div>
-      <button aria-label="关闭排行榜" data-leaderboard-close>×</button>
-    </div>
-    <div class="leaderboard-tabs">
-      <button class="${leaderboardType === "pet_level" ? "active" : ""}" data-leaderboard-type="pet_level">等级榜</button>
-      <button class="${leaderboardType === "travel_count" ? "active" : ""}" data-leaderboard-type="travel_count">游历榜</button>
-    </div>
-    ${body}
+      <div class="leaderboard-tabs">
+        <button class="${leaderboardType === "pet_level" ? "active" : ""}" data-leaderboard-type="pet_level">等级榜</button>
+        <button class="${leaderboardType === "travel_count" ? "active" : ""}" data-leaderboard-type="travel_count">游历榜</button>
+      </div>
+      ${currentUserRankCard()}
+      ${body}
+    </section>
   `;
+  removeOnboardingGuide();
   panel.querySelector("[data-leaderboard-close]").addEventListener("click", closeLeaderboardPanel);
+  panel.onclick = (event) => {
+    if (event.target === panel) closeLeaderboardPanel();
+  };
   panel.querySelectorAll("[data-leaderboard-type]").forEach((button) => {
     button.addEventListener("click", () => switchLeaderboard(button.dataset.leaderboardType));
   });
-  positionLeaderboardPanel();
+  bindSidebarLeaderboard();
 }
 
 function positionLeaderboardPanel() {
@@ -1676,8 +1688,6 @@ async function openLeaderboardPanel(type = leaderboardType) {
   leaderboardType = type === "travel_count" ? "travel_count" : "pet_level";
   renderLeaderboardPanel();
   character?.setMessage?.("看看大家的看山都长到哪儿啦", { autoHide: 2200 });
-  window.clearInterval(leaderboardPositionTimer);
-  leaderboardPositionTimer = window.setInterval(positionLeaderboardPanel, 500);
   try {
     await loadLeaderboard(leaderboardType, { refresh: true });
   } catch (error) {
@@ -1721,7 +1731,6 @@ function syncCharacter() {
   container.style.display = "block";
   renderPetHoverCard();
   ensurePatHandler();
-  if (leaderboardPanelOpen) window.requestAnimationFrame(positionLeaderboardPanel);
   const idleMessage = profileBubbleTitle();
   if (!character) {
     try {
@@ -2080,6 +2089,7 @@ function petPanel() {
         ${travelAction}
         <button class="outline-btn" data-hover-handbook>旅行手账</button>
         <button class="outline-btn" data-hover-growth-log>成长日志</button>
+        <button class="outline-btn" data-open-leaderboard>查看排行榜</button>
       </div>
       ${currentUserRankCard()}
       <div class="pet-level-showcase level-${escapeHTML(visual?.effectStyle || "cute")}">

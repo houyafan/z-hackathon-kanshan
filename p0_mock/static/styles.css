@@ -2464,11 +2464,19 @@ button {
   accent-color: #1677ff;
 }
 
-.leaderboard-panel {
+.leaderboard-modal {
   position: fixed;
-  z-index: 1250;
-  width: 360px;
-  max-height: min(70vh, 520px);
+  inset: 0;
+  z-index: 9100;
+  display: grid;
+  place-items: center;
+  padding: 48px 24px;
+  background: rgba(18, 18, 18, 0.42);
+}
+
+.leaderboard-panel {
+  width: min(920px, calc(100vw - 48px));
+  max-height: calc(100vh - 96px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -2476,6 +2484,21 @@ button {
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.98);
   box-shadow: 0 18px 46px rgba(31, 71, 132, 0.2);
+}
+
+.leaderboard-dialog {
+  animation: leaderboardDialogIn 180ms ease both;
+}
+
+@keyframes leaderboardDialogIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .onboarding-guide {
@@ -4261,9 +4284,13 @@ button {
     transform-origin: right bottom;
   }
 
+  .leaderboard-modal {
+    padding: 12px;
+  }
+
   .leaderboard-panel {
-    width: auto;
-    max-height: 72vh;
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
     border-radius: 14px 14px 10px 10px;
   }
 
