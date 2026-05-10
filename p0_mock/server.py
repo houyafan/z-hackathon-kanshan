@@ -1877,11 +1877,53 @@ def publish_community_pin(title, content, image_urls=None):
     )
 
 
+def url_origin(url):
+    parsed = urlparse(str(url or ""))
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        return ""
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
+def project_public_origin(project_url=""):
+    for candidate in (
+        project_url,
+        CONFIG.get("project_public_url"),
+        ZH_AUTH_REDIRECT_URI,
+        "https://ahipkiokdnvl.sealosbja.site/",
+    ):
+        origin = url_origin(candidate)
+        if not origin:
+            continue
+        host = urlparse(origin).hostname or ""
+        if host in ("127.0.0.1", "localhost", "0.0.0.0"):
+            continue
+        return origin
+    return "https://ahipkiokdnvl.sealosbja.site"
+
+
+def public_asset_url(asset_url, project_url=""):
+    value = str(asset_url or "").strip()
+    if not value:
+        return ""
+    parsed = urlparse(value)
+    if parsed.scheme in ("http", "https") and parsed.netloc:
+        return value
+    if value.startswith("//"):
+        return f"https:{value}"
+    origin = project_public_origin(project_url)
+    return f"{origin}/{value.lstrip('/')}"
+
+
+def leaderboard_share_image_urls(profile_payload, project_url=""):
+    image_url = profile_payload.get("level2dImage") or profile_payload.get("level2dThumbnail")
+    public_url = public_asset_url(image_url, project_url)
+    return [public_url] if public_url else []
+
+
 def leaderboard_share_copy(user, profile_payload, rank_item, project_url):
     level = profile_payload.get("level") or 1
     level_title = profile_payload.get("levelTitle") or "新手探索员"
-    canonical_project_url = "https://ahipkiokdnvl.sealosbja.site/"
-    share_url = canonical_project_url or project_url
+    share_url = f"{project_public_origin(project_url)}/"
     title = "挖到一个超棒的知乎新玩法！「看山陪伴计划」"
     content = (
         f"体验地址：{share_url}\n\n"
@@ -5372,8 +5414,9 @@ class Handler(BaseHTTPRequestHandler):
                 profile_payload = camel_profile(profile_row, user_id, fetch_level_visual(conn, profile_row["level"]))
                 rank_item = leaderboard_payload(conn, user_id, "pet_level", 100).get("currentUserItem")
             title, content = leaderboard_share_copy(user, profile_payload, rank_item, project_url)
+            image_urls = leaderboard_share_image_urls(profile_payload, project_url)
             try:
-                upstream = publish_community_pin(title, content, [])
+                upstream = publish_community_pin(title, content, image_urls)
             except Exception as error:
                 status = 409 if str(error) == "COMMUNITY_CONFIG_MISSING" else 502
                 self.send_json(status, {"error": "COMMUNITY_PUBLISH_FAILED", "message": str(error)})
@@ -5392,6 +5435,7 @@ class Handler(BaseHTTPRequestHandler):
                 "contentToken": (upstream.get("data") or {}).get("content_token"),
                 "title": title,
                 "content": content,
+                "imageUrls": image_urls,
                 **reward_payload,
             })
             return
