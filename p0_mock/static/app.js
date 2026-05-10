@@ -1343,7 +1343,6 @@ function currentUserRankCard(data = leaderboardData) {
   if (!item) {
     return `<div class="leaderboard-my-card muted">${leaderboardType === "travel_count" ? "你还没有完成游历" : "你暂未进入榜单"}</div>`;
   }
-  const shareCopy = `我现在的刘看山是 Lv.${item.level}「${item.levelTitle || profileLevelTitle()}」，邀请你也来体验知乎黑客松项目「刘看山 3D 虚拟宠物」。`;
   return `
     <div class="leaderboard-my-card">
       <span>我的名次</span>
@@ -1351,8 +1350,7 @@ function currentUserRankCard(data = leaderboardData) {
       <small>Lv.${item.level} · ${formatCount(item.totalExp)} 经验 · 游历 ${formatCount(item.travelCount)} 次</small>
       <div class="leaderboard-share-box">
         <p>发到「黑客松脑洞补给站」后，刘看山会自动升 1 级，并获得一次游历资格。</p>
-        <em>${escapeHTML(shareCopy)}</em>
-        <button type="button" data-leaderboard-share>发圈子并升级</button>
+        <button type="button" data-leaderboard-share>分享看山赢奖励</button>
       </div>
     </div>
   `;
@@ -1468,7 +1466,7 @@ async function publishLeaderboardShare(button) {
     showToast("已在「黑客松脑洞补给站」发了一条圈子，刘看山已升级并获得一次游历资格");
   } catch (error) {
     button.disabled = false;
-    button.textContent = originalText || "发圈子并升级";
+    button.textContent = originalText || "分享看山赢奖励";
     showToast(error.message || "发圈子失败");
   }
 }

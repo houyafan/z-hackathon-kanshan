@@ -1878,22 +1878,19 @@ def publish_community_pin(title, content, image_urls=None):
 
 
 def leaderboard_share_copy(user, profile_payload, rank_item, project_url):
-    user_name = (user["fullname"] if user is not None and "fullname" in user.keys() else "") or "知乎用户"
     level = profile_payload.get("level") or 1
     level_title = profile_payload.get("levelTitle") or "新手探索员"
-    total_exp = profile_payload.get("totalExp") or 0
-    rank_text = f"No.{rank_item['rank']}" if rank_item else "正在冲榜"
-    travel_count = rank_item.get("travelCount", 0) if rank_item else 0
-    project_line = f"\n体验地址：{project_url}" if project_url else ""
-    title = f"我的刘看山升到 Lv.{level}「{level_title}」了"
+    canonical_project_url = "https://ahipkiokdnvl.sealosbja.site/"
+    share_url = canonical_project_url or project_url
+    title = "挖到一个超棒的知乎新玩法！「看山陪伴计划」"
     content = (
-        "【我的刘看山成长战报】\n"
-        f"我是 {user_name}，当前刘看山等级是 Lv.{level}「{level_title}」，"
-        f"累计 {total_exp} 经验，排行榜 {rank_text}，已经游历 {travel_count} 次。\n\n"
-        "我在体验知乎黑客松项目「刘看山 3D 虚拟宠物」：阅读、点赞、评论都会让刘看山成长，"
-        "攒够精力还能出门游历带回内容。\n\n"
-        "邀请你也来领养一只刘看山，一起把刷知乎变成养成游戏。"
-        f"{project_line}"
+        "挖到一个超棒的知乎新玩法！「看山陪伴计划」\n"
+        f"体验地址：{share_url}\n\n"
+        "把阅读变成养崽：\n"
+        "✅ 每读一篇知乎内容，刘看山就会涨经验升级\n"
+        "✅ 等级越高，解锁的造型和游历事件越多\n"
+        "✅ 分享给好友，双方都能获得升级奖励\n\n"
+        f"我的看山现在 Lv.{level}「{level_title}」，分享给你，一起来养专属阅读伙伴吧～"
     )
     return title, content
 
