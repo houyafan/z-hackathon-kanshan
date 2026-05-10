@@ -431,16 +431,16 @@ CREATE INDEX IF NOT EXISTS idx_oauth_state_expiry
 INSERT OR IGNORE INTO pet_level_config
   (level, stage, required_total_exp, title, unlock_features)
 VALUES
-  (1, 'cub', 0, '初识看山', '[]'),
-  (2, 'cub', 50, '好奇看山', '[]'),
-  (3, 'cub', 120, '认真看山', '[]'),
-  (4, 'growing', 250, '成长看山', '[]'),
-  (5, 'growing', 450, '陪伴看山', '[]'),
-  (6, 'growing', 700, '博闻看山', '[]'),
-  (7, 'adult', 1000, '远行看山', '[]'),
-  (8, 'adult', 1400, '寻文看山', '[]'),
-  (9, 'adult', 1900, '知心看山', '[]'),
-  (10, 'advanced', 2500, '进阶看山', '[]');
+  (1, 'cub', 0, '新手探索员', '[]'),
+  (2, 'cub', 50, '星章探索员', '[]'),
+  (3, 'cub', 120, '任务新星', '[]'),
+  (4, 'growing', 250, '行星记录员', '[]'),
+  (5, 'growing', 450, '火箭见习官', '[]'),
+  (6, 'growing', 700, '星图导航员', '[]'),
+  (7, 'adult', 1000, '深空任务官', '[]'),
+  (8, 'adult', 1400, '知识探测者', '[]'),
+  (9, 'adult', 1900, '星际领航员', '[]'),
+  (10, 'advanced', 2500, '宇宙知识领航员', '[]');
 
 INSERT INTO pet_level_visual_config
   (level, stage, title, effect_style, image_url, thumbnail_url, share_bg_url, description)

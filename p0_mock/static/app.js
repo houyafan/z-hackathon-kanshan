@@ -40,6 +40,7 @@ let noticeRemaining = 0;
 let idleBandVisible = true;
 let _prevWakeStatus = null;
 let _lastWakeBubbleAt = null;
+let travelDepartureVisibleUntil = 0;
 const savedRewardWalk = localStorage.getItem("liukanshan_reward_walk_enabled") ?? localStorage.getItem("liukanshan_level_walk_enabled");
 let rewardWalkEnabled = savedRewardWalk !== "0";
 const MODEL_PATH = "/3d-liukanshan-roaming/liukanshan-slot.glb?v=2";
@@ -179,7 +180,7 @@ function playHomecomingEffect() {
 
   window.setTimeout(() => {
     character?.moveTo(window.innerWidth - 150, window.innerHeight - 200, {
-      message: `Lv.${profile.level} ${stageText(profile.stage)}`,
+      message: profileBubbleTitle(),
       useRandomMessage: false,
     });
   }, 3900);
@@ -315,8 +316,9 @@ function onboardingSteps() {
       index: 7,
       title: "看看排行榜",
       body: "等级榜和游历榜会展示大家的看山成长进度。",
-      primaryText: "打开榜单",
-      target: "[data-hover-leaderboard], [data-sidebar-leaderboard]",
+      primaryText: "去推荐页",
+      target: "[data-sidebar-leaderboard]",
+      route: "/",
       action: "leaderboard",
     },
   ];
@@ -428,7 +430,8 @@ function handleOnboardingPrimary(step) {
     return;
   }
   if (step.action === "leaderboard") {
-    openLeaderboardPanel();
+    if (routeTo(step.route)) return;
+    markOnboardingStep("leaderboard");
     return;
   }
   if (step.route) {
@@ -598,7 +601,7 @@ async function runEffectTest(action) {
 
   if (action === "home") {
     pet.setPosition?.(window.innerWidth - 150, window.innerHeight - 200);
-    pet.setMessage(`Lv.${profile.level} ${stageText(profile.stage)}`, { autoHide: 1800 });
+    pet.setMessage(profileBubbleTitle(), { autoHide: 1800 });
     showToast("已回到右下角");
   }
 }
@@ -631,7 +634,6 @@ function renderEffectTestPanel() {
       <button data-effect-test="wave">挥手</button>
       <button data-effect-test="travel-go">旅行出发</button>
       <button data-effect-test="travel-back">旅行归来</button>
-      <button data-effect-test="ring-toggle">光带开关</button>
       <button data-effect-test="home">回右下角</button>
     </div>
   `;
@@ -647,6 +649,15 @@ function stageText(stage) {
     adult: "成年期",
     advanced: "进阶形态",
   }[stage] || stage || "-";
+}
+
+function profileLevelTitle(currentProfile = profile) {
+  return currentProfile?.levelTitle || stageText(currentProfile?.stage);
+}
+
+function profileBubbleTitle(currentProfile = profile) {
+  if (!currentProfile?.adopted) return "你好，我是刘看山~";
+  return `Lv.${currentProfile.level} ${profileLevelTitle(currentProfile)}`;
 }
 
 function travelStatusText(status) {
@@ -841,7 +852,7 @@ function renderPetHoverCard() {
       </span>
       <div>
         <strong>${escapeHTML(profile.petName || "刘看山")}</strong>
-        <small>Lv.${profile.level} · ${escapeHTML(visual?.title || stageText(profile.stage))}</small>
+        <small>Lv.${profile.level} · ${escapeHTML(profileLevelTitle())}</small>
       </div>
     </div>
     <div class="pet-hover-stats">
@@ -858,7 +869,6 @@ function renderPetHoverCard() {
       ${travelAction}
       <button data-hover-handbook>旅行手账</button>
       <button data-hover-growth-log>成长日志</button>
-      <button data-hover-leaderboard>排行榜</button>
       <button data-hover-reset>重置</button>
     </div>
     <label class="pet-hover-toggle">
@@ -876,7 +886,7 @@ function closeCharacterNotice() {
   noticeRemaining = 0;
   if (!bubble) return;
   bubble.classList.remove("follow-notice");
-  bubble.textContent = profile?.adopted ? `Lv.${profile.level} ${stageText(profile.stage)}` : "你好，我是刘看山~";
+  bubble.textContent = profileBubbleTitle();
 }
 
 function showCharacterNotice(message, seconds = 20) {
@@ -1263,7 +1273,7 @@ function leaderboardPodiumItem(item) {
       <div class="leaderboard-podium-rank">${rankLabel}</div>
       ${leaderboardVisual(item)}
       <strong>${escapeHTML(item.fullname || "知乎用户")}</strong>
-      <small>${escapeHTML(item.petName || "刘看山")} · ${escapeHTML(item.levelTitle || stageText(item.stage))}</small>
+      <small>${escapeHTML(item.levelTitle || stageText(item.stage))}</small>
       <div class="leaderboard-podium-metric">${leaderboardMetric(item)}</div>
     </article>
   `;
@@ -1354,11 +1364,12 @@ function leaderboardSideCard() {
   `;
 }
 
-function sidebarCards() {
+function sidebarCards(options = {}) {
+  const includeLeaderboard = Boolean(options.includeLeaderboard);
   return `
     ${creatorCard()}
     ${petPanel()}
-    ${leaderboardSideCard()}
+    ${includeLeaderboard ? leaderboardSideCard() : ""}
     ${hotCard()}
   `;
 }
@@ -1385,6 +1396,7 @@ function bindSidebarLeaderboard() {
     if (button.dataset.bound) return;
     button.dataset.bound = "1";
     button.addEventListener("click", async () => {
+      markOnboardingStep("leaderboard");
       const nextType = button.dataset.inlineLeaderboardType === "travel_count" ? "travel_count" : "pet_level";
       if (leaderboardType === nextType && leaderboardLoaded) return;
       leaderboardType = nextType;
@@ -1506,7 +1518,8 @@ function syncCharacter() {
   const container = document.getElementById("roamingCharacter");
   if (!container) return;
 
-  if (!profile?.adopted) {
+  const isTravelAway = profile?.travelStatus === "traveling" && Date.now() > travelDepartureVisibleUntil;
+  if (!profile?.adopted || isTravelAway) {
     container.style.display = "none";
     closeLeaderboardPanel();
     renderPetHoverCard();
@@ -1517,7 +1530,7 @@ function syncCharacter() {
   renderPetHoverCard();
   ensurePatHandler();
   if (leaderboardPanelOpen) window.requestAnimationFrame(positionLeaderboardPanel);
-  const idleMessage = `Lv.${profile.level} ${stageText(profile.stage)}`;
+  const idleMessage = profileBubbleTitle();
   if (!character) {
     try {
       preloadCharacterModel();
@@ -1565,6 +1578,7 @@ function syncCharacter() {
           evolveScaleMultiplier: 1.28,
           scalePunchFactor: 1.22,
         },
+        enableIdleRingBand: false,
         idleRingBandConfig: {
           attachTargetName: "Liukanshan",
           orbitRadius: 0.58,
@@ -1869,12 +1883,12 @@ function petPanel() {
       <div class="pet-level-showcase level-${escapeHTML(visual?.effectStyle || "cute")}">
         ${visualImage ? `<img src="${escapeHTML(visualImage)}" alt="${escapeHTML(visual.title || "刘看山等级形象")}">` : ""}
         <div>
-          <strong>${escapeHTML(visual?.title || stageText(profile.stage))}</strong>
+          <strong>${escapeHTML(profileLevelTitle())}</strong>
           <small>${escapeHTML(visual?.description || "阅读越多，看山越强")}</small>
         </div>
       </div>
       <div class="pet-stats">
-        <div class="stat-box"><small>阶段</small><strong>${stageText(profile.stage)}</strong></div>
+        <div class="stat-box"><small>身份</small><strong>${escapeHTML(profileLevelTitle())}</strong></div>
         <div class="stat-box"><small>累计经验</small><strong>${profile.totalExp}</strong></div>
         <div class="stat-box"><small>学识值</small><strong>${profile.satiety}</strong></div>
         <div class="stat-box"><small>心情值</small><strong>${profile.mood}</strong></div>
@@ -2034,6 +2048,8 @@ function feedCard(item) {
   const media = item.media
     ? `<div class="feed-media ${escapeHTML(item.media)}">${escapeHTML(item.mediaLabel || "").replace(/\n/g, "<br>")}</div>`
     : "";
+  const liked = Boolean(item.interactions?.like);
+  const collected = Boolean(item.interactions?.collect);
   return `
     <article class="card feed-card" data-content-id="${escapeHTML(item.id)}" data-content-type="${escapeHTML(item.type)}">
       <h2><button class="content-open-title" data-open-content="${escapeHTML(item.id)}">${escapeHTML(item.title)}</button></h2>
@@ -2045,10 +2061,10 @@ function feedCard(item) {
         </p>
       </div>
       <div class="feed-actions">
-        <button class="vote-btn" data-interact="${escapeHTML(item.id)}" data-action="like">${feedActionIcon("up")}<span>赞同 ${item.counts.like}</span></button>
+        <button class="vote-btn ${liked ? "is-liked" : ""}" data-interact="${escapeHTML(item.id)}" data-action="like" aria-pressed="${liked ? "true" : "false"}" ${liked ? "disabled" : ""}>${feedActionIcon("up")}<span>${liked ? "已赞同" : "赞同"} ${item.counts.like}</span></button>
         <button class="vote-btn vote-btn-down" aria-label="反对">${feedActionIcon("down")}</button>
         <button class="feed-action feed-action-comment" data-interact="${escapeHTML(item.id)}" data-action="comment">${feedActionIcon("comment")}<span>${item.counts.comment} 条评论</span></button>
-        <button class="feed-action" data-interact="${escapeHTML(item.id)}" data-action="collect">${feedActionIcon("collect")}<span>${item.counts.collect}</span></button>
+        <button class="feed-action ${collected ? "active" : ""}" data-interact="${escapeHTML(item.id)}" data-action="collect" aria-pressed="${collected ? "true" : "false"}" ${collected ? "disabled" : ""}>${feedActionIcon("collect")}<span>${collected ? "已收藏" : item.counts.collect}</span></button>
         <button class="feed-action">${feedActionIcon("like")}<span>103</span></button>
         <button class="feed-action feed-action-share">${feedActionIcon("share")}<span>分享</span></button>
         <button class="feed-action feed-action-more" aria-label="更多">${feedActionIcon("more")}</button>
@@ -2248,7 +2264,7 @@ function renderRecommend() {
         ${feedItems.map(feedCard).join("")}
       </section>
       <aside class="side-stack">
-        ${sidebarCards()}
+        ${sidebarCards({ includeLeaderboard: true })}
       </aside>
     </main>
   `;
@@ -2359,7 +2375,6 @@ function renderPeople() {
         <aside class="side-stack">
           ${creatorCard()}
           ${petPanel()}
-          ${leaderboardSideCard()}
           ${renderDailyQuests(dailyStat)}
           <section class="card side-card">
             <div class="creator-stat">
@@ -2424,6 +2439,7 @@ function bindRecommend() {
 
   document.querySelectorAll("[data-interact]").forEach((button) => {
     button.addEventListener("click", () => {
+      if (button.disabled) return;
       const item = feedItems.find((entry) => entry.id === button.dataset.interact);
       if (button.dataset.action === "comment") {
         // 评论按钮不再直接发奖：打开内容弹窗，并把焦点放到评论框
@@ -2435,6 +2451,9 @@ function bindRecommend() {
           }, 60);
         });
         return;
+      }
+      if (["like", "collect"].includes(button.dataset.action)) {
+        button.disabled = true;
       }
       submitContentEvent(item, button.dataset.action, button);
       button.classList.add("active");
@@ -2786,6 +2805,12 @@ function playTravelDeparture(travel) {
       autoHide: 2400,
     });
   }, 80);
+  window.setTimeout(() => {
+    if (profile?.travelStatus !== "traveling") return;
+    travelDepartureVisibleUntil = 0;
+    characterElement()?.classList.remove("roaming-traveling");
+    syncCharacter();
+  }, 3600);
 }
 
 function playTravelReturn(travel) {
@@ -2820,6 +2845,7 @@ async function startTravel() {
       canTravel: false,
       blockReason: "刘看山正在游历中",
     };
+    travelDepartureVisibleUntil = Date.now() + 3800;
     syncCharacter();
     renderCurrentRoute();
     pet?.setMessage?.(data.message || "看山出发啦", { autoHide: 2200 });
@@ -3188,6 +3214,11 @@ async function submitContentEvent(item, actionType, sourceElement) {
     mergeUpdatedContent(data.content);
     await loadTravelStatus();
     syncCharacter();
+    if (data.duplicateInteraction) {
+      showToast(data.message || "已经操作过这篇内容");
+      renderCurrentRoute();
+      return;
+    }
     showReward(data.reward, sourceElement);
     if (["read", "watch"].includes(normalizedAction)) {
       markOnboardingStep("consume");
@@ -3197,6 +3228,7 @@ async function submitContentEvent(item, actionType, sourceElement) {
     }
     renderCurrentRoute();
   } catch (error) {
+    if (sourceElement) sourceElement.disabled = false;
     showToast(error.message || "事件提交失败");
   }
 }
@@ -3217,7 +3249,7 @@ function showReward(reward, sourceElement) {
     character.playEvolveEffect?.({ message, autoHide: 3900 });
     window.setTimeout(() => {
       character?.setPosition?.(window.innerWidth - 150, window.innerHeight - 200);
-      character?.setMessage?.(`Lv.${profile.level} ${stageText(profile.stage)}`, { autoHide: 2200 });
+      character?.setMessage?.(profileBubbleTitle(), { autoHide: 2200 });
     }, 4200);
   }
   if (sourceElement && character && !reward.levelUp && rewardWalkEnabled) {

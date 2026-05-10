@@ -1,0 +1,84 @@
+{
+  "levels": [
+    {
+      "level": 1,
+      "stage": "cub",
+      "required_total_exp": 0,
+      "title": "新手探索员",
+      "effect_style": "cute",
+      "description": "基础红围巾，刚开始陪主人探索知识宇宙"
+    },
+    {
+      "level": 2,
+      "stage": "cub",
+      "required_total_exp": 50,
+      "title": "星章探索员",
+      "effect_style": "cute",
+      "description": "围巾星章点亮，开始积累阅读成就"
+    },
+    {
+      "level": 3,
+      "stage": "cub",
+      "required_total_exp": 120,
+      "title": "任务新星",
+      "effect_style": "cute",
+      "description": "挂上任务星章，进入稳定阅读节奏"
+    },
+    {
+      "level": 4,
+      "stage": "growing",
+      "required_total_exp": 250,
+      "title": "行星记录员",
+      "effect_style": "explore",
+      "description": "戴上航天帽和行星徽章，开始记录知识旅程"
+    },
+    {
+      "level": 5,
+      "stage": "growing",
+      "required_total_exp": 450,
+      "title": "火箭见习官",
+      "effect_style": "explore",
+      "description": "背上迷你科考包，准备更远的内容探索"
+    },
+    {
+      "level": 6,
+      "stage": "growing",
+      "required_total_exp": 700,
+      "title": "星图导航员",
+      "effect_style": "explore",
+      "description": "护目镜与指南针就位，能看懂更复杂的知识路线"
+    },
+    {
+      "level": 7,
+      "stage": "adult",
+      "required_total_exp": 1000,
+      "title": "深空任务官",
+      "effect_style": "cool",
+      "description": "带着任务旗帜出发，拥有稳定的深度阅读能力"
+    },
+    {
+      "level": 8,
+      "stage": "adult",
+      "required_total_exp": 1400,
+      "title": "知识探测者",
+      "effect_style": "cool",
+      "description": "点亮探测头灯和知识权杖，能发现隐藏的优质内容"
+    },
+    {
+      "level": 9,
+      "stage": "adult",
+      "required_total_exp": 1900,
+      "title": "星际领航员",
+      "effect_style": "cool",
+      "description": "蓝金徽章与能量装备成型，进入高阶陪伴状态"
+    },
+    {
+      "level": 10,
+      "stage": "advanced",
+      "required_total_exp": 2500,
+      "title": "宇宙知识领航员",
+      "effect_style": "legendary",
+      "description": "金色星际冠、披风与权杖加身，成为知识宇宙的领航伙伴"
+    }
+  ]
+}

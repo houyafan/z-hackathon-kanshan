@@ -628,6 +628,19 @@ button {
   white-space: nowrap;
 }
 
+.vote-btn.is-liked {
+  min-width: 112px;
+  color: #fff;
+  background: linear-gradient(90deg, #1772f6 0%, #0f7cff 100%);
+  box-shadow: 0 4px 12px rgba(23, 114, 246, 0.24);
+}
+
+.vote-btn.is-liked:disabled,
+.feed-action:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
 .vote-btn-down {
   width: 36px;
   margin-left: 4px;
@@ -2632,7 +2645,10 @@ button {
 }
 
 .leaderboard-side-card .leaderboard-podium-item small {
-  display: none;
+  display: block;
+  max-width: 92px;
+  color: #667085;
+  font-size: 11px;
 }
 
 .leaderboard-side-card .leaderboard-podium-metric strong {

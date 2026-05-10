@@ -25,6 +25,7 @@ STATIC_DIR = ROOT / "p0_mock" / "static"
 ROAMING_DIR = ROOT / "3d-liukanshan-roaming"
 CONFIG_PATH = Path(os.environ.get("CONFIG_PATH") or ROOT / "p0_mock" / "config.json")
 BUNDLED_CONFIG_PATH = ROOT / "p0_mock" / "config.json"
+LEVEL_VISUAL_CONFIG_PATH = ROOT / "p0_mock" / "level_visuals.json"
 DEFAULT_USER_ID = 10001
 SESSION_COOKIE_NAME = "lks_session"
 APP_TZ = timezone(timedelta(hours=8), "Asia/Shanghai")
@@ -359,7 +360,7 @@ def seed_decay_config(conn):
         )
 
 
-LEVEL_VISUALS = [
+DEFAULT_LEVEL_VISUALS = [
     {
         "level": 1,
         "stage": "cub",
@@ -433,6 +434,51 @@ LEVEL_VISUALS = [
 ]
 
 
+def load_level_visual_config():
+    if not LEVEL_VISUAL_CONFIG_PATH.exists():
+        return DEFAULT_LEVEL_VISUALS
+    try:
+        data = json.loads(LEVEL_VISUAL_CONFIG_PATH.read_text(encoding="utf-8"))
+        levels = data.get("levels") if isinstance(data, dict) else data
+        if not isinstance(levels, list):
+            return DEFAULT_LEVEL_VISUALS
+        by_level = {
+            int(item.get("level")): item
+            for item in levels
+            if isinstance(item, dict) and str(item.get("level") or "").isdigit()
+        }
+        normalized = []
+        for fallback in DEFAULT_LEVEL_VISUALS:
+            item = by_level.get(int(fallback["level"]))
+            if item is None:
+                normalized.append(fallback)
+                continue
+            normalized.append({
+                **fallback,
+                **item,
+                "level": int(item.get("level") or fallback["level"]),
+            })
+        return normalized or DEFAULT_LEVEL_VISUALS
+    except Exception as error:
+        print(f"[liukanshan-demo] level visual config load failed: {error}", flush=True)
+        return DEFAULT_LEVEL_VISUALS
+
+
+LEVEL_VISUALS = load_level_visual_config()
+LEVEL_REQUIRED_TOTAL_EXP = {
+    1: 0,
+    2: 50,
+    3: 120,
+    4: 250,
+    5: 450,
+    6: 700,
+    7: 1000,
+    8: 1400,
+    9: 1900,
+    10: 2500,
+}
+
+
 def default_level_visual(level):
     try:
         safe_level = max(1, int(level))
@@ -503,6 +549,45 @@ def seed_level_visual_config(conn):
         )
 
 
+def seed_level_config(conn):
+    for item in LEVEL_VISUALS:
+        level = int(item["level"])
+        conn.execute(
+            """
+            INSERT INTO pet_level_config
+              (level, stage, required_total_exp, title, unlock_features)
+            VALUES (?, ?, ?, ?, '[]')
+            ON CONFLICT(level) DO UPDATE SET
+              stage = excluded.stage,
+              title = excluded.title,
+              updated_at = CURRENT_TIMESTAMP
+            """,
+            (
+                level,
+                item["stage"],
+                int(item.get("required_total_exp") or LEVEL_REQUIRED_TOTAL_EXP.get(level, 0)),
+                item["title"],
+            ),
+        )
+    conn.execute(
+        """
+        UPDATE pet_profile
+        SET stage = (
+              SELECT stage
+              FROM pet_level_config
+              WHERE pet_level_config.level = pet_profile.level
+            ),
+            updated_at = CURRENT_TIMESTAMP
+        WHERE EXISTS (
+          SELECT 1
+          FROM pet_level_config
+          WHERE pet_level_config.level = pet_profile.level
+            AND pet_level_config.stage != pet_profile.stage
+        )
+        """
+    )
+
+
 def migrate_db(conn):
     add_column_if_missing(conn, "pet_profile", "health", "INTEGER NOT NULL DEFAULT 100 CHECK (health BETWEEN 0 AND 100)")
     add_column_if_missing(conn, "pet_profile", "travel_energy", "INTEGER NOT NULL DEFAULT 0 CHECK (travel_energy >= 0)")
@@ -519,6 +604,7 @@ def migrate_db(conn):
     migrate_pet_profile_wake_columns(conn)
     migrate_pet_daily_stat_quest_columns(conn)
     migrate_pet_growth_log_check_constraints(conn)
+    seed_level_config(conn)
     seed_level_visual_config(conn)
     add_column_if_missing(conn, "pet_travel_event", "reward_exp", f"INTEGER NOT NULL DEFAULT {TRAVEL_CLAIM_EXP} CHECK (reward_exp >= 0)")
     add_column_if_missing(conn, "pet_travel_event", "reward_mood", f"INTEGER NOT NULL DEFAULT {TRAVEL_CLAIM_MOOD} CHECK (reward_mood >= 0)")
@@ -1022,7 +1108,7 @@ def camel_profile(row, user_id=DEFAULT_USER_ID, level_visual=None):
         "adopted": bool(row["adopted"]),
         "petName": row["pet_name"],
         "level": row["level"],
-        "stage": row["stage"],
+        "stage": visual["stage"],
         "totalExp": row["total_exp"],
         "satiety": row["satiety"],
         "mood": row["mood"],
@@ -1104,9 +1190,10 @@ def normalize_theme(value, default="polar"):
     return default
 
 
-def camel_content(row, include_full=False):
+def camel_content(row, include_full=False, interactions=None):
     if row is None:
         return None
+    interactions = interactions or {}
     content = {
         "id": row["content_id"],
         "type": row["content_type"],
@@ -1122,6 +1209,11 @@ def camel_content(row, include_full=False):
             "like": row["like_count"],
             "comment": row["comment_count"],
             "collect": row["collect_count"],
+        },
+        "interactions": {
+            "like": bool(interactions.get("like")),
+            "comment": bool(interactions.get("comment")),
+            "collect": bool(interactions.get("collect")),
         },
         "publishedAt": row["published_at"],
     }
@@ -2186,6 +2278,30 @@ def fetch_content(conn, content_id):
     ).fetchone()
 
 
+def fetch_content_interactions(conn, user_id, content_ids):
+    if not user_id or not content_ids:
+        return {}
+    unique_ids = [str(content_id) for content_id in dict.fromkeys(content_ids) if content_id]
+    if not unique_ids:
+        return {}
+    placeholders = ",".join("?" for _ in unique_ids)
+    rows = conn.execute(
+        f"""
+        SELECT content_id, action_type
+        FROM pet_content_event
+        WHERE user_id = ?
+          AND content_id IN ({placeholders})
+          AND action_type IN ('like', 'comment', 'collect')
+        GROUP BY content_id, action_type
+        """,
+        (user_id, *unique_ids),
+    ).fetchall()
+    state = {content_id: {"like": False, "comment": False, "collect": False} for content_id in unique_ids}
+    for row in rows:
+        state.setdefault(row["content_id"], {})[row["action_type"]] = True
+    return state
+
+
 def increment_content_counter(conn, content_id, action_type):
     counter_by_action = {
         "like": "like_count",
@@ -2979,6 +3095,37 @@ def apply_content_event(payload, user_id):
             conn.execute("BEGIN")
             decay_notice = apply_pet_decay(conn, user_id, profile)
             profile = fetch_profile(conn, user_id)
+            if action_type in ("like", "collect"):
+                existing_action = conn.execute(
+                    """
+                    SELECT 1
+                    FROM pet_content_event
+                    WHERE user_id = ?
+                      AND content_id = ?
+                      AND action_type = ?
+                    LIMIT 1
+                    """,
+                    (user_id, content_id, action_type),
+                ).fetchone()
+                if existing_action is not None:
+                    conn.rollback()
+                    updated_content = fetch_content(conn, content_id)
+                    interactions = fetch_content_interactions(conn, user_id, [content_id]).get(content_id)
+                    return 200, {
+                        "duplicateInteraction": True,
+                        "message": "已经赞同过这篇内容" if action_type == "like" else "已经收藏过这篇内容",
+                        "reward": {
+                            "exp": 0,
+                            "satiety": 0,
+                            "mood": 0,
+                            "travelEnergy": 0,
+                            "levelUp": False,
+                            "stageChanged": False,
+                        },
+                        "profile": camel_profile(fetch_profile(conn, user_id), user_id),
+                        "content": camel_content(updated_content, interactions=interactions) if updated_content else None,
+                        "decayNotice": decay_notice,
+                    }
             # Snapshot sleeping state AFTER apply_pet_decay so a tier that drops
             # satiety/mood into the sleep threshold for the first time still
             # halves THIS event's reward (consistent with maybe_progress_wake
@@ -3188,6 +3335,7 @@ def apply_content_event(payload, user_id):
 
         new_profile = fetch_profile(conn, user_id)
         updated_content = fetch_content(conn, content_id)
+        interactions = fetch_content_interactions(conn, user_id, [content_id]).get(content_id)
         new_profile_payload = camel_profile(new_profile, user_id)
         return 200, {
             "reward": {
@@ -3202,7 +3350,7 @@ def apply_content_event(payload, user_id):
                 "wakeJustTriggered": wake_just_triggered,
             },
             "profile": new_profile_payload,
-            "content": camel_content(updated_content) if updated_content else None,
+            "content": camel_content(updated_content, interactions=interactions) if updated_content else None,
             "decayNotice": decay_notice,
         }
 
@@ -4391,8 +4539,19 @@ class Handler(BaseHTTPRequestHandler):
             qs = parse_qs(parsed.query)
             limit = int((qs.get("limit") or [20])[0])
             limit = max(1, min(limit, 100))
+            session = self.get_current_session()
+            user_id = session["user_id"] if session else None
             with connect_db() as conn:
-                contents = [camel_content(row) for row in fetch_contents(conn, limit)]
+                rows = fetch_contents(conn, limit)
+                interaction_map = fetch_content_interactions(
+                    conn,
+                    user_id,
+                    [row["content_id"] for row in rows],
+                )
+                contents = [
+                    camel_content(row, interactions=interaction_map.get(row["content_id"]))
+                    for row in rows
+                ]
                 self.send_json(200, {"contents": contents})
             return
 
@@ -4608,8 +4767,11 @@ class Handler(BaseHTTPRequestHandler):
 
         if path.startswith("/api/p0/contents/"):
             content_id = unquote(path.removeprefix("/api/p0/contents/"))
+            session = self.get_current_session()
+            user_id = session["user_id"] if session else None
             with connect_db() as conn:
-                content = camel_content(fetch_content(conn, content_id), include_full=True)
+                interactions = fetch_content_interactions(conn, user_id, [content_id]).get(content_id)
+                content = camel_content(fetch_content(conn, content_id), include_full=True, interactions=interactions)
                 if content is None:
                     self.send_json(404, {"error": "CONTENT_NOT_FOUND"})
                 else:
