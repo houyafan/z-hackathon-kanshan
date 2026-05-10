@@ -1884,7 +1884,6 @@ def leaderboard_share_copy(user, profile_payload, rank_item, project_url):
     share_url = canonical_project_url or project_url
     title = "挖到一个超棒的知乎新玩法！「看山陪伴计划」"
     content = (
-        "挖到一个超棒的知乎新玩法！「看山陪伴计划」\n"
         f"体验地址：{share_url}\n\n"
         "把阅读变成养崽：\n"
         "✅ 每读一篇知乎内容，刘看山就会涨经验升级\n"
@@ -1893,6 +1892,26 @@ def leaderboard_share_copy(user, profile_payload, rank_item, project_url):
         f"我的看山现在 Lv.{level}「{level_title}」，分享给你，一起来养专属阅读伙伴吧～"
     )
     return title, content
+
+
+def leaderboard_share_today(conn, user_id):
+    today = now_dt().date()
+    start = datetime(today.year, today.month, today.day).isoformat(timespec="seconds")
+    end = (datetime(today.year, today.month, today.day) + timedelta(days=1)).isoformat(timespec="seconds")
+    return conn.execute(
+        """
+        SELECT created_at
+        FROM pet_growth_log
+        WHERE user_id = ?
+          AND source_type = 'manual'
+          AND source_id LIKE 'leaderboard-share-%'
+          AND created_at >= ?
+          AND created_at < ?
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (user_id, start, end),
+    ).fetchone()
 
 
 def grant_leaderboard_share_reward(conn, user_id):
@@ -5340,6 +5359,14 @@ class Handler(BaseHTTPRequestHandler):
                 profile_row = fetch_profile(conn, user_id)
                 if profile_row is None or not profile_row["adopted"]:
                     self.send_json(409, {"error": "PET_NOT_ADOPTED", "message": "请先领养刘看山"})
+                    return
+                shared_today = leaderboard_share_today(conn, user_id)
+                if shared_today is not None:
+                    self.send_json(429, {
+                        "error": "LEADERBOARD_SHARE_DAILY_LIMIT",
+                        "message": "今天已经分享过看山奖励啦，明天再来继续分享",
+                        "sharedAt": shared_today["created_at"],
+                    })
                     return
                 user = fetch_user(conn, user_id)
                 profile_payload = camel_profile(profile_row, user_id, fetch_level_visual(conn, profile_row["level"]))
