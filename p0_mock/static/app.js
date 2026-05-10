@@ -45,7 +45,7 @@ let travelDepartureVisibleUntil = 0;
 const savedRewardWalk = localStorage.getItem("liukanshan_reward_walk_enabled") ?? localStorage.getItem("liukanshan_level_walk_enabled");
 let rewardWalkEnabled = savedRewardWalk !== "0";
 const MODEL_PATH = "/3d-liukanshan-roaming/liukanshan-slot.glb?v=2";
-const ONBOARDING_VERSION = "v1";
+const ONBOARDING_VERSION = "v2";
 const ONBOARDING_KEY = `liukanshan_onboarding_${ONBOARDING_VERSION}`;
 const ADMIN_USER_TOKENS = new Set(["p2wcex", "sunny-27-1-97"]);
 const ADMIN_USER_UIDS = new Set(["1908940156829918831", "2013197829758268031"]);
@@ -276,22 +276,25 @@ function onboardingSteps() {
       primaryText: "登录知乎",
       target: ".login-primary",
       action: "login",
+      placement: "center",
     },
     {
       id: "adopt",
       index: 2,
       title: "领养刘看山",
-      body: "到个人页点击领养，让看山正式回家。",
+      body: "先把刘看山领回家，后续阅读、点赞、收藏和评论才会转化为成长。",
       primaryText: "去领养",
       target: "[data-adopt]",
       route: "/people/p2wcex",
       action: "adopt",
+      placement: "center",
     },
     {
       id: "consume",
       index: 3,
       title: "阅读一条推荐",
       body: "打开推荐内容全文，文章、想法、视频和小说都会给看山加经验。",
+      note: "同一篇内容的阅读奖励只发一次，重复打开不会反复增加经验。",
       primaryText: "去推荐页",
       target: "[data-open-content]",
       route: "/",
@@ -301,6 +304,7 @@ function onboardingSteps() {
       index: 4,
       title: "完成一次互动",
       body: "点赞、收藏或评论会提升心情，也会记录在成长日志里。",
+      note: "同一内容的同一互动只记录一次，重复点击不会增加成长经验。",
       primaryText: "去互动",
       target: "[data-interact]",
       route: "/",
@@ -310,6 +314,7 @@ function onboardingSteps() {
       index: 5,
       title: "认识游历入口",
       body: "悬浮刘看山可以看到游历、手账、成长日志和排行榜。",
+      note: "提示卡会避开右下角的 3D 看山，不会挡住模型操作。",
       primaryText: "我知道了",
       target: "#roamingCharacter",
       action: "travel",
@@ -375,11 +380,37 @@ function highlightOnboardingTarget(step) {
   }
 }
 
+function rectsOverlap(a, b, gap = 10) {
+  if (!a || !b) return false;
+  return a.left < b.right + gap
+    && a.right > b.left - gap
+    && a.top < b.bottom + gap
+    && a.bottom > b.top - gap;
+}
+
+function visibleRect(selector) {
+  const element = [...document.querySelectorAll(selector)].find((candidate) => {
+    const rect = candidate.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  });
+  return element?.getBoundingClientRect() || null;
+}
+
+function avoidOnboardingOverlap(guide, step) {
+  if (!guide || step?.placement === "center" || window.innerWidth <= 720) return;
+  const guideRect = guide.getBoundingClientRect();
+  const modelRect = visibleRect("#roamingCharacter");
+  const targetRect = step?.target ? visibleRect(step.target) : null;
+  if (rectsOverlap(guideRect, modelRect, 18) || rectsOverlap(guideRect, targetRect, 18)) {
+    guide.classList.add("placement-top-left");
+  }
+}
+
 function renderOnboardingGuide(step) {
   removeOnboardingGuide();
   if (!step) return;
   const guide = document.createElement("div");
-  guide.className = `onboarding-guide step-${step.id}`;
+  guide.className = `onboarding-guide step-${step.id} placement-${step.placement || "side"}`;
   guide.setAttribute("role", "dialog");
   guide.setAttribute("aria-label", "新手引导");
   guide.innerHTML = `
@@ -388,6 +419,7 @@ function renderOnboardingGuide(step) {
       <div class="onboarding-kicker">新手引导 ${step.index}/7</div>
       <h2>${escapeHTML(step.title)}</h2>
       <p>${escapeHTML(step.body)}</p>
+      ${step.note ? `<div class="onboarding-note">${escapeHTML(step.note)}</div>` : ""}
       <div class="onboarding-progress" aria-hidden="true">
         ${onboardingSteps().map((item) => `<span class="${item.index <= step.index ? "active" : ""}"></span>`).join("")}
       </div>
@@ -410,7 +442,10 @@ function renderOnboardingGuide(step) {
   guide.querySelector("[data-onboarding-primary]").addEventListener("click", () => {
     handleOnboardingPrimary(step);
   });
-  window.requestAnimationFrame(() => highlightOnboardingTarget(step));
+  window.requestAnimationFrame(() => {
+    avoidOnboardingOverlap(guide, step);
+    highlightOnboardingTarget(step);
+  });
 }
 
 function routeTo(path) {
