@@ -608,6 +608,7 @@ def migrate_db(conn):
     add_column_if_missing(conn, "pet_content_event", "travel_energy_reward", "INTEGER NOT NULL DEFAULT 0 CHECK (travel_energy_reward >= 0)")
     add_column_if_missing(conn, "pet_daily_stat", "travel_energy_gained", "INTEGER NOT NULL DEFAULT 0 CHECK (travel_energy_gained >= 0)")
     migrate_project_daily_metric(conn)
+    migrate_analytics_tables(conn)
     migrate_travel_themes(conn)
     migrate_comment_assist_log(conn)
     migrate_follow_moment_overview(conn)
@@ -755,6 +756,67 @@ def migrate_project_daily_metric(conn):
     )
     # Drop the legacy P0 table that's been fully replaced by pet_travel_external_content.
     conn.execute("DROP TABLE IF EXISTS pet_travel_return_content")
+
+
+def migrate_analytics_tables(conn):
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS analytics_event (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          event_id TEXT NOT NULL,
+          user_id INTEGER DEFAULT NULL,
+          visit_id TEXT DEFAULT NULL,
+          event_name TEXT NOT NULL,
+          page_path TEXT DEFAULT NULL,
+          referer_path TEXT DEFAULT NULL,
+          target_type TEXT DEFAULT NULL,
+          target_id TEXT DEFAULT NULL,
+          props TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(props)),
+          client_ts TEXT DEFAULT NULL,
+          server_ts TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE (event_id)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS analytics_user_daily (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER NOT NULL,
+          stat_date TEXT NOT NULL,
+          page_view_count INTEGER NOT NULL DEFAULT 0 CHECK (page_view_count >= 0),
+          pet_module_expose_count INTEGER NOT NULL DEFAULT 0 CHECK (pet_module_expose_count >= 0),
+          pet_adopt_click_count INTEGER NOT NULL DEFAULT 0 CHECK (pet_adopt_click_count >= 0),
+          pet_adopt_success_count INTEGER NOT NULL DEFAULT 0 CHECK (pet_adopt_success_count >= 0),
+          content_open_count INTEGER NOT NULL DEFAULT 0 CHECK (content_open_count >= 0),
+          read_count INTEGER NOT NULL DEFAULT 0 CHECK (read_count >= 0),
+          watch_count INTEGER NOT NULL DEFAULT 0 CHECK (watch_count >= 0),
+          like_count INTEGER NOT NULL DEFAULT 0 CHECK (like_count >= 0),
+          comment_count INTEGER NOT NULL DEFAULT 0 CHECK (comment_count >= 0),
+          collect_count INTEGER NOT NULL DEFAULT 0 CHECK (collect_count >= 0),
+          level_up_count INTEGER NOT NULL DEFAULT 0 CHECK (level_up_count >= 0),
+          travel_start_count INTEGER NOT NULL DEFAULT 0 CHECK (travel_start_count >= 0),
+          travel_complete_count INTEGER NOT NULL DEFAULT 0 CHECK (travel_complete_count >= 0),
+          travel_claim_count INTEGER NOT NULL DEFAULT 0 CHECK (travel_claim_count >= 0),
+          handbook_open_count INTEGER NOT NULL DEFAULT 0 CHECK (handbook_open_count >= 0),
+          leaderboard_open_count INTEGER NOT NULL DEFAULT 0 CHECK (leaderboard_open_count >= 0),
+          share_click_count INTEGER NOT NULL DEFAULT 0 CHECK (share_click_count >= 0),
+          share_success_count INTEGER NOT NULL DEFAULT 0 CHECK (share_success_count >= 0),
+          share_refer_count INTEGER NOT NULL DEFAULT 0 CHECK (share_refer_count >= 0),
+          onboarding_show_count INTEGER NOT NULL DEFAULT 0 CHECK (onboarding_show_count >= 0),
+          onboarding_done_count INTEGER NOT NULL DEFAULT 0 CHECK (onboarding_done_count >= 0),
+          onboarding_skip_count INTEGER NOT NULL DEFAULT 0 CHECK (onboarding_skip_count >= 0),
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE (user_id, stat_date)
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_analytics_event_user_time ON analytics_event (user_id, server_ts)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_analytics_event_visit_time ON analytics_event (visit_id, server_ts)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_analytics_event_name_time ON analytics_event (event_name, server_ts)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_analytics_event_page_time ON analytics_event (page_path, server_ts)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_analytics_user_daily_date ON analytics_user_daily (stat_date)")
 
 
 def migrate_travel_themes(conn):
@@ -1421,6 +1483,250 @@ def leaderboard_payload(conn, current_user_id, rank_type, limit=50):
     }
 
 
+ANALYTICS_COUNTER_COLUMNS = {
+    "page_view": "page_view_count",
+    "pet_module_expose": "pet_module_expose_count",
+    "pet_adopt_click": "pet_adopt_click_count",
+    "pet_adopt_success": "pet_adopt_success_count",
+    "content_open": "content_open_count",
+    "pet_level_up": "level_up_count",
+    "travel_start": "travel_start_count",
+    "travel_complete": "travel_complete_count",
+    "travel_claim": "travel_claim_count",
+    "handbook_open": "handbook_open_count",
+    "leaderboard_open": "leaderboard_open_count",
+    "pet_share_click": "share_click_count",
+    "pet_share_success": "share_success_count",
+    "pet_share_refer": "share_refer_count",
+    "onboarding_step_show": "onboarding_show_count",
+    "onboarding_step_done": "onboarding_done_count",
+    "onboarding_skip": "onboarding_skip_count",
+}
+
+
+def analytics_counter_column(event_name, props=None):
+    props = props or {}
+    if event_name == "content_consume":
+        action = str(props.get("actionType") or props.get("action_type") or "")
+        return "watch_count" if action == "watch" else "read_count"
+    if event_name == "content_interact":
+        action = str(props.get("actionType") or props.get("action_type") or "")
+        return {
+            "like": "like_count",
+            "comment": "comment_count",
+            "collect": "collect_count",
+        }.get(action)
+    return ANALYTICS_COUNTER_COLUMNS.get(event_name)
+
+
+def upsert_analytics_user_daily(conn, user_id, stat_date, column):
+    if user_id is None or not column:
+        return
+    allowed_columns = set(ANALYTICS_COUNTER_COLUMNS.values()) | {
+        "read_count",
+        "watch_count",
+        "like_count",
+        "comment_count",
+        "collect_count",
+    }
+    if column not in allowed_columns:
+        return
+    current = now_text()
+    conn.execute(
+        f"""
+        INSERT INTO analytics_user_daily
+          (user_id, stat_date, {column}, created_at, updated_at)
+        VALUES
+          (?, ?, 1, ?, ?)
+        ON CONFLICT(user_id, stat_date) DO UPDATE SET
+          {column} = {column} + 1,
+          updated_at = excluded.updated_at
+        """,
+        (int(user_id), stat_date, current, current),
+    )
+
+
+def record_analytics_event(
+    conn,
+    event_name,
+    user_id=None,
+    visit_id=None,
+    event_id=None,
+    page_path=None,
+    referer_path=None,
+    target_type=None,
+    target_id=None,
+    props=None,
+    client_ts=None,
+):
+    event_name = str(event_name or "").strip()
+    if not event_name:
+        return False
+    props = props if isinstance(props, dict) else {}
+    current = now_text()
+    event_id = str(event_id or f"srv_{event_name}_{uuid.uuid4().hex}")
+    props_text = json.dumps(props, ensure_ascii=False, separators=(",", ":"))
+    try:
+        conn.execute(
+            """
+            INSERT INTO analytics_event
+              (event_id, user_id, visit_id, event_name, page_path, referer_path,
+               target_type, target_id, props, client_ts, server_ts)
+            VALUES
+              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                event_id,
+                int(user_id) if user_id is not None else None,
+                str(visit_id or "") or None,
+                event_name,
+                str(page_path or "") or None,
+                str(referer_path or "") or None,
+                str(target_type or "") or None,
+                str(target_id or "") or None,
+                props_text,
+                str(client_ts or "") or None,
+                current,
+            ),
+        )
+    except sqlite3.IntegrityError:
+        return False
+    upsert_analytics_user_daily(conn, user_id, current[:10], analytics_counter_column(event_name, props))
+    return True
+
+
+def record_analytics_events(conn, user_id, visit_id, events):
+    accepted = 0
+    duplicated = 0
+    if not isinstance(events, list):
+        return accepted, duplicated
+    for event in events[:50]:
+        if not isinstance(event, dict):
+            continue
+        props = event.get("props") if isinstance(event.get("props"), dict) else {}
+        ok = record_analytics_event(
+            conn,
+            event.get("eventName") or event.get("event_name"),
+            user_id=user_id,
+            visit_id=event.get("visitId") or event.get("visit_id") or visit_id,
+            event_id=event.get("eventId") or event.get("event_id"),
+            page_path=event.get("pagePath") or event.get("page_path"),
+            referer_path=event.get("refererPath") or event.get("referer_path"),
+            target_type=event.get("targetType") or event.get("target_type"),
+            target_id=event.get("targetId") or event.get("target_id"),
+            props=props,
+            client_ts=event.get("clientTs") or event.get("client_ts"),
+        )
+        if ok:
+            accepted += 1
+        else:
+            duplicated += 1
+    return accepted, duplicated
+
+
+def analytics_daily_series(conn, days=14):
+    days = max(1, min(int(days or 14), 90))
+    end_date = now_dt().date()
+    start_date = end_date - timedelta(days=days - 1)
+    rows = conn.execute(
+        """
+        SELECT
+          stat_date,
+          SUM(CASE WHEN pet_module_expose_count > 0 THEN 1 ELSE 0 END) AS expose_uv,
+          SUM(CASE WHEN (read_count + watch_count) > 0 THEN 1 ELSE 0 END) AS consume_uv,
+          SUM(CASE WHEN level_up_count > 0 THEN 1 ELSE 0 END) AS level_up_uv,
+          SUM(CASE WHEN share_success_count > 0 THEN 1 ELSE 0 END) AS share_success_uv
+        FROM analytics_user_daily
+        WHERE stat_date >= ? AND stat_date <= ?
+        GROUP BY stat_date
+        ORDER BY stat_date ASC
+        """,
+        (start_date.isoformat(), end_date.isoformat()),
+    ).fetchall()
+    by_date = {row["stat_date"]: row for row in rows}
+    series = []
+    for offset in range(days):
+        stat_date = (start_date + timedelta(days=offset)).isoformat()
+        row = by_date.get(stat_date)
+        series.append({
+            "date": stat_date,
+            "exposeUv": int(row["expose_uv"] if row else 0),
+            "consumeUv": int(row["consume_uv"] if row else 0),
+            "levelUpUv": int(row["level_up_uv"] if row else 0),
+            "shareSuccessUv": int(row["share_success_uv"] if row else 0),
+        })
+    return series
+
+
+def analytics_overview_payload(conn, days=14):
+    today = now_dt().date().isoformat()
+    row = conn.execute(
+        """
+        SELECT
+          SUM(CASE WHEN page_view_count > 0 THEN 1 ELSE 0 END) AS home_view_uv,
+          SUM(CASE WHEN pet_module_expose_count > 0 THEN 1 ELSE 0 END) AS expose_uv,
+          SUM(CASE WHEN pet_adopt_success_count > 0 THEN 1 ELSE 0 END) AS adopt_success_uv,
+          SUM(CASE WHEN (read_count + watch_count) > 0 THEN 1 ELSE 0 END) AS consume_uv,
+          SUM(CASE WHEN (like_count + comment_count + collect_count) > 0 THEN 1 ELSE 0 END) AS interact_uv,
+          SUM(CASE WHEN level_up_count > 0 THEN 1 ELSE 0 END) AS level_up_uv,
+          SUM(CASE WHEN travel_start_count > 0 THEN 1 ELSE 0 END) AS travel_start_uv,
+          SUM(CASE WHEN share_click_count > 0 THEN 1 ELSE 0 END) AS share_click_uv,
+          SUM(CASE WHEN share_success_count > 0 THEN 1 ELSE 0 END) AS share_success_uv,
+          SUM(page_view_count) AS page_view_count,
+          SUM(pet_module_expose_count) AS expose_count,
+          SUM(read_count + watch_count) AS consume_count,
+          SUM(like_count + comment_count + collect_count) AS interact_count,
+          SUM(level_up_count) AS level_up_count,
+          SUM(travel_start_count) AS travel_start_count,
+          SUM(travel_complete_count) AS travel_complete_count,
+          SUM(share_click_count) AS share_click_count,
+          SUM(share_success_count) AS share_success_count
+        FROM analytics_user_daily
+        WHERE stat_date = ?
+        """,
+        (today,),
+    ).fetchone()
+    def val(key):
+        return int(row[key] or 0) if row is not None else 0
+    share_click_uv = val("share_click_uv")
+    share_success_uv = val("share_success_uv")
+    travel_start_count = val("travel_start_count")
+    travel_complete_count = val("travel_complete_count")
+    return {
+        "today": {
+            "homeViewUv": val("home_view_uv"),
+            "petExposeUv": val("expose_uv"),
+            "adoptSuccessUv": val("adopt_success_uv"),
+            "contentConsumeUv": val("consume_uv"),
+            "contentInteractUv": val("interact_uv"),
+            "levelUpUv": val("level_up_uv"),
+            "travelStartUv": val("travel_start_uv"),
+            "shareClickUv": share_click_uv,
+            "shareSuccessUv": share_success_uv,
+            "pageViews": val("page_view_count"),
+            "petExposes": val("expose_count"),
+            "contentConsumes": val("consume_count"),
+            "contentInteracts": val("interact_count"),
+            "levelUps": val("level_up_count"),
+            "travelStarts": travel_start_count,
+            "travelCompletes": travel_complete_count,
+            "shareClicks": val("share_click_count"),
+            "shareSuccesses": val("share_success_count"),
+            "shareSuccessRate": round(share_success_uv / share_click_uv, 4) if share_click_uv else 0,
+            "travelCompleteRate": round(travel_complete_count / travel_start_count, 4) if travel_start_count else 0,
+        },
+        "series": analytics_daily_series(conn, days),
+        "funnel": [
+            {"label": "首页访问", "value": val("home_view_uv")},
+            {"label": "看山曝光", "value": val("expose_uv")},
+            {"label": "内容消费", "value": val("consume_uv")},
+            {"label": "升级", "value": val("level_up_uv")},
+            {"label": "游历发起", "value": val("travel_start_uv")},
+            {"label": "分享成功", "value": share_success_uv},
+        ],
+    }
+
+
 def project_daily_metric_series(conn, days=14):
     days = max(1, min(int(days or 14), 90))
     end_date = now_dt().date()
@@ -1491,6 +1797,7 @@ def admin_overview_payload(conn):
         "stats": stats,
         "levels": levels,
         "projectDailyMetrics": project_daily_metric_series(conn, 14),
+        "analytics": analytics_overview_payload(conn, 14),
         "adminTokens": sorted(ADMIN_USER_TOKENS),
     }
 
@@ -2138,6 +2445,19 @@ def grant_leaderboard_share_reward(conn, user_id):
     write_growth_log(conn, user_id, share_id, "travel_energy", LEADERBOARD_SHARE_TRAVEL_ENERGY, old["travel_energy"], new_travel_energy, "排行榜发圈子获得一次游历资格", "manual")
     if level_delta:
         write_growth_log(conn, user_id, share_id, "level", level_delta, old["level"], target_level, "排行榜发圈子直接升级", "manual")
+        record_analytics_event(
+            conn,
+            "pet_level_up",
+            user_id=user_id,
+            event_id=f"analytics_{share_id}_level_up",
+            target_type="pet",
+            target_id="liukanshan",
+            props={
+                "beforeLevel": old["level"],
+                "afterLevel": target_level,
+                "source": "leaderboard_share",
+            },
+        )
     if new_stage != old["stage"]:
         write_growth_log(conn, user_id, share_id, "stage", 0, old["stage"], new_stage, "等级变化触发阶段切换", "manual")
     return 200, {
@@ -3612,6 +3932,52 @@ def apply_content_event(payload, user_id):
             write_growth_log(conn, user_id, event_id, "level", new_level - old["level"], old["level"], new_level, "累计经验触发升级")
         if new_stage != old["stage"]:
             write_growth_log(conn, user_id, event_id, "stage", 0, old["stage"], new_stage, "等级变化触发阶段切换")
+        analytics_props = {
+            "contentId": content_id,
+            "contentType": content_type,
+            "actionType": action_type,
+            "petLevel": new_level,
+            "levelUp": new_level != old["level"],
+        }
+        if action_type in ("read", "watch"):
+            record_analytics_event(
+                conn,
+                "content_consume",
+                user_id=user_id,
+                event_id=f"analytics_{event_id}_{action_type}",
+                target_type="content",
+                target_id=content_id,
+                props=analytics_props,
+                client_ts=occurred_at,
+            )
+        if action_type in ("like", "comment", "collect"):
+            record_analytics_event(
+                conn,
+                "content_interact",
+                user_id=user_id,
+                event_id=f"analytics_{event_id}_{action_type}",
+                target_type="content",
+                target_id=content_id,
+                props=analytics_props,
+                client_ts=occurred_at,
+            )
+        if new_level != old["level"]:
+            record_analytics_event(
+                conn,
+                "pet_level_up",
+                user_id=user_id,
+                event_id=f"analytics_{event_id}_level_up",
+                target_type="pet",
+                target_id="liukanshan",
+                props={
+                    "beforeLevel": old["level"],
+                    "afterLevel": new_level,
+                    "source": "content_event",
+                    "contentId": content_id,
+                    "actionType": action_type,
+                },
+                client_ts=occurred_at,
+            )
 
         stat_date = occurred_at[:10]
         conn.execute(
@@ -4469,6 +4835,20 @@ def start_travel(user_id, requested_theme="auto"):
             """,
             (energy_cost, travel_id, started_at, now_text(), user_id),
         )
+        record_analytics_event(
+            conn,
+            "travel_start",
+            user_id=user_id,
+            event_id=f"analytics_{travel_id}_start",
+            target_type="travel",
+            target_id=travel_id,
+            props={
+                "travelId": travel_id,
+                "theme": theme,
+                "petLevel": profile["level"],
+                "energyCost": energy_cost,
+            },
+        )
         conn.commit()
         travel = fetch_travel(conn, travel_id)
     schedule_travel_summary(user_id, travel_id, theme)
@@ -4513,6 +4893,20 @@ def return_travel(user_id, force=True):
                 WHERE user_id = ?
                 """,
                 (travel["travel_id"], now_text(), user_id),
+            )
+            record_analytics_event(
+                conn,
+                "travel_complete",
+                user_id=user_id,
+                event_id=f"analytics_{travel['travel_id']}_complete",
+                target_type="travel",
+                target_id=travel["travel_id"],
+                props={
+                    "travelId": travel["travel_id"],
+                    "theme": travel["theme"],
+                    "petLevel": profile["level"] if profile is not None else None,
+                    "force": bool(force),
+                },
             )
         conn.commit()
         travel = fetch_current_travel(conn, user_id)
@@ -4613,6 +5007,36 @@ def claim_travel(user_id, travel_id=None):
             write_growth_log(conn, user_id, source_id, "level", new_level - old["level"], old["level"], new_level, "游历奖励触发升级", "manual")
         if new_stage != old["stage"]:
             write_growth_log(conn, user_id, source_id, "stage", 0, old["stage"], new_stage, "等级变化触发阶段切换", "manual")
+        record_analytics_event(
+            conn,
+            "travel_claim",
+            user_id=user_id,
+            event_id=f"analytics_{travel['travel_id']}_claim",
+            target_type="travel",
+            target_id=travel["travel_id"],
+            props={
+                "travelId": travel["travel_id"],
+                "theme": travel["theme"],
+                "petLevel": new_level,
+                "rewardExp": exp_reward,
+                "rewardMood": mood_reward,
+            },
+        )
+        if new_level != old["level"]:
+            record_analytics_event(
+                conn,
+                "pet_level_up",
+                user_id=user_id,
+                event_id=f"analytics_{travel['travel_id']}_level_up",
+                target_type="pet",
+                target_id="liukanshan",
+                props={
+                    "beforeLevel": old["level"],
+                    "afterLevel": new_level,
+                    "source": "travel_claim",
+                    "travelId": travel["travel_id"],
+                },
+            )
         conn.commit()
 
         claimed_travel = fetch_travel(conn, travel["travel_id"])
@@ -5259,7 +5683,33 @@ class Handler(BaseHTTPRequestHandler):
                     """,
                     (user_id, pet_name, now_text(), now_text()),
                 )
-                self.send_json(200, {"profile": camel_profile(fetch_profile(conn, user_id), user_id)})
+                profile_row = fetch_profile(conn, user_id)
+                record_analytics_event(
+                    conn,
+                    "pet_adopt_success",
+                    user_id=user_id,
+                    target_type="pet",
+                    target_id="liukanshan",
+                    props={
+                        "petLevel": profile_row["level"] if profile_row is not None else 1,
+                        "source": "profile_panel",
+                    },
+                )
+                self.send_json(200, {"profile": camel_profile(profile_row, user_id)})
+            return
+
+        if path == "/api/analytics/events":
+            session = self.require_auth_json()
+            if session is None:
+                return
+            events = body.get("events")
+            if not isinstance(events, list):
+                self.send_json(400, {"error": "BAD_ANALYTICS_EVENTS"})
+                return
+            visit_id = body.get("visitId") or body.get("visit_id")
+            with connect_db() as conn:
+                accepted, duplicated = record_analytics_events(conn, session["user_id"], visit_id, events)
+            self.send_json(200, {"ok": True, "accepted": accepted, "duplicated": duplicated})
             return
 
         if path == "/api/p0/pet/reset":
@@ -5561,6 +6011,21 @@ class Handler(BaseHTTPRequestHandler):
                     conn.rollback()
                     self.send_json(status, reward_payload)
                     return
+                record_analytics_event(
+                    conn,
+                    "pet_share_success",
+                    user_id=user_id,
+                    event_id=f"analytics_{reward_payload.get('shareId')}_success",
+                    target_type="community",
+                    target_id=str(COMMUNITY_RING_ID),
+                    props={
+                        "shareType": "level_card",
+                        "channel": "community",
+                        "ringName": "黑客松脑洞补给站",
+                        "petLevel": (reward_payload.get("reward") or {}).get("toLevel"),
+                        "contentToken": (upstream.get("data") or {}).get("content_token"),
+                    },
+                )
                 conn.commit()
             self.send_json(200, {
                 "ok": True,

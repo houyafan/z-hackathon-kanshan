@@ -197,6 +197,55 @@ CREATE TABLE IF NOT EXISTS project_daily_metric (
   UNIQUE (stat_date)
 );
 
+CREATE TABLE IF NOT EXISTS analytics_event (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_id TEXT NOT NULL,
+  user_id INTEGER DEFAULT NULL,
+  visit_id TEXT DEFAULT NULL,
+  event_name TEXT NOT NULL,
+  page_path TEXT DEFAULT NULL,
+  referer_path TEXT DEFAULT NULL,
+  target_type TEXT DEFAULT NULL,
+  target_id TEXT DEFAULT NULL,
+  props TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(props)),
+  client_ts TEXT DEFAULT NULL,
+  server_ts TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+  UNIQUE (event_id)
+);
+
+CREATE TABLE IF NOT EXISTS analytics_user_daily (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  stat_date TEXT NOT NULL,
+  page_view_count INTEGER NOT NULL DEFAULT 0 CHECK (page_view_count >= 0),
+  pet_module_expose_count INTEGER NOT NULL DEFAULT 0 CHECK (pet_module_expose_count >= 0),
+  pet_adopt_click_count INTEGER NOT NULL DEFAULT 0 CHECK (pet_adopt_click_count >= 0),
+  pet_adopt_success_count INTEGER NOT NULL DEFAULT 0 CHECK (pet_adopt_success_count >= 0),
+  content_open_count INTEGER NOT NULL DEFAULT 0 CHECK (content_open_count >= 0),
+  read_count INTEGER NOT NULL DEFAULT 0 CHECK (read_count >= 0),
+  watch_count INTEGER NOT NULL DEFAULT 0 CHECK (watch_count >= 0),
+  like_count INTEGER NOT NULL DEFAULT 0 CHECK (like_count >= 0),
+  comment_count INTEGER NOT NULL DEFAULT 0 CHECK (comment_count >= 0),
+  collect_count INTEGER NOT NULL DEFAULT 0 CHECK (collect_count >= 0),
+  level_up_count INTEGER NOT NULL DEFAULT 0 CHECK (level_up_count >= 0),
+  travel_start_count INTEGER NOT NULL DEFAULT 0 CHECK (travel_start_count >= 0),
+  travel_complete_count INTEGER NOT NULL DEFAULT 0 CHECK (travel_complete_count >= 0),
+  travel_claim_count INTEGER NOT NULL DEFAULT 0 CHECK (travel_claim_count >= 0),
+  handbook_open_count INTEGER NOT NULL DEFAULT 0 CHECK (handbook_open_count >= 0),
+  leaderboard_open_count INTEGER NOT NULL DEFAULT 0 CHECK (leaderboard_open_count >= 0),
+  share_click_count INTEGER NOT NULL DEFAULT 0 CHECK (share_click_count >= 0),
+  share_success_count INTEGER NOT NULL DEFAULT 0 CHECK (share_success_count >= 0),
+  share_refer_count INTEGER NOT NULL DEFAULT 0 CHECK (share_refer_count >= 0),
+  onboarding_show_count INTEGER NOT NULL DEFAULT 0 CHECK (onboarding_show_count >= 0),
+  onboarding_done_count INTEGER NOT NULL DEFAULT 0 CHECK (onboarding_done_count >= 0),
+  onboarding_skip_count INTEGER NOT NULL DEFAULT 0 CHECK (onboarding_skip_count >= 0),
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+  UNIQUE (user_id, stat_date)
+);
+
 CREATE TABLE IF NOT EXISTS pet_decay_config (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   decay_window TEXT NOT NULL,
@@ -400,6 +449,21 @@ CREATE INDEX IF NOT EXISTS idx_pet_daily_stat_date
 
 CREATE INDEX IF NOT EXISTS idx_project_daily_metric_date
   ON project_daily_metric (stat_date);
+
+CREATE INDEX IF NOT EXISTS idx_analytics_event_user_time
+  ON analytics_event (user_id, server_ts);
+
+CREATE INDEX IF NOT EXISTS idx_analytics_event_visit_time
+  ON analytics_event (visit_id, server_ts);
+
+CREATE INDEX IF NOT EXISTS idx_analytics_event_name_time
+  ON analytics_event (event_name, server_ts);
+
+CREATE INDEX IF NOT EXISTS idx_analytics_event_page_time
+  ON analytics_event (page_path, server_ts);
+
+CREATE INDEX IF NOT EXISTS idx_analytics_user_daily_date
+  ON analytics_user_daily (stat_date);
 
 CREATE INDEX IF NOT EXISTS idx_pet_decay_config_enabled_hours
   ON pet_decay_config (enabled, inactive_hours);

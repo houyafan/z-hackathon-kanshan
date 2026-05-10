@@ -3072,6 +3072,26 @@ button {
   stroke: #00b578;
 }
 
+.admin-line-expose,
+.admin-point-exposeUv {
+  stroke: #1677ff;
+}
+
+.admin-line-consume,
+.admin-point-consumeUv {
+  stroke: #00b578;
+}
+
+.admin-line-level,
+.admin-point-levelUpUv {
+  stroke: #ff9f1c;
+}
+
+.admin-line-share,
+.admin-point-shareSuccessUv {
+  stroke: #f759ab;
+}
+
 .admin-point {
   fill: #fff;
   stroke-width: 2;
@@ -3101,6 +3121,63 @@ button {
 
 .admin-chart-legend .login::before {
   background: #00b578;
+}
+
+.admin-analytics-legend .expose::before {
+  background: #1677ff;
+}
+
+.admin-analytics-legend .consume::before {
+  background: #00b578;
+}
+
+.admin-analytics-legend .level::before {
+  background: #ff9f1c;
+}
+
+.admin-analytics-legend .share::before {
+  background: #f759ab;
+}
+
+.admin-funnel-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.admin-funnel-list article {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr) 56px;
+  align-items: center;
+  gap: 12px;
+  color: #4e5969;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.admin-funnel-list div {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #eef4ff;
+}
+
+.admin-funnel-list i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #1677ff, #00b578);
+}
+
+.admin-funnel-list strong {
+  color: #121212;
+  text-align: right;
+}
+
+.admin-empty {
+  margin: 0;
+  color: #8491a5;
+  font-size: 13px;
 }
 
 .admin-section,

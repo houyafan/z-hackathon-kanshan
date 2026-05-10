@@ -50,8 +50,15 @@ const ONBOARDING_VERSION = "v2";
 const ONBOARDING_KEY = `liukanshan_onboarding_${ONBOARDING_VERSION}`;
 const ADMIN_USER_TOKENS = new Set(["p2wcex", "sunny-27-1-97"]);
 const ADMIN_USER_UIDS = new Set(["1908940156829918831", "2013197829758268031"]);
+const ANALYTICS_VISIT_KEY = "liukanshan_analytics_visit_id";
+const ANALYTICS_REFER_KEY = "liukanshan_analytics_last_path";
+const ANALYTICS_EXPOSE_KEY_PREFIX = "liukanshan_pet_panel_exposed_";
+const ANALYTICS_SHARE_REFER_KEY_PREFIX = "liukanshan_share_refer_";
 let onboardingTimer = null;
 let onboardingSnoozedUntil = 0;
+let analyticsQueue = [];
+let analyticsFlushTimer = null;
+let analyticsLastPagePath = "";
 const ONBOARDING_BLOCKING_SELECTOR = [
   ".content-modal",
   ".growth-log-modal",
@@ -60,6 +67,136 @@ const ONBOARDING_BLOCKING_SELECTOR = [
   ".travel-material-modal",
   ".share-card-overlay",
 ].join(", ");
+
+function randomId(prefix = "evt") {
+  const value = window.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  return `${prefix}_${value}`;
+}
+
+function analyticsVisitId() {
+  let visitId = sessionStorage.getItem(ANALYTICS_VISIT_KEY);
+  if (!visitId) {
+    visitId = randomId("visit");
+    sessionStorage.setItem(ANALYTICS_VISIT_KEY, visitId);
+  }
+  return visitId;
+}
+
+function analyticsPath() {
+  return `${window.location.pathname}${window.location.search || ""}`;
+}
+
+function analyticsRefererPath() {
+  const stored = sessionStorage.getItem(ANALYTICS_REFER_KEY);
+  if (stored) return stored;
+  try {
+    if (document.referrer) {
+      const url = new URL(document.referrer);
+      if (url.origin === window.location.origin) return `${url.pathname}${url.search || ""}`;
+    }
+  } catch {
+    return "";
+  }
+  return "";
+}
+
+function flushAnalytics() {
+  if (!currentUser || !analyticsQueue.length) return;
+  const events = analyticsQueue.splice(0, 50);
+  window.clearTimeout(analyticsFlushTimer);
+  analyticsFlushTimer = null;
+  fetch("/api/analytics/events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ visitId: analyticsVisitId(), events }),
+  }).catch(() => {
+    analyticsQueue = [...events, ...analyticsQueue].slice(0, 100);
+  });
+}
+
+function scheduleAnalyticsFlush(immediate = false) {
+  if (immediate) {
+    flushAnalytics();
+    return;
+  }
+  window.clearTimeout(analyticsFlushTimer);
+  analyticsFlushTimer = window.setTimeout(flushAnalytics, 1000);
+}
+
+function trackEvent(eventName, options = {}) {
+  if (!currentUser || !eventName) return;
+  analyticsQueue.push({
+    eventId: options.eventId || randomId("evt"),
+    eventName,
+    visitId: analyticsVisitId(),
+    pagePath: options.pagePath || analyticsPath(),
+    refererPath: options.refererPath ?? analyticsRefererPath(),
+    targetType: options.targetType || "",
+    targetId: options.targetId || "",
+    props: options.props || {},
+    clientTs: new Date().toISOString(),
+  });
+  if (analyticsQueue.length >= 20) {
+    flushAnalytics();
+  } else {
+    scheduleAnalyticsFlush(Boolean(options.immediate));
+  }
+}
+
+function trackPageView(path) {
+  if (analyticsLastPagePath === path) return;
+  analyticsLastPagePath = path;
+  trackEvent("page_view", {
+    pagePath: path,
+    refererPath: analyticsRefererPath(),
+    props: { route: path },
+  });
+  sessionStorage.setItem(ANALYTICS_REFER_KEY, path);
+}
+
+function trackShareReferIfNeeded() {
+  const params = new URLSearchParams(window.location.search || "");
+  const shareUser = params.get("lks_share_user");
+  const shareId = params.get("lks_share_id");
+  if (!shareUser && !shareId) return;
+  const key = `${ANALYTICS_SHARE_REFER_KEY_PREFIX}${analyticsVisitId()}`;
+  if (sessionStorage.getItem(key)) return;
+  sessionStorage.setItem(key, "1");
+  trackEvent("pet_share_refer", {
+    targetType: "share",
+    targetId: shareId || shareUser || "unknown",
+    props: { shareUser, shareId },
+  });
+}
+
+function observePetPanelExposure() {
+  if (!currentUser) return;
+  const panel = document.querySelector("[data-pet-panel]");
+  if (!panel) return;
+  const key = `${ANALYTICS_EXPOSE_KEY_PREFIX}${analyticsVisitId()}`;
+  if (sessionStorage.getItem(key)) return;
+  const markExposed = () => {
+    if (sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, "1");
+    trackEvent("pet_module_expose", {
+      targetType: "pet",
+      targetId: "liukanshan",
+      props: { adopted: Boolean(profile?.adopted), route: window.location.pathname },
+    });
+    trackShareReferIfNeeded();
+  };
+  if (!("IntersectionObserver" in window)) {
+    markExposed();
+    return;
+  }
+  const observer = new IntersectionObserver((entries) => {
+    if (entries.some((entry) => entry.isIntersecting && entry.intersectionRatio >= 0.35)) {
+      observer.disconnect();
+      markExposed();
+    }
+  }, { threshold: [0.35] });
+  observer.observe(panel);
+}
 
 function isAdminUser(user = currentUser) {
   if (!user) return false;
@@ -272,6 +409,11 @@ function markOnboardingStep(stepKey) {
   const field = fieldMap[stepKey];
   if (!field || state[field]) return;
   saveOnboardingState({ ...state, [field]: true });
+  trackEvent("onboarding_step_done", {
+    targetType: "onboarding",
+    targetId: stepKey,
+    props: { stepKey },
+  });
   scheduleOnboardingGuide(300);
 }
 
@@ -467,11 +609,22 @@ function renderOnboardingGuide(step) {
     </div>
   `;
   document.body.appendChild(guide);
+  trackEvent("onboarding_step_show", {
+    targetType: "onboarding",
+    targetId: step.id,
+    props: { stepId: step.id, stepIndex: step.index },
+  });
   guide.querySelector("[data-onboarding-later]").addEventListener("click", () => {
     onboardingSnoozedUntil = Date.now() + 3 * 60 * 1000;
     removeOnboardingGuide();
   });
   guide.querySelector("[data-onboarding-skip]").addEventListener("click", () => {
+    trackEvent("onboarding_skip", {
+      targetType: "onboarding",
+      targetId: step.id,
+      props: { stepId: step.id, stepIndex: step.index },
+      immediate: true,
+    });
     saveOnboardingState({ ...getOnboardingState(), skipped: true });
     removeOnboardingGuide();
     showToast("已跳过新手引导");
@@ -1596,6 +1749,16 @@ async function publishLeaderboardShare(button) {
   const originalText = button.textContent;
   button.disabled = true;
   button.textContent = "发送中...";
+  trackEvent("pet_share_click", {
+    targetType: "leaderboard",
+    targetId: leaderboardType,
+    props: {
+      position: "leaderboard_share_box",
+      petLevel: profile?.level,
+      channel: "community",
+    },
+    immediate: true,
+  });
   try {
     const data = await api("/api/p1/community/leaderboard-share", {
       method: "POST",
@@ -1725,6 +1888,11 @@ async function openLeaderboardPanel(type = leaderboardType) {
     return;
   }
   markOnboardingStep("leaderboard");
+  trackEvent("leaderboard_open", {
+    targetType: "leaderboard",
+    targetId: type === "travel_count" ? "travel_count" : "pet_level",
+    props: { source: "pet_panel" },
+  });
   leaderboardPanelOpen = true;
   leaderboardType = type === "travel_count" ? "travel_count" : "pet_level";
   renderLeaderboardPanel();
@@ -2569,6 +2737,82 @@ function adminDailyMetricChart(items = []) {
   `;
 }
 
+function adminAnalyticsChart(items = []) {
+  const rows = Array.isArray(items) ? items : [];
+  const width = 760;
+  const height = 260;
+  const pad = { top: 24, right: 26, bottom: 42, left: 42 };
+  const plotWidth = width - pad.left - pad.right;
+  const plotHeight = height - pad.top - pad.bottom;
+  const metricKeys = ["exposeUv", "consumeUv", "levelUpUv", "shareSuccessUv"];
+  const maxValue = Math.max(1, ...rows.flatMap((item) => metricKeys.map((key) => Number(item[key] || 0))));
+  const xFor = (index) => pad.left + (rows.length <= 1 ? plotWidth / 2 : (index / (rows.length - 1)) * plotWidth);
+  const yFor = (value) => pad.top + plotHeight - (Number(value || 0) / maxValue) * plotHeight;
+  const points = (key) => rows.map((item, index) => `${xFor(index).toFixed(1)},${yFor(item[key]).toFixed(1)}`).join(" ");
+  const yTicks = [0, Math.ceil(maxValue / 2), maxValue];
+  const dateLabel = (date) => {
+    const parts = String(date || "").split("-");
+    return parts.length === 3 ? `${Number(parts[1])}/${Number(parts[2])}` : String(date || "");
+  };
+  return `
+    <section class="card admin-section admin-chart-section">
+      <div class="side-title">
+        <span>行为埋点趋势</span>
+        <small>近 ${rows.length || 14} 天轻量行为 UV</small>
+      </div>
+      <svg class="admin-line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="行为埋点折线图">
+        ${yTicks.map((tick) => `
+          <g>
+            <line x1="${pad.left}" y1="${yFor(tick).toFixed(1)}" x2="${width - pad.right}" y2="${yFor(tick).toFixed(1)}"></line>
+            <text class="admin-chart-y" x="${pad.left - 10}" y="${(yFor(tick) + 4).toFixed(1)}">${formatCount(tick)}</text>
+          </g>
+        `).join("")}
+        ${rows.map((item, index) => index % Math.max(1, Math.ceil(rows.length / 7)) === 0 || index === rows.length - 1 ? `
+          <text class="admin-chart-x" x="${xFor(index).toFixed(1)}" y="${height - 12}">${escapeHTML(dateLabel(item.date))}</text>
+        ` : "").join("")}
+        <polyline class="admin-line admin-line-expose" points="${points("exposeUv")}"></polyline>
+        <polyline class="admin-line admin-line-consume" points="${points("consumeUv")}"></polyline>
+        <polyline class="admin-line admin-line-level" points="${points("levelUpUv")}"></polyline>
+        <polyline class="admin-line admin-line-share" points="${points("shareSuccessUv")}"></polyline>
+        ${rows.map((item, index) => metricKeys.map((key) => `
+          <circle class="admin-point admin-point-${key}" cx="${xFor(index).toFixed(1)}" cy="${yFor(item[key]).toFixed(1)}" r="2.5">
+            <title>${escapeHTML(item.date)} ${key} ${formatCount(item[key] || 0)}</title>
+          </circle>
+        `).join("")).join("")}
+      </svg>
+      <div class="admin-chart-legend admin-analytics-legend">
+        <span class="expose">看山曝光</span>
+        <span class="consume">内容消费</span>
+        <span class="level">升级</span>
+        <span class="share">分享成功</span>
+      </div>
+    </section>
+  `;
+}
+
+function adminAnalyticsFunnel(funnel = []) {
+  const rows = Array.isArray(funnel) ? funnel : [];
+  const maxValue = Math.max(1, ...rows.map((item) => Number(item.value || 0)));
+  return `
+    <section class="card admin-section">
+      <div class="side-title"><span>关键行为漏斗</span><small>今日 UV，轻量可观测</small></div>
+      <div class="admin-funnel-list">
+        ${rows.map((item) => {
+          const value = Number(item.value || 0);
+          const width = Math.max(4, (value / maxValue) * 100);
+          return `
+            <article>
+              <span>${escapeHTML(item.label || "")}</span>
+              <div><i style="width:${width.toFixed(1)}%"></i></div>
+              <strong>${formatCount(value)}</strong>
+            </article>
+          `;
+        }).join("") || `<p class="admin-empty">今日还没有行为数据</p>`}
+      </div>
+    </section>
+  `;
+}
+
 function renderAdmin() {
   if (!isAdminUser()) {
     app.innerHTML = `
@@ -2595,6 +2839,8 @@ function renderAdmin() {
   const stats = adminOverview?.stats || {};
   const levels = adminOverview?.levels || [];
   const projectDailyMetrics = adminOverview?.projectDailyMetrics || [];
+  const analytics = adminOverview?.analytics || {};
+  const analyticsToday = analytics.today || {};
   app.innerHTML = `
     ${shell("admin")}
     <main class="admin-page">
@@ -2614,7 +2860,16 @@ function renderAdmin() {
         ${adminStatCard("成长日志", stats.growthEvents ?? "-")}
         ${adminStatCard("游历记录", stats.travels ?? "-")}
       </section>
+      <section class="admin-stat-grid">
+        ${adminStatCard("今日看山曝光 UV", analyticsToday.petExposeUv ?? 0)}
+        ${adminStatCard("今日内容消费 UV", analyticsToday.contentConsumeUv ?? 0)}
+        ${adminStatCard("今日升级 UV", analyticsToday.levelUpUv ?? 0)}
+        ${adminStatCard("今日游历 UV", analyticsToday.travelStartUv ?? 0)}
+        ${adminStatCard("今日分享成功 UV", analyticsToday.shareSuccessUv ?? 0)}
+      </section>
       ${adminDailyMetricChart(projectDailyMetrics)}
+      ${adminAnalyticsChart(analytics.series || [])}
+      ${adminAnalyticsFunnel(analytics.funnel || [])}
       <section class="card admin-section">
         <div class="side-title"><span>等级配置</span><small>当前只读，后续开放编辑</small></div>
         <div class="admin-level-table">
@@ -2630,7 +2885,7 @@ function renderAdmin() {
       <section class="card admin-section">
         <div class="side-title"><span>预留能力</span><small>下一阶段</small></div>
         <div class="admin-placeholder-grid">
-          <div><strong>埋点看板</strong><small>已接入注册 / 登录趋势，后续补留存、路径、互动漏斗</small></div>
+          <div><strong>埋点看板</strong><small>已接入轻量行为漏斗、趋势和每日注册登录</small></div>
           <div><strong>等级编辑</strong><small>称号、阶段、2D 图、升级阈值</small></div>
           <div><strong>运营开关</strong><small>奖励、衰减、游历资格配置</small></div>
         </div>
@@ -2985,6 +3240,15 @@ async function submitCommunityComment(pin, form) {
 
 async function openContent(item, sourceElement) {
   if (!item) return;
+  trackEvent("content_open", {
+    targetType: "content",
+    targetId: item.id,
+    props: {
+      contentType: item.type,
+      actionType: item.action,
+      source: sourceElement?.dataset?.source || "feed",
+    },
+  });
   try {
     const data = await api(`/api/p0/contents/${encodeURIComponent(item.id)}`);
     renderContentModal(data.content);
@@ -3497,6 +3761,11 @@ function showTravelMaterialModal(payload, source) {
 }
 
 async function openTravelHandbook() {
+  trackEvent("handbook_open", {
+    targetType: "travel",
+    targetId: "handbook",
+    props: { source: "pet_panel" },
+  });
   try {
     const data = await api("/api/p1/travel/handbook?limit=20");
     renderTravelHandbook(data.handbook || []);
@@ -3547,6 +3816,12 @@ function renderTravelHandbook(entries) {
 }
 
 async function adoptPet() {
+  trackEvent("pet_adopt_click", {
+    targetType: "pet",
+    targetId: "liukanshan",
+    props: { source: "profile_panel" },
+    immediate: true,
+  });
   try {
     const data = await api("/api/p0/pet/adopt", {
       method: "POST",
@@ -3729,10 +4004,13 @@ function renderCurrentRoute() {
     renderRecommend();
   }
   window.requestAnimationFrame(() => syncCharacter());
+  trackPageView(path);
+  window.requestAnimationFrame(observePetPanelExposure);
   scheduleOnboardingGuide();
 }
 
 window.addEventListener("popstate", renderCurrentRoute);
+window.addEventListener("pagehide", flushAnalytics);
 document.addEventListener("click", (event) => {
   const link = event.target.closest("a");
   if (!link) return;
