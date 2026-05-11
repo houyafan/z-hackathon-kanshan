@@ -16,6 +16,7 @@ let feedNextOffset = 0;
 let feedHasMore = true;
 let feedLoading = false;
 let feedScrollBound = false;
+let recommendLayoutFrame = 0;
 let hotItems = [];
 let hotItemsPromise = null;
 let hotItemsLoaded = false;
@@ -1968,6 +1969,7 @@ function replaceSidebarLeaderboards() {
   });
   replacePetPanels();
   bindSidebarLeaderboard();
+  updateRecommendPageLayout();
 }
 
 function replacePetPanels() {
@@ -1979,6 +1981,7 @@ function replacePetPanels() {
   bindPetHoverCard();
   bindSidebarLeaderboard();
   bindPanelBasics();
+  updateRecommendPageLayout();
 }
 
 function ensureSidebarLeaderboard() {
@@ -3440,6 +3443,7 @@ function bindCommon() {
 
 function bindRecommend() {
   bindRecommendScroll();
+  updateRecommendPageLayout();
   const recommendScroller = document.querySelector(".recommend-page .recommend-main");
   if (recommendScroller && !recommendScroller.dataset.scrollBound) {
     recommendScroller.dataset.scrollBound = "1";
@@ -3484,8 +3488,60 @@ function bindRecommend() {
   });
 }
 
+function updateRecommendPageLayout() {
+  const page = document.querySelector(".recommend-page");
+  if (!page) return;
+  const layoutItems = [...page.querySelectorAll(".author-note, .side-stack, .recommend-main")];
+  const sideItems = layoutItems.filter((item) => !item.classList.contains("recommend-main"));
+  if (window.matchMedia("(max-width: 1100px)").matches) {
+    page.style.minHeight = "";
+    layoutItems.forEach((item) => {
+      item.style.top = "";
+      item.style.transform = "";
+      delete item.dataset.recommendBaseTop;
+    });
+    return;
+  }
+  layoutItems.forEach((item) => {
+    item.style.top = "";
+    item.style.transform = "";
+  });
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+  const maxSideHeight = sideItems.reduce((maxHeight, item) => Math.max(maxHeight, item.scrollHeight), 0);
+  page.style.minHeight = `${Math.max(viewportHeight - 62, maxSideHeight + 20)}px`;
+  layoutItems.forEach((item) => {
+    item.dataset.recommendBaseTop = String(item.getBoundingClientRect().top + window.scrollY);
+  });
+  updateRecommendFloatingColumns();
+}
+
+function updateRecommendFloatingColumns() {
+  const page = document.querySelector(".recommend-page");
+  if (!page || window.matchMedia("(max-width: 1100px)").matches) return;
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+  const scrollY = window.scrollY || window.pageYOffset || 0;
+  page.querySelectorAll(".author-note, .side-stack, .recommend-main").forEach((item) => {
+    const baseTop = Number(item.dataset.recommendBaseTop || 0);
+    if (!baseTop) return;
+    const targetTop = item.classList.contains("recommend-main")
+      ? 72
+      : Math.min(74, viewportHeight - item.scrollHeight - 10);
+    const offset = Math.max(0, scrollY + targetTop - baseTop);
+    item.style.transform = offset > 0 ? `translateY(${offset}px)` : "";
+  });
+}
+
+function scheduleRecommendFloatingColumns() {
+  if (recommendLayoutFrame) return;
+  recommendLayoutFrame = window.requestAnimationFrame(() => {
+    recommendLayoutFrame = 0;
+    updateRecommendFloatingColumns();
+  });
+}
+
 function maybeLoadMoreContents(scrollTarget = window) {
   if (window.location.pathname !== "/" || feedLoading || !feedHasMore) return;
+  if (scrollTarget === window && document.querySelector(".recommend-page .recommend-main")) return;
   const remaining = scrollTarget === window
     ? document.documentElement.scrollHeight - window.scrollY - window.innerHeight
     : scrollTarget.scrollHeight - scrollTarget.scrollTop - scrollTarget.clientHeight;
@@ -3501,7 +3557,11 @@ function maybeLoadMoreContents(scrollTarget = window) {
 function bindRecommendScroll() {
   if (feedScrollBound) return;
   feedScrollBound = true;
-  window.addEventListener("scroll", () => maybeLoadMoreContents(window), { passive: true });
+  window.addEventListener("scroll", () => {
+    maybeLoadMoreContents(window);
+    scheduleRecommendFloatingColumns();
+  }, { passive: true });
+  window.addEventListener("resize", () => updateRecommendPageLayout(), { passive: true });
 }
 
 function bindCommunity() {

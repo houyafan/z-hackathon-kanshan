@@ -362,10 +362,10 @@ button {
 }
 
 .recommend-page {
-  height: calc(100vh - 62px);
-  grid-template-rows: minmax(0, 1fr);
+  min-height: calc(100vh - 62px);
+  align-items: start;
   padding-bottom: 10px;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .recommend-main {
@@ -373,7 +373,9 @@ button {
 }
 
 .recommend-page .recommend-main {
-  height: 100%;
+  position: relative;
+  top: auto;
+  height: calc(100vh - 82px);
   min-height: 0;
   padding-bottom: 38px;
   overflow-y: auto;
@@ -1423,6 +1425,8 @@ button {
 
 .recommend-page .author-note,
 .recommend-page .side-stack {
+  position: relative;
+  top: auto;
   max-height: none;
   overflow: visible;
 }
@@ -4673,6 +4677,8 @@ button {
   }
 
   .recommend-page .recommend-main {
+    position: static;
+    top: auto;
     height: auto;
     padding-bottom: 0;
     overflow: visible;
