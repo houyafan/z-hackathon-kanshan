@@ -4520,15 +4520,15 @@ if (authUser) {
   await loadDailyStat();
   await loadContents();
   if (window.location.pathname === "/hot") {
-    await loadHotItems();
+    await loadHotItems().catch(() => {});
   } else {
     loadHotItems().catch(() => {});
   }
   if (window.location.pathname === "/follow") {
-    await loadFollowMoments({ sync: true });
+    await loadFollowMoments({ sync: true }).catch(() => {});
   }
   if (window.location.pathname === "/community") {
-    await loadCommunity();
+    await loadCommunity().catch(() => {});
   }
   renderCurrentRoute();
   syncFollowMoments();
