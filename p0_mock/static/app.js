@@ -11,6 +11,11 @@ let _lastPatAt = 0;
 let travelState = null;
 let character = null;
 let feedItems = [];
+let feedSeed = "";
+let feedNextOffset = 0;
+let feedHasMore = true;
+let feedLoading = false;
+let feedScrollBound = false;
 let hotItems = [];
 let hotItemsPromise = null;
 let hotItemsLoaded = false;
@@ -53,6 +58,7 @@ const AUTHOR_NOTE_COLLAPSED_KEY = "liukanshan_author_note_collapsed";
 const AUTHOR_ARTICLE_URL = "";
 const ADOPTION_STAY_MS = 10000;
 const LEVEL_UP_STAY_MS = 10000;
+const RECOMMEND_PAGE_SIZE = 10;
 const ADMIN_USER_TOKENS = new Set(["p2wcex", "sunny-27-1-97"]);
 const ADMIN_USER_UIDS = new Set(["1908940156829918831", "2013197829758268031"]);
 const ANALYTICS_VISIT_KEY = "liukanshan_analytics_visit_id";
@@ -1476,10 +1482,51 @@ async function loadDailyStat() {
   return dailyStat;
 }
 
-async function loadContents() {
-  const data = await api("/api/p0/contents?limit=30");
-  feedItems = data.contents;
+function ensureFeedSeed(reset = false) {
+  if (reset || !feedSeed) {
+    feedSeed = randomId("recommend");
+  }
+  return feedSeed;
+}
+
+async function loadContents({ reset = true } = {}) {
+  if (feedLoading) return feedItems;
+  if (reset) {
+    feedItems = [];
+    feedNextOffset = 0;
+    feedHasMore = true;
+    ensureFeedSeed(true);
+  } else if (!feedHasMore) {
+    return feedItems;
+  }
+  feedLoading = true;
+  const params = new URLSearchParams({
+    limit: String(RECOMMEND_PAGE_SIZE),
+    offset: String(feedNextOffset),
+    seed: ensureFeedSeed(),
+  });
+  try {
+    const data = await api(`/api/p0/contents?${params.toString()}`);
+    const existingIds = new Set(feedItems.map((item) => item.id));
+    const nextItems = (data.contents || []).filter((item) => item?.id && !existingIds.has(item.id));
+    feedItems = reset ? nextItems : [...feedItems, ...nextItems];
+    feedNextOffset = Number(data.nextOffset ?? (feedNextOffset + nextItems.length));
+    feedHasMore = Boolean(data.hasMore);
+  } finally {
+    feedLoading = false;
+  }
   return feedItems;
+}
+
+async function loadMoreContents() {
+  if (feedLoading || !feedHasMore || window.location.pathname !== "/") return;
+  const beforeCount = feedItems.length;
+  await loadContents({ reset: false });
+  if (window.location.pathname === "/" && feedItems.length !== beforeCount) {
+    renderRecommend();
+  } else {
+    updateRecommendFooter();
+  }
 }
 
 async function loadAdminOverview() {
@@ -3162,6 +3209,7 @@ function renderRecommend() {
       <section class="recommend-main">
         ${composer()}
         ${feedItems.map(feedCard).join("")}
+        ${recommendLoadMoreFooter()}
       </section>
       <aside class="side-stack">
         ${sidebarCards({ includeLeaderboard: true })}
@@ -3170,6 +3218,22 @@ function renderRecommend() {
   `;
   bindCommon();
   bindRecommend();
+}
+
+function recommendLoadMoreFooter() {
+  if (feedLoading) {
+    return `<div class="recommend-load-state" data-recommend-load-state>加载中...</div>`;
+  }
+  if (!feedHasMore) {
+    return `<div class="recommend-load-state" data-recommend-load-state>没有更多内容了</div>`;
+  }
+  return `<div class="recommend-load-state" data-recommend-load-state>继续滑动加载更多</div>`;
+}
+
+function updateRecommendFooter() {
+  const footer = document.querySelector("[data-recommend-load-state]");
+  if (!footer) return;
+  footer.outerHTML = recommendLoadMoreFooter();
 }
 
 function renderFollow() {
@@ -3335,6 +3399,7 @@ function bindCommon() {
 }
 
 function bindRecommend() {
+  bindRecommendScroll();
   document.querySelectorAll("[data-consume]").forEach((button) => {
     button.addEventListener("click", () => {
       const item = feedItems.find((entry) => entry.id === button.dataset.consume);
@@ -3371,6 +3436,23 @@ function bindRecommend() {
       button.classList.add("active");
     });
   });
+}
+
+function bindRecommendScroll() {
+  if (feedScrollBound) return;
+  feedScrollBound = true;
+  window.addEventListener("scroll", () => {
+    if (window.location.pathname !== "/" || feedLoading || !feedHasMore) return;
+    const doc = document.documentElement;
+    const remaining = doc.scrollHeight - window.scrollY - window.innerHeight;
+    if (remaining < 520) {
+      loadMoreContents().catch(() => {
+        feedLoading = false;
+        updateRecommendFooter();
+        showToast("推荐内容加载失败");
+      });
+    }
+  }, { passive: true });
 }
 
 function bindCommunity() {

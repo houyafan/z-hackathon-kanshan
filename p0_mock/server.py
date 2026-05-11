@@ -1384,6 +1384,12 @@ def content_row_id(row):
     return row["content_id"]
 
 
+def recommend_sort_key(item, seed):
+    content_id = str(item.get("id") or "")
+    digest = hashlib.sha256(f"{seed}:{content_id}".encode("utf-8")).hexdigest()
+    return digest
+
+
 def fetch_level_visual(conn, level):
     try:
         safe_level = max(1, int(level))
@@ -3009,10 +3015,14 @@ def load_recommend_feed():
         return []
 
 
-def fetch_contents(conn, limit=20):
+def fetch_contents(conn, limit=20, offset=0, seed=""):
     recommend_feed = load_recommend_feed()
     if recommend_feed:
-        return recommend_feed[:limit]
+        ordered_feed = (
+            sorted(recommend_feed, key=lambda item: recommend_sort_key(item, seed))
+            if seed else recommend_feed
+        )
+        return ordered_feed[offset:offset + limit]
     return conn.execute(
         """
         SELECT *
@@ -3020,9 +3030,19 @@ def fetch_contents(conn, limit=20):
         WHERE status = 'published'
         ORDER BY hot_score DESC, published_at DESC, id DESC
         LIMIT ?
+        OFFSET ?
         """,
-        (limit,),
+        (limit, offset),
     ).fetchall()
+
+
+def content_total_count(conn):
+    recommend_feed = load_recommend_feed()
+    if recommend_feed:
+        return len(recommend_feed)
+    return conn.execute(
+        "SELECT COUNT(*) AS c FROM zhihu_content_pool WHERE status = 'published'"
+    ).fetchone()["c"]
 
 
 def fetch_content(conn, content_id):
@@ -5462,10 +5482,13 @@ class Handler(BaseHTTPRequestHandler):
             qs = parse_qs(parsed.query)
             limit = int((qs.get("limit") or [20])[0])
             limit = max(1, min(limit, 100))
+            offset = int((qs.get("offset") or [0])[0])
+            offset = max(0, offset)
+            seed = str((qs.get("seed") or [""])[0])[:80]
             session = self.get_current_session()
             user_id = session["user_id"] if session else None
             with connect_db() as conn:
-                rows = fetch_contents(conn, limit)
+                rows = fetch_contents(conn, limit, offset=offset, seed=seed)
                 interaction_map = fetch_content_interactions(
                     conn,
                     user_id,
@@ -5475,7 +5498,17 @@ class Handler(BaseHTTPRequestHandler):
                     camel_content(row, interactions=interaction_map.get(content_row_id(row)))
                     for row in rows
                 ]
-                self.send_json(200, {"contents": contents})
+                total = content_total_count(conn)
+                next_offset = offset + len(contents)
+                self.send_json(200, {
+                    "contents": contents,
+                    "offset": offset,
+                    "limit": limit,
+                    "nextOffset": next_offset,
+                    "hasMore": next_offset < total,
+                    "total": total,
+                    "seed": seed,
+                })
             return
 
         if path in ("/api/p0/hot", "/api/p0/hot-list"):
