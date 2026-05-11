@@ -398,6 +398,62 @@ button {
   font-weight: 900;
 }
 
+.author-note-cta {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid rgba(234, 88, 12, 0.28);
+  border-radius: 8px;
+  background: rgba(255, 247, 237, 0.92);
+  box-shadow: inset 3px 0 0 #ea580c;
+}
+
+.author-note-cta strong {
+  display: block;
+  margin-bottom: 6px;
+  color: #9a3412;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.author-note-cta p {
+  margin-bottom: 0;
+}
+
+.author-note-cta mark {
+  background: #ea580c;
+  color: #fff;
+}
+
+.author-note-ugc {
+  border-color: rgba(15, 118, 110, 0.3);
+  background: rgba(240, 253, 250, 0.92);
+  box-shadow: inset 3px 0 0 #0f766e;
+}
+
+.author-note-ugc strong {
+  color: #0f766e;
+}
+
+.author-inline-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #0f766e;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+  text-decoration: none;
+  vertical-align: baseline;
+}
+
+.author-inline-link.pending {
+  border: 1px dashed rgba(15, 118, 110, 0.45);
+  background: #fff;
+  color: #64748b;
+}
+
 .author-note-footer {
   padding-top: 4px;
 }

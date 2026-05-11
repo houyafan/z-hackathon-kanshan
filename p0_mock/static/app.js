@@ -2232,8 +2232,11 @@ function renderAuthorNote() {
     `;
   }
   const linkHtml = AUTHOR_ARTICLE_URL
-    ? `<a class="author-note-link" href="${escapeHTML(AUTHOR_ARTICLE_URL)}" target="_blank" rel="noopener">项目文章链接</a>`
-    : `<span class="author-note-link pending">项目文章链接 · 敬请期待</span>`;
+    ? `<a class="author-note-link" href="${escapeHTML(AUTHOR_ARTICLE_URL)}" target="_blank" rel="noopener">打开项目文章</a>`
+    : `<span class="author-note-link pending">项目文章链接待补充</span>`;
+  const inlineArticleLink = AUTHOR_ARTICLE_URL
+    ? `<a class="author-inline-link" href="${escapeHTML(AUTHOR_ARTICLE_URL)}" target="_blank" rel="noopener">项目文章链接</a>`
+    : `<span class="author-inline-link pending">项目文章链接待补充</span>`;
   return `
     <aside class="author-note">
       <div class="author-note-head">
@@ -2243,8 +2246,14 @@ function renderAuthorNote() {
       <p><strong>HI 大家好，我们是「看山陪伴计划」开发团队。</strong></p>
       <p>本项目为 <mark>知乎黑客松专属原创作品</mark>，<mark>1:1 高精度复刻知乎主站 PC 端完整页面</mark>；现已独立落地 <mark>刘看山多元宇宙 S1 赛季</mark>全套内容设计，涵盖宏大角色世界观、10 级星际成长等级体系、专属背景故事设定，同时实现首页常驻陪伴展示、排行榜成长体系、圈子分享裂变等核心玩法闭环，可沉浸式体验电子宠物养成、社交互动的完整乐趣。</p>
       <p>项目以看山多元宇宙为长线宏大世界观基底，目前仅完成首个「知乎星」S1 赛季篇章。未来我们将持续拓展更多未知星系与文明星球，开启多赛季剧情连载，迭代全新等级形象外观，解锁专属游历支线、多元结伴探险等全新玩法；持续丰富 IP 内容生态与陪伴互动形式，为产品预留充足长线迭代空间与创意延伸可能。</p>
-      <p>如果你喜欢这款趣味电子宠物陪伴项目，恳请前往下方项目文章链接 <mark>点赞、评论、支持</mark>。你的每一次点赞和互动，都能为项目增加更多关注度，助力刘看山陪伴计划早日落地入驻知乎主站，面向全网用户正式上线。</p>
-      <p>也欢迎每一位体验用户，自发发布想法、创作文章，分享你的游玩体验、玩法建议、等级外观喜好以及未来创意脑洞。发布内容只需 <mark>@看山七子</mark>，我们团队都会逐一认真阅读、及时互动回复，虚心收集每一位用户的真实建议，持续迭代扩充刘看山宇宙后续赛季篇章、全新玩法与社交体系，和大家一起共建专属刘看山的多元宇宙大世界。</p>
+      <div class="author-note-cta">
+        <strong>喜欢这个项目的话，请帮我们点一点！</strong>
+        <p>恳请前往 ${inlineArticleLink} <mark>点赞</mark>、<mark>评论</mark>、<mark>支持</mark>。你的每一次点赞和互动，都能为项目增加更多关注度，助力刘看山陪伴计划早日落地入驻知乎主站，面向全网用户正式上线。</p>
+      </div>
+      <div class="author-note-cta author-note-ugc">
+        <strong>也欢迎直接发布体验反馈</strong>
+        <p>自发发布想法、创作文章，分享你的游玩体验、玩法建议、等级外观喜好以及未来创意脑洞。发布内容只需 <mark>@看山七子</mark>，我们团队都会逐一认真阅读、及时互动回复，持续迭代扩充刘看山宇宙后续赛季篇章、全新玩法与社交体系。</p>
+      </div>
       <div class="author-note-footer">${linkHtml}</div>
     </aside>
   `;
