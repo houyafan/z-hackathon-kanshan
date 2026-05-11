@@ -51,6 +51,8 @@ const ONBOARDING_KEY = `liukanshan_onboarding_${ONBOARDING_VERSION}`;
 const STORY_INTRO_VERSION = "v1";
 const AUTHOR_NOTE_COLLAPSED_KEY = "liukanshan_author_note_collapsed";
 const AUTHOR_ARTICLE_URL = "";
+const ADOPTION_STAY_MS = 10000;
+const LEVEL_UP_STAY_MS = 10000;
 const ADMIN_USER_TOKENS = new Set(["p2wcex", "sunny-27-1-97"]);
 const ADMIN_USER_UIDS = new Set(["1908940156829918831", "2013197829758268031"]);
 const ANALYTICS_VISIT_KEY = "liukanshan_analytics_visit_id";
@@ -394,7 +396,7 @@ function playHomecomingEffect() {
   card.className = "pet-home-card";
   card.innerHTML = `<strong>Lv.1 · ${escapeHTML(milestone.title)}</strong><span>${escapeHTML(milestone.quote)}</span>`;
   layer.appendChild(card);
-  removeAfter(card, 3200);
+  removeAfter(card, ADOPTION_STAY_MS);
 
   const centerX = window.innerWidth / 2;
   const centerY = window.innerHeight * 0.58;
@@ -414,7 +416,7 @@ function playHomecomingEffect() {
       message: profileBubbleTitle(),
       useRandomMessage: false,
     });
-  }, 3900);
+  }, ADOPTION_STAY_MS);
 }
 
 function rewardText(reward) {
@@ -4089,11 +4091,11 @@ async function adoptPet() {
     syncCharacter();
     closeStoryIntro(true);
     removeOnboardingGuide();
-    onboardingSnoozedUntil = Date.now() + 4200;
+    onboardingSnoozedUntil = Date.now() + ADOPTION_STAY_MS + 400;
     renderCurrentRoute();
     showToast("刘看山已到家");
-    character?.setMessage("你好，我是刘看山~", { autoHide: 2600 });
-    scheduleOnboardingGuide(4400);
+    character?.setMessage("你好，我是刘看山~", { autoHide: ADOPTION_STAY_MS });
+    scheduleOnboardingGuide(ADOPTION_STAY_MS + 400);
     window.requestAnimationFrame(() => playHomecomingEffect());
   } catch (error) {
     showToast(error.message || "领养失败");
@@ -4182,18 +4184,18 @@ function showReward(reward, sourceElement) {
   if (reward.levelUp) {
     showLevelUpPreview(reward).catch((error) => console.warn("level preview failed", error));
     if (Number(reward.toLevel) >= 10 && Number(reward.fromLevel || 0) < 10) {
-      window.setTimeout(() => showLevelEndingModal(), 1100);
+      window.setTimeout(() => showLevelEndingModal(), LEVEL_UP_STAY_MS);
     }
   }
   if (character && reward.levelUp) {
     const centerX = window.innerWidth / 2;
     const centerY = window.innerHeight * 0.58;
     character.setPosition?.(centerX, centerY);
-    character.playEvolveEffect?.({ message, autoHide: 3900 });
+    character.playEvolveEffect?.({ message, autoHide: LEVEL_UP_STAY_MS });
     window.setTimeout(() => {
       character?.setPosition?.(window.innerWidth - 150, window.innerHeight - 200);
       character?.setMessage?.(profileBubbleTitle(), { autoHide: 2200 });
-    }, 4200);
+    }, LEVEL_UP_STAY_MS);
   }
   if (sourceElement && character && !reward.levelUp && rewardWalkEnabled) {
     const defaultArrivedMessage = character.config.arrivedMessage;
@@ -4228,7 +4230,7 @@ async function showLevelUpPreview(reward) {
     </div>
   `;
   document.body.appendChild(panel);
-  removeAfter(panel, Number(reward.toLevel) >= 10 ? 6800 : 5200);
+  removeAfter(panel, LEVEL_UP_STAY_MS);
 }
 
 async function showLevelEndingModal() {
