@@ -2353,10 +2353,10 @@ function renderAuthorNote() {
     `;
   }
   const linkHtml = AUTHOR_ARTICLE_URL
-    ? `<a class="author-note-link" href="${escapeHTML(AUTHOR_ARTICLE_URL)}" target="_blank" rel="noopener">打开项目文章</a>`
+    ? `<a class="author-note-link" href="${escapeHTML(AUTHOR_ARTICLE_URL)}" target="_blank" rel="noopener" aria-label="打开项目文章链接">打开项目文章</a>`
     : `<span class="author-note-link pending">项目文章链接待补充</span>`;
   const inlineArticleLink = AUTHOR_ARTICLE_URL
-    ? `<a class="author-inline-link" href="${escapeHTML(AUTHOR_ARTICLE_URL)}" target="_blank" rel="noopener">项目文章链接</a>`
+    ? `<a class="author-inline-link" href="${escapeHTML(AUTHOR_ARTICLE_URL)}" target="_blank" rel="noopener" aria-label="点击打开项目文章链接">点击打开项目文章</a>`
     : `<span class="author-inline-link pending">项目文章链接待补充</span>`;
   return `
     <aside class="author-note">
