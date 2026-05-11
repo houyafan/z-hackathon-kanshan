@@ -1143,6 +1143,7 @@ class RoamingCharacter {
         this.dragPointerId = null;
         this.dragMode = null;
         this.isDragRotating = false;
+        this.lastInteractionBubbleAt = 0;
         this.animationTime = 0;
 
         this.characterElement = document.getElementById(this.config.containerId);
@@ -1506,6 +1507,18 @@ class RoamingCharacter {
         return Boolean(target.closest('.pet-hover-card') || target.closest('button') || target.closest('a'));
     }
 
+    emitInteractionBubble(mode, event) {
+        const now = Date.now();
+        if (now - this.lastInteractionBubbleAt < 1400) return;
+        this.lastInteractionBubbleAt = now;
+        window.dispatchEvent(new CustomEvent('liukanshan-interaction-bubble', {
+            detail: {
+                mode,
+                modifier: event?.metaKey ? 'command' : event?.shiftKey ? 'shift' : event?.altKey ? 'alt' : '',
+            },
+        }));
+    }
+
     startDragRotate(event) {
         if (!this.config.enableDragRotate || !this.model || this.shouldIgnoreDragTarget(event.target)) return;
         const shouldRotate = event.shiftKey || event.altKey || event.metaKey;
@@ -1523,6 +1536,7 @@ class RoamingCharacter {
         this.targetX = this.characterX;
         this.targetY = this.characterY;
         this.characterElement.classList.add(shouldRotate ? 'is-drag-rotating' : 'is-drag-moving');
+        this.emitInteractionBubble(this.dragMode, event);
         this.characterElement.setPointerCapture?.(event.pointerId);
         event.preventDefault();
     }

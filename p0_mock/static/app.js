@@ -1,4 +1,4 @@
-import { initRoamingCharacter } from "/3d-liukanshan-roaming/roaming-character.js?v=32";
+import { initRoamingCharacter } from "/3d-liukanshan-roaming/roaming-character.js?v=33";
 
 const app = document.getElementById("app");
 const toast = document.getElementById("toast");
@@ -51,12 +51,29 @@ const ONBOARDING_KEY = `liukanshan_onboarding_${ONBOARDING_VERSION}`;
 const STORY_INTRO_VERSION = "v1";
 const AUTHOR_NOTE_COLLAPSED_KEY = "liukanshan_author_note_collapsed";
 const AUTHOR_ARTICLE_URL = "";
+const ADOPTION_STAY_MS = 10000;
+const LEVEL_UP_STAY_MS = 10000;
 const ADMIN_USER_TOKENS = new Set(["p2wcex", "sunny-27-1-97"]);
 const ADMIN_USER_UIDS = new Set(["1908940156829918831", "2013197829758268031"]);
 const ANALYTICS_VISIT_KEY = "liukanshan_analytics_visit_id";
 const ANALYTICS_REFER_KEY = "liukanshan_analytics_last_path";
 const ANALYTICS_EXPOSE_KEY_PREFIX = "liukanshan_pet_panel_exposed_";
 const ANALYTICS_SHARE_REFER_KEY_PREFIX = "liukanshan_share_refer_";
+const INTERACTION_NOTICE_TITLE = "看山互动彩蛋";
+const INTERACTION_BUBBLE_MESSAGES = {
+  rotate: [
+    "按住 Command 拖动我，可以把看山转过来看看 3D 小身板。",
+    "看山进入展示模式啦，左转右转都可以，围巾也要给你看清楚。",
+    "转一转我，今天也是努力保持帅气正面的刘看山。",
+    "镜头交给你，我负责乖乖站好被研究。",
+  ],
+  move: [
+    "拖动我可以搬到你喜欢的位置，我会在那儿继续陪你读知乎。",
+    "看山搬家中，正在找一个更舒服的陪伴角落。",
+    "把我挪近一点也可以，读到好内容我会第一时间冒泡。",
+    "移动成功预备中，今天的陪伴席位由你决定。",
+  ],
+};
 let onboardingTimer = null;
 let onboardingSnoozedUntil = 0;
 let analyticsQueue = [];
@@ -394,7 +411,7 @@ function playHomecomingEffect() {
   card.className = "pet-home-card";
   card.innerHTML = `<strong>Lv.1 · ${escapeHTML(milestone.title)}</strong><span>${escapeHTML(milestone.quote)}</span>`;
   layer.appendChild(card);
-  removeAfter(card, 3200);
+  removeAfter(card, ADOPTION_STAY_MS);
 
   const centerX = window.innerWidth / 2;
   const centerY = window.innerHeight * 0.58;
@@ -414,7 +431,7 @@ function playHomecomingEffect() {
       message: profileBubbleTitle(),
       useRandomMessage: false,
     });
-  }, 3900);
+  }, ADOPTION_STAY_MS);
 }
 
 function rewardText(reward) {
@@ -1144,6 +1161,11 @@ function formatUnixTime(value = 0) {
   return `${date.getMonth() + 1}-${String(date.getDate()).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
+function pickOne(list = []) {
+  if (!list.length) return "";
+  return list[Math.floor(Math.random() * list.length)];
+}
+
 function mergeUpdatedContent(content) {
   if (!content) return;
   feedItems = feedItems.map((item) => (item.id === content.id ? { ...item, ...content } : item));
@@ -1286,7 +1308,7 @@ function closeCharacterNotice() {
   bubble.textContent = profileBubbleTitle();
 }
 
-function showCharacterNotice(message, seconds = 20) {
+function showCharacterNotice(message, seconds = 20, title = "关注动态") {
   const bubble = document.getElementById("speechBubble");
   if (!bubble) return;
   window.clearInterval(noticeTimer);
@@ -1295,7 +1317,7 @@ function showCharacterNotice(message, seconds = 20) {
   const render = () => {
     bubble.classList.add("follow-notice");
     bubble.innerHTML = `
-      <div class="notice-title">关注动态</div>
+      <div class="notice-title">${escapeHTML(title)}</div>
       <div class="notice-text">${escapeHTML(message)}</div>
       <button class="notice-close" data-notice-close>关闭 ${noticeRemaining}s</button>
     `;
@@ -1314,6 +1336,26 @@ function showCharacterNotice(message, seconds = 20) {
     }
     render();
   }, 1000);
+}
+
+function hidePetHoverCardUntilNextHover() {
+  const el = document.getElementById("roamingCharacter");
+  if (!el) return;
+  el.classList.add("hide-hover-card-once");
+  const showAgain = () => {
+    el.classList.remove("hide-hover-card-once");
+  };
+  el.addEventListener("mouseleave", () => {
+    el.addEventListener("mouseenter", showAgain, { once: true });
+  }, { once: true });
+}
+
+function showInteractionBubble(mode = "move") {
+  const list = INTERACTION_BUBBLE_MESSAGES[mode] || INTERACTION_BUBBLE_MESSAGES.move;
+  const message = pickOne(list);
+  if (!message) return;
+  hidePetHoverCardUntilNextHover();
+  showCharacterNotice(message, 6, INTERACTION_NOTICE_TITLE);
 }
 
 function applyWakeUI(currentProfile) {
@@ -1628,10 +1670,17 @@ function renderGrowthLogModal(logs = []) {
   `;
   document.body.appendChild(modal);
   removeOnboardingGuide();
-  modal.querySelector(".content-close").addEventListener("click", () => closeBlockingModal(modal));
+  setLeaderboardScrollLock(true);
+  modal.querySelector(".content-close").addEventListener("click", () => closeGrowthLogModal(modal));
   modal.addEventListener("click", (event) => {
-    if (event.target === modal) closeBlockingModal(modal);
+    if (event.target === modal) closeGrowthLogModal(modal);
   });
+}
+
+function closeGrowthLogModal(modal = document.querySelector(".growth-log-modal")) {
+  modal?.remove();
+  setLeaderboardScrollLock(false);
+  scheduleOnboardingGuide(260);
 }
 
 async function openGrowthLog() {
@@ -1648,7 +1697,7 @@ async function openGrowthLog() {
     renderGrowthLogModal(data.logs || []);
   } catch (error) {
     showToast(error.message || "成长日志加载失败");
-    document.querySelector(".growth-log-modal")?.remove();
+    closeGrowthLogModal();
   }
 }
 
@@ -2035,20 +2084,23 @@ async function openLeaderboardPanel(type = leaderboardType) {
     showToast("领养刘看山后查看排行榜");
     return;
   }
+  const nextType = type === "travel_count" ? "travel_count" : "pet_level";
   markOnboardingStep("leaderboard");
   trackEvent("leaderboard_open", {
     targetType: "leaderboard",
-    targetId: type === "travel_count" ? "travel_count" : "pet_level",
+    targetId: nextType,
     props: { source: "pet_panel" },
   });
   leaderboardPanelOpen = true;
-  leaderboardType = type === "travel_count" ? "travel_count" : "pet_level";
-  renderLeaderboardPanel();
+  leaderboardType = nextType;
   character?.setMessage?.("看看大家的看山都长到哪儿啦", { autoHide: 2200 });
-  try {
-    await loadLeaderboard(leaderboardType, { refresh: true });
-  } catch (error) {
-    showToast(error.message || "排行榜加载失败");
+
+  if (!(leaderboardData?.rankType === leaderboardType && leaderboardLoaded)) {
+    try {
+      await loadLeaderboard(leaderboardType);
+    } catch (error) {
+      showToast(error.message || "排行榜加载失败");
+    }
   }
   if (leaderboardPanelOpen) renderLeaderboardPanel();
 }
@@ -2442,13 +2494,15 @@ async function handlePetPat() {
   try {
     const resp = await api("/api/p1/pet/pat", { method: "POST", body: "{}" });
     if (resp?.ok && resp.reaction) {
-      showCharacterNotice(resp.reaction, 4);
+      hidePetHoverCardUntilNextHover();
+      showCharacterNotice(resp.reaction, 4, INTERACTION_NOTICE_TITLE);
       if (resp.profile) profile = resp.profile;
       syncCharacter();
     }
   } catch (err) {
     if (err?.message) {
-      showCharacterNotice(err.message, 3);
+      hidePetHoverCardUntilNextHover();
+      showCharacterNotice(err.message, 3, INTERACTION_NOTICE_TITLE);
     }
   }
 }
@@ -4085,11 +4139,11 @@ async function adoptPet() {
     syncCharacter();
     closeStoryIntro(true);
     removeOnboardingGuide();
-    onboardingSnoozedUntil = Date.now() + 4200;
+    onboardingSnoozedUntil = Date.now() + ADOPTION_STAY_MS + 400;
     renderCurrentRoute();
     showToast("刘看山已到家");
-    character?.setMessage("你好，我是刘看山~", { autoHide: 2600 });
-    scheduleOnboardingGuide(4400);
+    character?.setMessage("你好，我是刘看山~", { autoHide: ADOPTION_STAY_MS });
+    scheduleOnboardingGuide(ADOPTION_STAY_MS + 400);
     window.requestAnimationFrame(() => playHomecomingEffect());
   } catch (error) {
     showToast(error.message || "领养失败");
@@ -4178,18 +4232,18 @@ function showReward(reward, sourceElement) {
   if (reward.levelUp) {
     showLevelUpPreview(reward).catch((error) => console.warn("level preview failed", error));
     if (Number(reward.toLevel) >= 10 && Number(reward.fromLevel || 0) < 10) {
-      window.setTimeout(() => showLevelEndingModal(), 1100);
+      window.setTimeout(() => showLevelEndingModal(), LEVEL_UP_STAY_MS);
     }
   }
   if (character && reward.levelUp) {
     const centerX = window.innerWidth / 2;
     const centerY = window.innerHeight * 0.58;
     character.setPosition?.(centerX, centerY);
-    character.playEvolveEffect?.({ message, autoHide: 3900 });
+    character.playEvolveEffect?.({ message, autoHide: LEVEL_UP_STAY_MS });
     window.setTimeout(() => {
       character?.setPosition?.(window.innerWidth - 150, window.innerHeight - 200);
       character?.setMessage?.(profileBubbleTitle(), { autoHide: 2200 });
-    }, 4200);
+    }, LEVEL_UP_STAY_MS);
   }
   if (sourceElement && character && !reward.levelUp && rewardWalkEnabled) {
     const defaultArrivedMessage = character.config.arrivedMessage;
@@ -4224,7 +4278,7 @@ async function showLevelUpPreview(reward) {
     </div>
   `;
   document.body.appendChild(panel);
-  removeAfter(panel, Number(reward.toLevel) >= 10 ? 6800 : 5200);
+  removeAfter(panel, LEVEL_UP_STAY_MS);
 }
 
 async function showLevelEndingModal() {
@@ -4306,6 +4360,9 @@ function renderCurrentRoute() {
 
 window.addEventListener("popstate", renderCurrentRoute);
 window.addEventListener("pagehide", flushAnalytics);
+window.addEventListener("liukanshan-interaction-bubble", (event) => {
+  showInteractionBubble(event.detail?.mode || "move");
+});
 document.addEventListener("click", (event) => {
   const link = event.target.closest("a");
   if (!link) return;

@@ -340,8 +340,7 @@ button {
   position: sticky;
   top: 74px;
   align-self: start;
-  max-height: calc(100vh - 92px);
-  overflow: auto;
+  overflow: visible;
   padding: 15px;
   border: 1px solid rgba(13, 148, 136, 0.28);
   border-radius: 8px;
@@ -2081,6 +2080,7 @@ button {
   padding: 72px 24px 40px;
   background: rgba(18, 18, 18, 0.38);
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .growth-log-dialog {
@@ -2092,6 +2092,7 @@ button {
   background: #fff;
   box-shadow: 0 24px 80px rgba(18, 18, 18, 0.22);
   padding: 28px 32px 32px;
+  overscroll-behavior: contain;
 }
 
 .growth-log-dialog h1 {
@@ -2456,7 +2457,7 @@ button {
 }
 
 .speech-bubble.follow-notice {
-  top: -128px;
+  top: -104px;
   width: 340px;
   max-width: 340px;
   padding: 12px 12px 10px;
@@ -2516,6 +2517,13 @@ button {
   opacity: 1;
   transform: translateX(0);
   pointer-events: auto;
+}
+
+#roamingCharacter.hide-hover-card-once .pet-hover-card,
+#roamingCharacter.hide-hover-card-once:hover .pet-hover-card {
+  opacity: 0 !important;
+  transform: translateX(8px) !important;
+  pointer-events: none !important;
 }
 
 .pet-hover-head {
@@ -2657,6 +2665,7 @@ button {
 
 .leaderboard-panel {
   width: min(920px, calc(100vw - 48px));
+  height: min(720px, calc(100vh - 96px));
   max-height: calc(100vh - 96px);
   display: flex;
   flex-direction: column;
@@ -4003,6 +4012,10 @@ button {
 }
 
 .leaderboard-empty {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
   padding: 26px 18px 30px;
   color: #8491a5;
   font-size: 14px;
@@ -4797,6 +4810,7 @@ button {
 
   .leaderboard-panel {
     width: calc(100vw - 24px);
+    height: calc(100vh - 24px);
     max-height: calc(100vh - 24px);
     border-radius: 14px 14px 10px 10px;
   }
