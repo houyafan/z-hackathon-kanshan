@@ -37,6 +37,10 @@
     z-index: 1200;
 }
 
+.roaming-character.roaming-comment-assist {
+    z-index: 1400;
+}
+
 .roaming-character.roaming-traveling::before {
     content: '';
     position: absolute;

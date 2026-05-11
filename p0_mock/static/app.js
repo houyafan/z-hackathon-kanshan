@@ -3505,8 +3505,10 @@ function renderContentModal(content) {
   `;
   document.body.appendChild(modal);
   removeOnboardingGuide();
+  movePetToCommentAssist(modal);
   const closeModal = () => {
     discardActiveCommentAssist();
+    sendPetHomeFromCommentAssist();
     closeBlockingModal(modal);
   };
   modal.querySelector(".content-close").addEventListener("click", closeModal);
@@ -3514,6 +3516,46 @@ function renderContentModal(content) {
     if (event.target === modal) closeModal();
   });
   bindCommentEditor(modal);
+}
+
+function movePetToCommentAssist(modal) {
+  const pet = characterElement();
+  if (!character || !pet) return;
+  const aiBtn = modal.querySelector(".comment-ai-btn");
+  if (!aiBtn) return;
+  const place = () => {
+    const rect = aiBtn.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const targetX = Math.min(
+      window.innerWidth - 80,
+      Math.max(80, rect.left + rect.width * 0.72),
+    );
+    const targetY = Math.max(90, rect.top - 30);
+    pet.classList.add("roaming-comment-assist");
+    character.moveTo?.(targetX, targetY, {
+      message: "我来帮你想想~✨",
+      useRandomMessage: false,
+    });
+  };
+  window.requestAnimationFrame(place);
+}
+
+function sendPetHomeFromCommentAssist() {
+  const pet = characterElement();
+  if (!pet) return;
+  if (!pet.classList.contains("roaming-comment-assist")) return;
+  window.setTimeout(() => {
+    if (!character) {
+      pet.classList.remove("roaming-comment-assist");
+      return;
+    }
+    const homeX = window.innerWidth - 150;
+    const homeY = window.innerHeight - 200;
+    character.moveTo?.(homeX, homeY, { useRandomMessage: false });
+    window.setTimeout(() => {
+      pet.classList.remove("roaming-comment-assist");
+    }, 900);
+  }, 260);
 }
 
 function bindCommentEditor(modalRoot) {
