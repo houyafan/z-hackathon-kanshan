@@ -49,6 +49,10 @@ let idleBandVisible = true;
 let _prevWakeStatus = null;
 let _lastWakeBubbleAt = null;
 let travelDepartureVisibleUntil = 0;
+let homecomingReturnTimer = null;
+let levelUpReturnTimer = null;
+let levelEndingTimer = null;
+let travelAnimationTimer = null;
 const savedRewardWalk = localStorage.getItem("liukanshan_reward_walk_enabled") ?? localStorage.getItem("liukanshan_level_walk_enabled");
 let rewardWalkEnabled = savedRewardWalk !== "0";
 const MODEL_PATH = "/3d-liukanshan-roaming/liukanshan-slot.glb?v=2";
@@ -63,7 +67,7 @@ const EFFECT_SETTLE_MS = 650;
 const RECOMMEND_PAGE_SIZE = 10;
 const FALLBACK_LEVEL_REQUIREMENTS = [
   { level: 1, title: "星途起点", requiredTotalExp: 0 },
-  { level: 2, title: "星章萌新", requiredTotalExp: 50 },
+  { level: 2, title: "星章萌新", requiredTotalExp: 10 },
   { level: 3, title: "星光信使", requiredTotalExp: 120 },
   { level: 4, title: "行星记录员", requiredTotalExp: 250 },
   { level: 5, title: "星际见习官", requiredTotalExp: 450 },
@@ -424,6 +428,13 @@ function levelProgressHTML(compact = false) {
   `;
 }
 
+function effectStageCenter() {
+  return {
+    x: window.innerWidth / 2,
+    y: window.innerHeight * 0.64,
+  };
+}
+
 function characterCenter() {
   const element = characterElement();
   if (!element) return { x: window.innerWidth - 110, y: window.innerHeight - 120 };
@@ -479,7 +490,19 @@ function spawnFloatChip(text, x, y, level = false) {
   removeAfter(chip, 1500);
 }
 
+function clearCharacterEffectTimers() {
+  window.clearTimeout(homecomingReturnTimer);
+  window.clearTimeout(levelUpReturnTimer);
+  window.clearTimeout(levelEndingTimer);
+  window.clearTimeout(travelAnimationTimer);
+  homecomingReturnTimer = null;
+  levelUpReturnTimer = null;
+  levelEndingTimer = null;
+  travelAnimationTimer = null;
+}
+
 function playHomecomingEffect() {
+  clearCharacterEffectTimers();
   const milestone = LEVEL_MILESTONES[1];
   const layer = effectLayer();
   const card = document.createElement("div");
@@ -488,8 +511,7 @@ function playHomecomingEffect() {
   layer.appendChild(card);
   removeAfter(card, ADOPTION_EFFECT_MS + EFFECT_SETTLE_MS);
 
-  const centerX = window.innerWidth / 2;
-  const centerY = window.innerHeight * 0.58;
+  const { x: centerX, y: centerY } = effectStageCenter();
   character?.setPosition(centerX, centerY);
   character?.playSpawnEffect({
     message: "我回家啦，以后一起看知乎~",
@@ -501,11 +523,12 @@ function playHomecomingEffect() {
   spawnSparks(centerX, centerY, { count: 18 });
   spawnRing(centerX, centerY, false);
 
-  window.setTimeout(() => {
+  homecomingReturnTimer = window.setTimeout(() => {
     character?.moveTo(window.innerWidth - 150, window.innerHeight - 200, {
       message: profileBubbleTitle(),
       useRandomMessage: false,
     });
+    homecomingReturnTimer = null;
   }, ADOPTION_EFFECT_MS + EFFECT_SETTLE_MS);
 }
 
@@ -969,8 +992,7 @@ async function ensureEffectCharacter() {
 }
 
 function centerCharacterForTest() {
-  const centerX = window.innerWidth / 2;
-  const centerY = window.innerHeight * 0.58;
+  const { x: centerX, y: centerY } = effectStageCenter();
   character?.setPosition?.(centerX, centerY);
   return { x: centerX, y: centerY };
 }
@@ -2294,6 +2316,8 @@ function syncCharacter() {
         spawnIntervalFrames: 5,
         initialGhostOpacity: 0.34,
         ghostFadeSpeed: 0.045,
+        evolveCanvasMarginLeft: -130,
+        evolveCanvasMarginTop: -150,
         spawnScaleMultiplier: 1.28,
         enableEmojiBubble: false,
         emojiBubbleConfig: {
@@ -2676,6 +2700,14 @@ function petPanel() {
   const resetButton = isAdminUser()
     ? `<button class="reset-pet-btn" data-reset-pet>重置刘看山</button>`
     : "";
+  const experienceBoostButton = Number(profile.level) >= 2 && Number(profile.level) < 10
+    ? `<button class="outline-btn wide-action" data-boost-next-level>快速体验升一级</button>`
+    : "";
+  const experienceHint = Number(profile.level) < 2
+    ? `<div class="pet-experience-hint">升到 <strong>Lv.2</strong> 后，可用「快速体验升一级」一路体验完整养成流程。</div>`
+    : Number(profile.level) < 10
+      ? `<div class="pet-experience-hint unlocked"><strong>已解锁快速体验</strong>，可逐级升级体验到 Lv.10 终极彩蛋。</div>`
+      : `<div class="pet-experience-hint unlocked"><strong>完整流程已达成</strong>，Lv.10 终极形态已解锁。</div>`;
   return `
     <section class="card side-card pet-panel" data-pet-panel>
       <div class="pet-title">
@@ -2686,11 +2718,13 @@ function petPanel() {
         <span class="level-pill">Lv.${profile.level}</span>
       </div>
       <div class="travel-panel-actions">
+        ${experienceBoostButton}
         ${travelAction}
         <button class="outline-btn" data-hover-handbook>旅行手账</button>
         <button class="outline-btn" data-hover-growth-log>成长日志</button>
         <button class="outline-btn" data-open-leaderboard>查看排行榜</button>
       </div>
+      ${experienceHint}
       ${currentUserRankCard()}
       <div class="pet-level-showcase level-${escapeHTML(visual?.effectStyle || "cute")}">
         ${visualImage ? `<img src="${escapeHTML(visualImage)}" alt="${escapeHTML(visual.title || "刘看山等级形象")}">` : ""}
@@ -3477,6 +3511,11 @@ function bindPanelBasics() {
     button.dataset.basicBound = "1";
     button.addEventListener("click", resetPet);
   });
+  document.querySelectorAll("[data-boost-next-level]").forEach((button) => {
+    if (button.dataset.basicBound) return;
+    button.dataset.basicBound = "1";
+    button.addEventListener("click", () => boostPetOneLevel(button));
+  });
 }
 
 function bindCommon() {
@@ -4076,14 +4115,15 @@ function scheduleTravelReturnCheck() {
 }
 
 function playTravelDeparture(travel) {
-  const centerX = window.innerWidth / 2;
-  const centerY = window.innerHeight * 0.58;
+  clearCharacterEffectTimers();
+  const { x: centerX, y: centerY } = effectStageCenter();
   character?.setPosition?.(centerX, centerY);
-  window.setTimeout(() => {
+  travelAnimationTimer = window.setTimeout(() => {
     character?.startGoTravel?.({
       message: travel.message || "出发旅行！",
       autoHide: 2400,
     });
+    travelAnimationTimer = null;
   }, 80);
   window.setTimeout(() => {
     if (profile?.travelStatus !== "traveling") return;
@@ -4094,15 +4134,16 @@ function playTravelDeparture(travel) {
 }
 
 function playTravelReturn(travel) {
-  const centerX = window.innerWidth / 2;
-  const centerY = window.innerHeight * 0.58;
+  clearCharacterEffectTimers();
+  const { x: centerX, y: centerY } = effectStageCenter();
   character?.setPosition?.(centerX, centerY);
   character?.startBackHome?.({
     message: travel.message || "旅行回来啦！",
     autoHide: 2800,
   });
-  window.setTimeout(() => {
+  travelAnimationTimer = window.setTimeout(() => {
     character?.setPosition?.(window.innerWidth - 150, window.innerHeight - 200);
+    travelAnimationTimer = null;
   }, 3300);
 }
 
@@ -4458,6 +4499,7 @@ async function adoptPet() {
 
 async function resetPet() {
   try {
+    clearCharacterEffectTimers();
     const data = await api("/api/p0/pet/reset", {
       method: "POST",
       body: JSON.stringify({}),
@@ -4499,6 +4541,31 @@ async function boostPetToLevel10() {
     }
   } catch (error) {
     showToast(error.message || "一键升级失败");
+  }
+}
+
+async function boostPetOneLevel(sourceButton) {
+  if (sourceButton) sourceButton.disabled = true;
+  try {
+    const data = await api("/api/p0/pet/boost-next-level", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    profile = data.profile;
+    leaderboardLoaded = false;
+    leaderboardData = null;
+    renderCurrentRoute();
+    syncCharacter();
+    const reward = data.reward || {};
+    if (reward.levelUp) {
+      showReward(reward, null);
+    } else {
+      showToast("刘看山已达成 Lv.10，完整流程已解锁");
+      window.setTimeout(() => showLevelEndingModal(), 500);
+    }
+  } catch (error) {
+    if (sourceButton) sourceButton.disabled = false;
+    showToast(error.message || "快速升级失败");
   }
 }
 
@@ -4562,20 +4629,24 @@ function showReward(reward, sourceElement) {
     : `看山成长了：${partsText}`;
   showToast(message);
   if (reward.levelUp) {
+    clearCharacterEffectTimers();
     showLevelUpPreview(reward).catch((error) => console.warn("level preview failed", error));
     if (Number(reward.toLevel) >= 10 && Number(reward.fromLevel || 0) < 10) {
-      window.setTimeout(() => showLevelEndingModal(), LEVEL_UP_EFFECT_MS + EFFECT_SETTLE_MS);
+      levelEndingTimer = window.setTimeout(() => {
+        showLevelEndingModal();
+        levelEndingTimer = null;
+      }, LEVEL_UP_EFFECT_MS + EFFECT_SETTLE_MS);
     }
   }
   if (character && reward.levelUp) {
-    const centerX = window.innerWidth / 2;
-    const centerY = window.innerHeight * 0.58;
+    const { x: centerX, y: centerY } = effectStageCenter();
     character.setPosition?.(centerX, centerY);
     character.playEvolveEffect?.({ message, autoHide: LEVEL_UP_EFFECT_MS });
     pulseCharacter("pet-level-up", LEVEL_UP_EFFECT_MS);
-    window.setTimeout(() => {
+    levelUpReturnTimer = window.setTimeout(() => {
       character?.setPosition?.(window.innerWidth - 150, window.innerHeight - 200);
       character?.setMessage?.(profileBubbleTitle(), { autoHide: 2200 });
+      levelUpReturnTimer = null;
     }, LEVEL_UP_EFFECT_MS + EFFECT_SETTLE_MS);
   }
   if (sourceElement && character && !reward.levelUp && rewardWalkEnabled) {
