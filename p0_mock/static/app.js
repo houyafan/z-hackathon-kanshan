@@ -1,4 +1,4 @@
-import { initRoamingCharacter } from "/3d-liukanshan-roaming/roaming-character.js?v=32";
+import { initRoamingCharacter } from "/3d-liukanshan-roaming/roaming-character.js?v=33";
 
 const app = document.getElementById("app");
 const toast = document.getElementById("toast");
@@ -59,6 +59,21 @@ const ANALYTICS_VISIT_KEY = "liukanshan_analytics_visit_id";
 const ANALYTICS_REFER_KEY = "liukanshan_analytics_last_path";
 const ANALYTICS_EXPOSE_KEY_PREFIX = "liukanshan_pet_panel_exposed_";
 const ANALYTICS_SHARE_REFER_KEY_PREFIX = "liukanshan_share_refer_";
+const INTERACTION_NOTICE_TITLE = "看山互动彩蛋";
+const INTERACTION_BUBBLE_MESSAGES = {
+  rotate: [
+    "按住 Command 拖动我，可以把看山转过来看看 3D 小身板。",
+    "看山进入展示模式啦，左转右转都可以，围巾也要给你看清楚。",
+    "转一转我，今天也是努力保持帅气正面的刘看山。",
+    "镜头交给你，我负责乖乖站好被研究。",
+  ],
+  move: [
+    "拖动我可以搬到你喜欢的位置，我会在那儿继续陪你读知乎。",
+    "看山搬家中，正在找一个更舒服的陪伴角落。",
+    "把我挪近一点也可以，读到好内容我会第一时间冒泡。",
+    "移动成功预备中，今天的陪伴席位由你决定。",
+  ],
+};
 let onboardingTimer = null;
 let onboardingSnoozedUntil = 0;
 let analyticsQueue = [];
@@ -1146,6 +1161,11 @@ function formatUnixTime(value = 0) {
   return `${date.getMonth() + 1}-${String(date.getDate()).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
+function pickOne(list = []) {
+  if (!list.length) return "";
+  return list[Math.floor(Math.random() * list.length)];
+}
+
 function mergeUpdatedContent(content) {
   if (!content) return;
   feedItems = feedItems.map((item) => (item.id === content.id ? { ...item, ...content } : item));
@@ -1288,7 +1308,7 @@ function closeCharacterNotice() {
   bubble.textContent = profileBubbleTitle();
 }
 
-function showCharacterNotice(message, seconds = 20) {
+function showCharacterNotice(message, seconds = 20, title = "关注动态") {
   const bubble = document.getElementById("speechBubble");
   if (!bubble) return;
   window.clearInterval(noticeTimer);
@@ -1297,7 +1317,7 @@ function showCharacterNotice(message, seconds = 20) {
   const render = () => {
     bubble.classList.add("follow-notice");
     bubble.innerHTML = `
-      <div class="notice-title">关注动态</div>
+      <div class="notice-title">${escapeHTML(title)}</div>
       <div class="notice-text">${escapeHTML(message)}</div>
       <button class="notice-close" data-notice-close>关闭 ${noticeRemaining}s</button>
     `;
@@ -1316,6 +1336,26 @@ function showCharacterNotice(message, seconds = 20) {
     }
     render();
   }, 1000);
+}
+
+function hidePetHoverCardUntilNextHover() {
+  const el = document.getElementById("roamingCharacter");
+  if (!el) return;
+  el.classList.add("hide-hover-card-once");
+  const showAgain = () => {
+    el.classList.remove("hide-hover-card-once");
+  };
+  el.addEventListener("mouseleave", () => {
+    el.addEventListener("mouseenter", showAgain, { once: true });
+  }, { once: true });
+}
+
+function showInteractionBubble(mode = "move") {
+  const list = INTERACTION_BUBBLE_MESSAGES[mode] || INTERACTION_BUBBLE_MESSAGES.move;
+  const message = pickOne(list);
+  if (!message) return;
+  hidePetHoverCardUntilNextHover();
+  showCharacterNotice(message, 6, INTERACTION_NOTICE_TITLE);
 }
 
 function applyWakeUI(currentProfile) {
@@ -2454,13 +2494,15 @@ async function handlePetPat() {
   try {
     const resp = await api("/api/p1/pet/pat", { method: "POST", body: "{}" });
     if (resp?.ok && resp.reaction) {
-      showCharacterNotice(resp.reaction, 4);
+      hidePetHoverCardUntilNextHover();
+      showCharacterNotice(resp.reaction, 4, INTERACTION_NOTICE_TITLE);
       if (resp.profile) profile = resp.profile;
       syncCharacter();
     }
   } catch (err) {
     if (err?.message) {
-      showCharacterNotice(err.message, 3);
+      hidePetHoverCardUntilNextHover();
+      showCharacterNotice(err.message, 3, INTERACTION_NOTICE_TITLE);
     }
   }
 }
@@ -4312,6 +4354,9 @@ function renderCurrentRoute() {
 
 window.addEventListener("popstate", renderCurrentRoute);
 window.addEventListener("pagehide", flushAnalytics);
+window.addEventListener("liukanshan-interaction-bubble", (event) => {
+  showInteractionBubble(event.detail?.mode || "move");
+});
 document.addEventListener("click", (event) => {
   const link = event.target.closest("a");
   if (!link) return;

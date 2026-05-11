@@ -2430,7 +2430,7 @@ button {
 }
 
 .speech-bubble.follow-notice {
-  top: -128px;
+  top: -104px;
   width: 340px;
   max-width: 340px;
   padding: 12px 12px 10px;
@@ -2490,6 +2490,13 @@ button {
   opacity: 1;
   transform: translateX(0);
   pointer-events: auto;
+}
+
+#roamingCharacter.hide-hover-card-once .pet-hover-card,
+#roamingCharacter.hide-hover-card-once:hover .pet-hover-card {
+  opacity: 0 !important;
+  transform: translateX(8px) !important;
+  pointer-events: none !important;
 }
 
 .pet-hover-head {
