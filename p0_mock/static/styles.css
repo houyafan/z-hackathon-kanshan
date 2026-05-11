@@ -323,17 +323,113 @@ button {
 }
 
 .page {
-  width: min(100% - 32px, 1000px);
+  width: min(100% - 32px, 1240px);
   min-width: 0;
   margin: 0 auto;
   padding: 10px 0 48px;
   display: grid;
-  grid-template-columns: minmax(0, 696px) 296px;
+  grid-template-columns: 220px minmax(0, 696px) 296px;
   gap: 10px;
 }
 
 .recommend-main {
   min-width: 0;
+}
+
+.author-note {
+  position: sticky;
+  top: 74px;
+  align-self: start;
+  max-height: calc(100vh - 92px);
+  overflow: auto;
+  padding: 15px;
+  border: 1px solid rgba(13, 148, 136, 0.28);
+  border-radius: 8px;
+  background: linear-gradient(180deg, #fff7ed 0%, #ecfeff 100%);
+  box-shadow: 0 10px 28px rgba(15, 118, 110, 0.12);
+  color: #164e63;
+}
+
+.author-note-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.author-note-head span {
+  color: #0f766e;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.author-note button {
+  border: 0;
+  border-radius: 999px;
+  background: #0f766e;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.author-note-head button {
+  height: 26px;
+  padding: 0 10px;
+}
+
+.author-note p {
+  margin: 0 0 10px;
+  color: #164e63;
+  font-size: 13px;
+  line-height: 1.68;
+}
+
+.author-note p strong {
+  color: #7c2d12;
+  font-weight: 900;
+}
+
+.author-note mark {
+  padding: 0 3px;
+  border-radius: 4px;
+  background: rgba(251, 191, 36, 0.34);
+  color: #9a3412;
+  font-weight: 900;
+}
+
+.author-note-footer {
+  padding-top: 4px;
+}
+
+.author-note-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 11px;
+  border-radius: 999px;
+  background: #fff;
+  color: #0f766e;
+  font-size: 12px;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.author-note-link.pending {
+  border: 1px dashed rgba(15, 118, 110, 0.38);
+  color: #64748b;
+}
+
+.author-note-collapsed {
+  display: grid;
+  place-items: center;
+  min-height: 94px;
+  padding: 12px;
+}
+
+.author-note-collapsed button {
+  min-height: 32px;
+  padding: 0 12px;
 }
 
 .card {
@@ -1516,7 +1612,7 @@ button {
 
 .profile-grid {
   display: grid;
-  grid-template-columns: minmax(0, 990px) 424px;
+  grid-template-columns: 220px minmax(0, 742px) 424px;
   gap: 16px;
   margin-top: 14px;
 }
