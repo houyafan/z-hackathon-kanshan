@@ -60,6 +60,7 @@ const ADOPTION_EFFECT_MS = 6200;
 const LEVEL_UP_EFFECT_MS = 6500;
 const EFFECT_SETTLE_MS = 650;
 const RECOMMEND_PAGE_SIZE = 10;
+const RECOMMEND_GROWTH_TIP = "刘看山成长互动仅在推荐列表生效，进入推荐页阅读、点赞、评论、收藏后可获得成长。";
 const ADMIN_USER_TOKENS = new Set(["p2wcex", "sunny-27-1-97"]);
 const ADMIN_USER_UIDS = new Set(["1908940156829918831", "2013197829758268031"]);
 const ANALYTICS_VISIT_KEY = "liukanshan_analytics_visit_id";
@@ -2318,7 +2319,7 @@ function shell(active) {
       <a class="logo" href="/">知乎</a>
       <nav class="nav">
         <a class="${active === "follow" ? "active" : ""}" href="/follow" data-follow-tab>关注</a>
-        <a class="${active === "recommend" ? "active" : ""}" href="/">推荐</a>
+        <a class="recommend-growth-tip ${active === "recommend" ? "active" : ""}" href="/" data-tip="${escapeHTML(RECOMMEND_GROWTH_TIP)}" title="${escapeHTML(RECOMMEND_GROWTH_TIP)}">推荐</a>
         <a class="${active === "hot" ? "active" : ""}" href="/hot">热榜</a>
         <a class="new-badge ${active === "community" ? "active" : ""}" href="/community">黑客松脑洞补给站</a>
         ${isAdminUser() ? `<a class="${active === "admin" ? "active" : ""}" href="/admin">管理平台</a>` : ""}
@@ -2481,7 +2482,7 @@ function renderLoginGate() {
     <header class="site-header">
       <a class="logo" href="/">知乎</a>
       <nav class="nav">
-        <a class="active" href="/">推荐</a>
+        <a class="recommend-growth-tip active" href="/" data-tip="${escapeHTML(RECOMMEND_GROWTH_TIP)}" title="${escapeHTML(RECOMMEND_GROWTH_TIP)}">推荐</a>
         <a href="#">热榜</a>
       </nav>
       <div class="search">

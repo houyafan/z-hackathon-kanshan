@@ -82,6 +82,35 @@ button {
   animation: followTabPulse 1.2s ease-in-out 4;
 }
 
+.nav a.recommend-growth-tip::before {
+  content: attr(data-tip);
+  position: absolute;
+  left: 50%;
+  top: calc(100% - 6px);
+  z-index: 30;
+  width: 260px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #1f2329;
+  box-shadow: 0 10px 26px rgba(31, 35, 41, 0.2);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+  text-align: left;
+  white-space: normal;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 4px);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.nav a.recommend-growth-tip:hover::before,
+.nav a.recommend-growth-tip:focus-visible::before {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
 .nav a.active::after {
   content: "";
   position: absolute;
