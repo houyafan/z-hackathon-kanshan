@@ -340,8 +340,7 @@ button {
   position: sticky;
   top: 74px;
   align-self: start;
-  max-height: calc(100vh - 92px);
-  overflow: auto;
+  overflow: visible;
   padding: 15px;
   border: 1px solid rgba(13, 148, 136, 0.28);
   border-radius: 8px;
