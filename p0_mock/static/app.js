@@ -3447,9 +3447,16 @@ function bindRecommend() {
   const recommendScroller = document.querySelector(".recommend-page .recommend-main");
   if (recommendScroller && !recommendScroller.dataset.scrollBound) {
     recommendScroller.dataset.scrollBound = "1";
-    recommendScroller.addEventListener("scroll", () => maybeLoadMoreContents(recommendScroller), { passive: true });
-    window.requestAnimationFrame(() => maybeLoadMoreContents(recommendScroller));
+    recommendScroller.addEventListener("scroll", () => {
+      maybeLoadMoreContents(recommendScroller);
+      scheduleRecommendFloatingColumns();
+    }, { passive: true });
+    window.requestAnimationFrame(() => {
+      maybeLoadMoreContents(recommendScroller);
+      updateRecommendFloatingColumns();
+    });
   }
+  bindRecommendPageWheel();
   document.querySelectorAll("[data-consume]").forEach((button) => {
     button.addEventListener("click", () => {
       const item = feedItems.find((entry) => entry.id === button.dataset.consume);
@@ -3488,46 +3495,47 @@ function bindRecommend() {
   });
 }
 
+function bindRecommendPageWheel() {
+  const page = document.querySelector(".recommend-page");
+  const scroller = page?.querySelector(".recommend-main");
+  if (!page || !scroller || page.dataset.wheelBound) return;
+  page.dataset.wheelBound = "1";
+  page.addEventListener("wheel", (event) => {
+    if (window.matchMedia("(max-width: 1100px)").matches) return;
+    const editableTarget = event.target.closest?.("input, textarea, select, [contenteditable='true']");
+    if (editableTarget) return;
+    if (!event.deltaY) return;
+    event.preventDefault();
+    scroller.scrollTop += event.deltaY;
+    maybeLoadMoreContents(scroller);
+    scheduleRecommendFloatingColumns();
+  }, { passive: false });
+}
+
 function updateRecommendPageLayout() {
   const page = document.querySelector(".recommend-page");
   if (!page) return;
-  const layoutItems = [...page.querySelectorAll(".author-note, .side-stack, .recommend-main")];
-  const sideItems = layoutItems.filter((item) => !item.classList.contains("recommend-main"));
+  const sideItems = [...page.querySelectorAll(".author-note, .side-stack")];
   if (window.matchMedia("(max-width: 1100px)").matches) {
-    page.style.minHeight = "";
-    layoutItems.forEach((item) => {
-      item.style.top = "";
+    sideItems.forEach((item) => {
       item.style.transform = "";
-      delete item.dataset.recommendBaseTop;
     });
     return;
   }
-  layoutItems.forEach((item) => {
-    item.style.top = "";
-    item.style.transform = "";
-  });
-  const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
-  const maxSideHeight = sideItems.reduce((maxHeight, item) => Math.max(maxHeight, item.scrollHeight), 0);
-  page.style.minHeight = `${Math.max(viewportHeight - 62, maxSideHeight + 20)}px`;
-  layoutItems.forEach((item) => {
-    item.dataset.recommendBaseTop = String(item.getBoundingClientRect().top + window.scrollY);
-  });
   updateRecommendFloatingColumns();
 }
 
 function updateRecommendFloatingColumns() {
   const page = document.querySelector(".recommend-page");
   if (!page || window.matchMedia("(max-width: 1100px)").matches) return;
+  const scroller = page.querySelector(".recommend-main");
+  if (!scroller) return;
   const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
-  const scrollY = window.scrollY || window.pageYOffset || 0;
-  page.querySelectorAll(".author-note, .side-stack, .recommend-main").forEach((item) => {
-    const baseTop = Number(item.dataset.recommendBaseTop || 0);
-    if (!baseTop) return;
-    const targetTop = item.classList.contains("recommend-main")
-      ? 72
-      : Math.min(74, viewportHeight - item.scrollHeight - 10);
-    const offset = Math.max(0, scrollY + targetTop - baseTop);
-    item.style.transform = offset > 0 ? `translateY(${offset}px)` : "";
+  const availableHeight = viewportHeight - scroller.getBoundingClientRect().top - 10;
+  page.querySelectorAll(".author-note, .side-stack").forEach((item) => {
+    const maxOffset = Math.max(0, item.scrollHeight - availableHeight);
+    const offset = Math.min(scroller.scrollTop, maxOffset);
+    item.style.transform = offset > 0 ? `translateY(${-offset}px)` : "";
   });
 }
 
@@ -3557,10 +3565,7 @@ function maybeLoadMoreContents(scrollTarget = window) {
 function bindRecommendScroll() {
   if (feedScrollBound) return;
   feedScrollBound = true;
-  window.addEventListener("scroll", () => {
-    maybeLoadMoreContents(window);
-    scheduleRecommendFloatingColumns();
-  }, { passive: true });
+  window.addEventListener("scroll", () => maybeLoadMoreContents(window), { passive: true });
   window.addEventListener("resize", () => updateRecommendPageLayout(), { passive: true });
 }
 
