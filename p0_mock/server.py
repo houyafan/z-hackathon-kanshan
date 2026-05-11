@@ -26,11 +26,13 @@ ROAMING_DIR = ROOT / "3d-liukanshan-roaming"
 CONFIG_PATH = Path(os.environ.get("CONFIG_PATH") or ROOT / "p0_mock" / "config.json")
 BUNDLED_CONFIG_PATH = ROOT / "p0_mock" / "config.json"
 LEVEL_VISUAL_CONFIG_PATH = ROOT / "p0_mock" / "level_visuals.json"
+RECOMMEND_FEED_PATH = ROOT / "p0_mock" / "data" / "zhihu_recommend_feed.json"
 DEFAULT_USER_ID = 10001
 SESSION_COOKIE_NAME = "lks_session"
 APP_TZ = timezone(timedelta(hours=8), "Asia/Shanghai")
 ADMIN_USER_TOKENS = {"p2wcex", "sunny-27-1-97"}
 ADMIN_USER_UIDS = {1908940156829918831, 2013197829758268031}
+_RECOMMEND_FEED_CACHE = {"mtime": None, "contents": [], "by_id": {}}
 
 
 def now_dt():
@@ -1316,6 +1318,38 @@ def camel_content(row, include_full=False, interactions=None):
     if row is None:
         return None
     interactions = interactions or {}
+    if isinstance(row, dict) and "counts" in row:
+        counts = row.get("counts") if isinstance(row.get("counts"), dict) else {}
+        content = {
+            "id": str(row.get("id") or ""),
+            "type": str(row.get("type") or "article"),
+            "action": "watch" if row.get("type") == "video" else "read",
+            "title": str(row.get("title") or ""),
+            "author": str(row.get("author") or "知乎用户"),
+            "excerpt": str(row.get("excerpt") or ""),
+            "readText": str(row.get("readText") or ("观看视频" if row.get("type") == "video" else "阅读全文")),
+            "tags": row.get("tags") if isinstance(row.get("tags"), list) else [],
+            "media": row.get("media"),
+            "mediaLabel": row.get("mediaLabel"),
+            "thumbnailUrl": row.get("thumbnailUrl") or "",
+            "imageUrls": row.get("imageUrls") if isinstance(row.get("imageUrls"), list) else [],
+            "counts": {
+                "like": int(counts.get("like") or 0),
+                "comment": int(counts.get("comment") or 0),
+                "collect": int(counts.get("collect") or 0),
+            },
+            "interactions": {
+                "like": bool(interactions.get("like")),
+                "comment": bool(interactions.get("comment")),
+                "collect": bool(interactions.get("collect")),
+            },
+            "publishedAt": row.get("publishedAt"),
+            "sourceType": row.get("sourceType"),
+            "sourceUrl": row.get("sourceUrl"),
+        }
+        if include_full:
+            content["fullContent"] = str(row.get("fullContent") or row.get("excerpt") or "")
+        return content
     content = {
         "id": row["content_id"],
         "type": row["content_type"],
@@ -1342,6 +1376,12 @@ def camel_content(row, include_full=False, interactions=None):
     if include_full:
         content["fullContent"] = row["full_content"]
     return content
+
+
+def content_row_id(row):
+    if isinstance(row, dict):
+        return str(row.get("id") or "")
+    return row["content_id"]
 
 
 def fetch_level_visual(conn, level):
@@ -2925,7 +2965,54 @@ def schedule_wake_message(user_id, event):
     PET_LLM.run_async(f"wake-message-{user_id}-{event}", runner)
 
 
+def load_recommend_feed():
+    """Load captured Zhihu recommend data for the local mock feed.
+
+    The JSON is generated from Playwright-captured web recommend responses and
+    intentionally keeps only content fields used by the mock app.
+    """
+    global _RECOMMEND_FEED_CACHE
+    try:
+        stat = RECOMMEND_FEED_PATH.stat()
+    except FileNotFoundError:
+        _RECOMMEND_FEED_CACHE = {"mtime": None, "contents": [], "by_id": {}}
+        return []
+    except OSError as error:
+        print(f"[p0-mock] recommend feed stat failed: {error}", flush=True)
+        return []
+
+    mtime = stat.st_mtime
+    if _RECOMMEND_FEED_CACHE.get("mtime") == mtime:
+        return _RECOMMEND_FEED_CACHE["contents"]
+
+    try:
+        payload = json.loads(RECOMMEND_FEED_PATH.read_text(encoding="utf-8"))
+        raw_contents = payload.get("contents") if isinstance(payload, dict) else []
+        contents = []
+        for item in raw_contents if isinstance(raw_contents, list) else []:
+            if not isinstance(item, dict):
+                continue
+            if not item.get("id") or not item.get("title") or not item.get("excerpt"):
+                continue
+            content_type = item.get("type")
+            if content_type not in ("article", "pin", "video", "novel"):
+                item = {**item, "type": "article"}
+            contents.append(item)
+        _RECOMMEND_FEED_CACHE = {
+            "mtime": mtime,
+            "contents": contents,
+            "by_id": {str(item["id"]): item for item in contents},
+        }
+        return contents
+    except (OSError, json.JSONDecodeError, TypeError, ValueError) as error:
+        print(f"[p0-mock] recommend feed load failed: {error}", flush=True)
+        return []
+
+
 def fetch_contents(conn, limit=20):
+    recommend_feed = load_recommend_feed()
+    if recommend_feed:
+        return recommend_feed[:limit]
     return conn.execute(
         """
         SELECT *
@@ -2939,6 +3026,11 @@ def fetch_contents(conn, limit=20):
 
 
 def fetch_content(conn, content_id):
+    recommend_feed = load_recommend_feed()
+    if recommend_feed:
+        content = _RECOMMEND_FEED_CACHE.get("by_id", {}).get(str(content_id))
+        if content:
+            return content
     return conn.execute(
         """
         SELECT *
@@ -5377,10 +5469,10 @@ class Handler(BaseHTTPRequestHandler):
                 interaction_map = fetch_content_interactions(
                     conn,
                     user_id,
-                    [row["content_id"] for row in rows],
+                    [content_row_id(row) for row in rows],
                 )
                 contents = [
-                    camel_content(row, interactions=interaction_map.get(row["content_id"]))
+                    camel_content(row, interactions=interaction_map.get(content_row_id(row)))
                     for row in rows
                 ]
                 self.send_json(200, {"contents": contents})

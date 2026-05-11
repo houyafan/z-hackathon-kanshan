@@ -2661,18 +2661,24 @@ function composer() {
 }
 
 function feedCard(item) {
-  const media = item.media
+  const thumbnailUrl = item.thumbnailUrl || item.imageUrls?.[0] || "";
+  const media = thumbnailUrl
+    ? `<button class="feed-media feed-media-image" data-open-content="${escapeHTML(item.id)}" aria-label="打开内容图片">
+        <img src="${escapeHTML(thumbnailUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.closest('.feed-media')?.remove()">
+      </button>`
+    : item.media
     ? `<div class="feed-media ${escapeHTML(item.media)}">${escapeHTML(item.mediaLabel || "").replace(/\n/g, "<br>")}</div>`
     : "";
   const liked = Boolean(item.interactions?.like);
   const collected = Boolean(item.interactions?.collect);
+  const excerpt = media ? truncateText(item.excerpt, 120) : item.excerpt;
   return `
     <article class="card feed-card" data-content-id="${escapeHTML(item.id)}" data-content-type="${escapeHTML(item.type)}">
       <h2><button class="content-open-title" data-open-content="${escapeHTML(item.id)}">${escapeHTML(item.title)}</button></h2>
       <div class="feed-body ${media ? "" : "no-media"}">
         ${media}
-        <p>
-          ${escapeHTML(item.author)}：${escapeHTML(item.excerpt)}
+        <p class="feed-excerpt">
+          <strong class="feed-author">${escapeHTML(item.author)}</strong>：${escapeHTML(excerpt)}
           <button class="read-link" data-open-content="${escapeHTML(item.id)}">${escapeHTML(item.readText)}⌄</button>
         </p>
       </div>
