@@ -4662,7 +4662,14 @@ def refresh_travel_status(conn, user_id):
     return profile, travel
 
 
-def travel_block_reason(profile, active_travel):
+def has_travel_history(conn, user_id):
+    return conn.execute(
+        "SELECT 1 FROM pet_travel_event WHERE user_id = ? LIMIT 1",
+        (user_id,),
+    ).fetchone() is not None
+
+
+def travel_block_reason(conn, profile, active_travel):
     if profile is None or not profile["adopted"]:
         return "请先领养刘看山"
     profile_keys = profile.keys() if hasattr(profile, "keys") else []
@@ -4681,6 +4688,8 @@ def travel_block_reason(profile, active_travel):
         return "刘看山刚旅行回来，正在休息冷却"
     if profile["level"] < 2:
         return "Lv.2 后可以出门游历"
+    if not has_travel_history(conn, profile["user_id"]):
+        return None
     if profile["satiety"] < TRAVEL_MIN_SATIETY:
         return f"学识值达到 {TRAVEL_MIN_SATIETY} 后可以出门"
     if profile["travel_energy"] < TRAVEL_DEFAULT_ENERGY_COST:
@@ -4818,11 +4827,15 @@ def _select_hot_list_materials(conn, limit):
     hot = fetch_hot_items(limit=max(limit, 5))
     items = hot.get("items") or []
     materials = []
-    for item in items[:limit]:
+    seen_refs = set()
+    for item in items:
         url = item.get("url") or ""
         ref = url or hashlib.sha256(
             json.dumps(item, ensure_ascii=False, sort_keys=True).encode("utf-8")
         ).hexdigest()
+        if ref in seen_refs:
+            continue
+        seen_refs.add(ref)
         meta = {
             "rank": item.get("rank"),
             "heatText": item.get("heatText"),
@@ -4842,6 +4855,8 @@ def _select_hot_list_materials(conn, limit):
                 "meta": meta,
             }
         )
+        if len(materials) >= limit:
+            break
     return materials
 
 
@@ -5037,7 +5052,7 @@ def schedule_travel_summary(user_id, travel_id, theme):
 def travel_status_payload(conn, user_id):
     decay_notice = apply_pet_decay(conn, user_id)
     profile, travel = refresh_travel_status(conn, user_id)
-    reason = travel_block_reason(profile, travel)
+    reason = travel_block_reason(conn, profile, travel)
     handbook_count = conn.execute(
         "SELECT COUNT(*) FROM pet_travel_handbook WHERE user_id = ?",
         (user_id,),
@@ -5057,15 +5072,16 @@ def start_travel(user_id, requested_theme="auto"):
         conn.execute("BEGIN")
         decay_notice = apply_pet_decay(conn, user_id)
         profile, active_travel = refresh_travel_status(conn, user_id)
-        reason = travel_block_reason(profile, active_travel)
+        first_travel = not has_travel_history(conn, user_id)
+        reason = travel_block_reason(conn, profile, active_travel)
         if reason:
             conn.commit()
             return 409, {"error": "TRAVEL_NOT_READY", "message": reason, "decayNotice": decay_notice}
 
-        theme = choose_travel_theme(conn, user_id, requested_theme)
+        theme = "hotspot" if first_travel and requested_theme == "auto" else choose_travel_theme(conn, user_id, requested_theme)
         theme_row = fetch_theme_config(conn, theme)
         meta = theme_meta(theme)
-        energy_cost = theme_row["energy_cost"] if theme_row else TRAVEL_DEFAULT_ENERGY_COST
+        energy_cost = 0 if first_travel else (theme_row["energy_cost"] if theme_row else TRAVEL_DEFAULT_ENERGY_COST)
         raw_duration = theme_row["duration_sec"] if theme_row else 60
         duration_sec = max(5, int(raw_duration / max(TRAVEL_SPEEDUP, 0.0001)))
         material_count = 6 if theme == "hotspot" else 5
