@@ -3118,6 +3118,94 @@ def fetch_level(conn, total_exp):
     ).fetchone()
 
 
+def boost_pet_to_level_10(conn, user_id):
+    target = conn.execute(
+        "SELECT * FROM pet_level_config WHERE level = 10"
+    ).fetchone()
+    if target is None:
+        raise RuntimeError("LEVEL_10_CONFIG_MISSING")
+
+    profile = fetch_profile(conn, user_id)
+    if profile is None:
+        conn.execute(
+            """
+            INSERT INTO pet_profile
+              (user_id, adopted, pet_name, created_at, updated_at)
+            VALUES
+              (?, 1, '刘看山', ?, ?)
+            """,
+            (user_id, now_text(), now_text()),
+        )
+        profile = fetch_profile(conn, user_id)
+
+    old_level = int(profile["level"])
+    old_exp = int(profile["total_exp"])
+    old_stage = profile["stage"]
+    target_exp = int(target["required_total_exp"])
+    target_stage = target["stage"]
+    new_exp = max(old_exp, target_exp)
+    source_id = f"admin-boost-level-10-{uuid.uuid4().hex[:8]}"
+
+    conn.execute(
+        """
+        UPDATE pet_profile
+        SET adopted = 1,
+            total_exp = ?,
+            level = 10,
+            stage = ?,
+            wake_status = 'awake',
+            wake_progress = 0,
+            travel_status = 'home',
+            current_travel_id = NULL,
+            cooldown_until = NULL,
+            last_growth_at = ?,
+            updated_at = ?
+        WHERE user_id = ?
+        """,
+        (new_exp, target_stage, now_text(), now_text(), user_id),
+    )
+
+    exp_delta = new_exp - old_exp
+    level_delta = 10 - old_level
+    if exp_delta:
+        write_growth_log(conn, user_id, source_id, "total_exp", exp_delta, old_exp, new_exp, "管理员一键升到 Lv.10", "manual")
+    if level_delta:
+        write_growth_log(conn, user_id, source_id, "level", level_delta, old_level, 10, "管理员一键升到 Lv.10", "manual")
+    if target_stage != old_stage:
+        write_growth_log(conn, user_id, source_id, "stage", 0, old_stage, target_stage, "等级变化触发阶段切换", "manual")
+    if old_level < 10:
+        record_analytics_event(
+            conn,
+            "pet_level_up",
+            user_id=user_id,
+            event_id=f"analytics_{source_id}",
+            target_type="pet",
+            target_id="liukanshan",
+            props={
+                "beforeLevel": old_level,
+                "afterLevel": 10,
+                "source": "admin_boost_level_10",
+            },
+        )
+
+    profile = fetch_profile(conn, user_id)
+    return {
+        "profile": camel_profile(profile, user_id, fetch_level_visual(conn, 10)),
+        "reward": {
+            "exp": exp_delta,
+            "satiety": 0,
+            "mood": 0,
+            "travelEnergy": 0,
+            "levelUp": old_level < 10,
+            "fromLevel": old_level,
+            "toLevel": 10,
+            "stageChanged": target_stage != old_stage,
+            "fromStage": old_stage,
+            "toStage": target_stage,
+        },
+    }
+
+
 def calculate_reward(content_type, action_type):
     if action_type == "like":
         return {"exp": 1, "satiety": 0, "mood": 3, "travelEnergy": 1}
@@ -5855,6 +5943,17 @@ class Handler(BaseHTTPRequestHandler):
                 conn.execute("DELETE FROM pet_daily_stat WHERE user_id = ?", (user_id,))
                 conn.execute("DELETE FROM pet_profile WHERE user_id = ?", (user_id,))
                 self.send_json(200, {"profile": camel_profile(fetch_profile(conn, user_id), user_id)})
+            return
+
+        if path == "/api/p0/pet/boost-level-10":
+            session = self.require_admin_json()
+            if session is None:
+                return
+            with connect_db() as conn:
+                try:
+                    self.send_json(200, boost_pet_to_level_10(conn, session["user_id"]))
+                except RuntimeError as error:
+                    self.send_json(500, {"error": str(error), "message": "Lv.10 配置缺失"})
             return
 
         if path == "/api/p0/pet/content-events":

@@ -1237,6 +1237,12 @@ function bindPetHoverCard() {
       resetPet();
     });
   });
+  bindOnce("[data-hover-boost-level]", (button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      boostPetToLevel10();
+    });
+  });
 }
 
 function renderPetHoverCard() {
@@ -1270,6 +1276,7 @@ function renderPetHoverCard() {
   const visual = currentLevelVisual();
   const visualImage = visual?.thumbnailUrl || visual?.imageUrl;
   const resetButton = isAdminUser() ? `<button data-hover-reset>重置</button>` : "";
+  const boostButton = isAdminUser() ? `<button data-hover-boost-level>一键 Lv.10</button>` : "";
   card.innerHTML = `
     <div class="pet-hover-head">
       <span class="pet-mini pet-mini-image level-${escapeHTML(visual?.effectStyle || "cute")}">
@@ -1294,6 +1301,7 @@ function renderPetHoverCard() {
       ${travelAction}
       <button data-hover-handbook>旅行手账</button>
       <button data-hover-growth-log>成长日志</button>
+      ${boostButton}
       ${resetButton}
     </div>
     <label class="pet-hover-toggle">
@@ -4252,6 +4260,29 @@ async function resetPet() {
     renderCurrentRoute();
   } catch (error) {
     showToast(error.message || "重置失败");
+  }
+}
+
+async function boostPetToLevel10() {
+  try {
+    const data = await api("/api/p0/pet/boost-level-10", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    profile = data.profile;
+    leaderboardLoaded = false;
+    leaderboardData = null;
+    renderCurrentRoute();
+    const reward = data.reward || {};
+    if (reward.levelUp) {
+      showReward(reward, null);
+    } else {
+      showToast("刘看山已是 Lv.10，结尾彩蛋已打开");
+      character?.setMessage?.("宇宙知识领航者，归位！", { autoHide: LEVEL_UP_STAY_MS });
+      window.setTimeout(() => showLevelEndingModal(), 500);
+    }
+  } catch (error) {
+    showToast(error.message || "一键升级失败");
   }
 }
 
