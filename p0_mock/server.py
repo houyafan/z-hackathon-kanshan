@@ -472,7 +472,7 @@ def load_level_visual_config():
 LEVEL_VISUALS = load_level_visual_config()
 LEVEL_REQUIRED_TOTAL_EXP = {
     1: 0,
-    2: 50,
+    2: 10,
     3: 120,
     4: 250,
     5: 450,
@@ -564,6 +564,7 @@ def seed_level_config(conn):
             VALUES (?, ?, ?, ?, '[]')
             ON CONFLICT(level) DO UPDATE SET
               stage = excluded.stage,
+              required_total_exp = excluded.required_total_exp,
               title = excluded.title,
               updated_at = CURRENT_TIMESTAMP
             """,

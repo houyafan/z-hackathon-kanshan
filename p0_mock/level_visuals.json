@@ -11,7 +11,7 @@
     {
       "level": 2,
       "stage": "cub",
-      "required_total_exp": 50,
+      "required_total_exp": 10,
       "title": "星章萌新",
       "effect_style": "cute",
       "description": "围巾星章点亮，开始积累阅读成就"

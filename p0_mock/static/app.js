@@ -424,6 +424,13 @@ function levelProgressHTML(compact = false) {
   `;
 }
 
+function effectStageCenter() {
+  return {
+    x: window.innerWidth / 2,
+    y: window.innerHeight * 0.64,
+  };
+}
+
 function characterCenter() {
   const element = characterElement();
   if (!element) return { x: window.innerWidth - 110, y: window.innerHeight - 120 };
@@ -488,8 +495,7 @@ function playHomecomingEffect() {
   layer.appendChild(card);
   removeAfter(card, ADOPTION_EFFECT_MS + EFFECT_SETTLE_MS);
 
-  const centerX = window.innerWidth / 2;
-  const centerY = window.innerHeight * 0.58;
+  const { x: centerX, y: centerY } = effectStageCenter();
   character?.setPosition(centerX, centerY);
   character?.playSpawnEffect({
     message: "我回家啦，以后一起看知乎~",
@@ -969,8 +975,7 @@ async function ensureEffectCharacter() {
 }
 
 function centerCharacterForTest() {
-  const centerX = window.innerWidth / 2;
-  const centerY = window.innerHeight * 0.58;
+  const { x: centerX, y: centerY } = effectStageCenter();
   character?.setPosition?.(centerX, centerY);
   return { x: centerX, y: centerY };
 }
@@ -2294,6 +2299,8 @@ function syncCharacter() {
         spawnIntervalFrames: 5,
         initialGhostOpacity: 0.34,
         ghostFadeSpeed: 0.045,
+        evolveCanvasMarginLeft: -130,
+        evolveCanvasMarginTop: -150,
         spawnScaleMultiplier: 1.28,
         enableEmojiBubble: false,
         emojiBubbleConfig: {
@@ -2679,6 +2686,11 @@ function petPanel() {
   const experienceBoostButton = Number(profile.level) >= 2 && Number(profile.level) < 10
     ? `<button class="outline-btn wide-action" data-boost-next-level>快速体验升一级</button>`
     : "";
+  const experienceHint = Number(profile.level) < 2
+    ? `<div class="pet-experience-hint">升到 <strong>Lv.2</strong> 后，可用「快速体验升一级」一路体验完整养成流程。</div>`
+    : Number(profile.level) < 10
+      ? `<div class="pet-experience-hint unlocked"><strong>已解锁快速体验</strong>，可逐级升级体验到 Lv.10 终极彩蛋。</div>`
+      : `<div class="pet-experience-hint unlocked"><strong>完整流程已达成</strong>，Lv.10 终极形态已解锁。</div>`;
   return `
     <section class="card side-card pet-panel" data-pet-panel>
       <div class="pet-title">
@@ -2695,6 +2707,7 @@ function petPanel() {
         <button class="outline-btn" data-hover-growth-log>成长日志</button>
         <button class="outline-btn" data-open-leaderboard>查看排行榜</button>
       </div>
+      ${experienceHint}
       ${currentUserRankCard()}
       <div class="pet-level-showcase level-${escapeHTML(visual?.effectStyle || "cute")}">
         ${visualImage ? `<img src="${escapeHTML(visualImage)}" alt="${escapeHTML(visual.title || "刘看山等级形象")}">` : ""}
@@ -4085,8 +4098,7 @@ function scheduleTravelReturnCheck() {
 }
 
 function playTravelDeparture(travel) {
-  const centerX = window.innerWidth / 2;
-  const centerY = window.innerHeight * 0.58;
+  const { x: centerX, y: centerY } = effectStageCenter();
   character?.setPosition?.(centerX, centerY);
   window.setTimeout(() => {
     character?.startGoTravel?.({
@@ -4103,8 +4115,7 @@ function playTravelDeparture(travel) {
 }
 
 function playTravelReturn(travel) {
-  const centerX = window.innerWidth / 2;
-  const centerY = window.innerHeight * 0.58;
+  const { x: centerX, y: centerY } = effectStageCenter();
   character?.setPosition?.(centerX, centerY);
   character?.startBackHome?.({
     message: travel.message || "旅行回来啦！",
@@ -4602,8 +4613,7 @@ function showReward(reward, sourceElement) {
     }
   }
   if (character && reward.levelUp) {
-    const centerX = window.innerWidth / 2;
-    const centerY = window.innerHeight * 0.58;
+    const { x: centerX, y: centerY } = effectStageCenter();
     character.setPosition?.(centerX, centerY);
     character.playEvolveEffect?.({ message, autoHide: LEVEL_UP_EFFECT_MS });
     pulseCharacter("pet-level-up", LEVEL_UP_EFFECT_MS);
