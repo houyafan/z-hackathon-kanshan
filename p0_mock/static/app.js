@@ -1240,9 +1240,9 @@ function bindPetHoverCard() {
   bindOnce("[data-hover-reward-walk]", (input) => {
     input.addEventListener("click", (event) => event.stopPropagation());
     input.addEventListener("change", (event) => {
-      rewardWalkEnabled = event.currentTarget.checked;
+      rewardWalkEnabled = !event.currentTarget.checked;
       localStorage.setItem("liukanshan_reward_walk_enabled", rewardWalkEnabled ? "1" : "0");
-      showToast(rewardWalkEnabled ? "经验增长会走到触发点" : "经验增长仅气泡提示");
+      showToast(rewardWalkEnabled ? "看山会走到触发点" : "已关闭看山移动");
       renderPetHoverCard();
     });
   });
@@ -1323,8 +1323,8 @@ function renderPetHoverCard() {
       ${resetButton}
     </div>
     <label class="pet-hover-toggle">
-      <input type="checkbox" data-hover-reward-walk ${rewardWalkEnabled ? "checked" : ""}>
-      <span>经验走到触发点</span>
+      <input type="checkbox" data-hover-reward-walk ${rewardWalkEnabled ? "" : "checked"}>
+      <span>关闭看山移动</span>
     </label>
   `;
   bindPetHoverCard();

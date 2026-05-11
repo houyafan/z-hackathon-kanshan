@@ -1393,9 +1393,16 @@ button {
 }
 
 .side-stack {
+  position: sticky;
+  top: 74px;
+  align-self: start;
+  max-height: calc(100vh - 86px);
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
 }
 
 .side-card {
@@ -4638,6 +4645,9 @@ button {
   }
 
   .side-stack {
+    position: static;
+    max-height: none;
+    overflow: visible;
     order: -1;
   }
 
