@@ -2678,7 +2678,17 @@ button {
 }
 
 #roamingCharacter.hide-hover-card-once .pet-hover-card,
-#roamingCharacter.hide-hover-card-once:hover .pet-hover-card {
+#roamingCharacter.hide-hover-card-once:hover .pet-hover-card,
+#roamingCharacter.roaming-spawning .pet-hover-card,
+#roamingCharacter.roaming-spawning:hover .pet-hover-card,
+#roamingCharacter.roaming-evolving .pet-hover-card,
+#roamingCharacter.roaming-evolving:hover .pet-hover-card,
+#roamingCharacter.roaming-traveling .pet-hover-card,
+#roamingCharacter.roaming-traveling:hover .pet-hover-card,
+#roamingCharacter.pet-homecoming .pet-hover-card,
+#roamingCharacter.pet-homecoming:hover .pet-hover-card,
+#roamingCharacter.pet-level-up .pet-hover-card,
+#roamingCharacter.pet-level-up:hover .pet-hover-card {
   opacity: 0 !important;
   transform: translateX(8px) !important;
   pointer-events: none !important;
@@ -2832,6 +2842,10 @@ button {
   grid-template-columns: 1fr 1fr;
   gap: 8px;
   margin: 10px 0;
+}
+
+.travel-panel-actions .wide-action {
+  grid-column: 1 / -1;
 }
 
 .pet-panel > .travel-panel-actions {

@@ -2676,6 +2676,9 @@ function petPanel() {
   const resetButton = isAdminUser()
     ? `<button class="reset-pet-btn" data-reset-pet>重置刘看山</button>`
     : "";
+  const experienceBoostButton = Number(profile.level) >= 2 && Number(profile.level) < 10
+    ? `<button class="outline-btn wide-action" data-boost-next-level>快速体验升一级</button>`
+    : "";
   return `
     <section class="card side-card pet-panel" data-pet-panel>
       <div class="pet-title">
@@ -2686,6 +2689,7 @@ function petPanel() {
         <span class="level-pill">Lv.${profile.level}</span>
       </div>
       <div class="travel-panel-actions">
+        ${experienceBoostButton}
         ${travelAction}
         <button class="outline-btn" data-hover-handbook>旅行手账</button>
         <button class="outline-btn" data-hover-growth-log>成长日志</button>
@@ -3476,6 +3480,11 @@ function bindPanelBasics() {
     if (button.dataset.basicBound) return;
     button.dataset.basicBound = "1";
     button.addEventListener("click", resetPet);
+  });
+  document.querySelectorAll("[data-boost-next-level]").forEach((button) => {
+    if (button.dataset.basicBound) return;
+    button.dataset.basicBound = "1";
+    button.addEventListener("click", () => boostPetOneLevel(button));
   });
 }
 
@@ -4499,6 +4508,31 @@ async function boostPetToLevel10() {
     }
   } catch (error) {
     showToast(error.message || "一键升级失败");
+  }
+}
+
+async function boostPetOneLevel(sourceButton) {
+  if (sourceButton) sourceButton.disabled = true;
+  try {
+    const data = await api("/api/p0/pet/boost-next-level", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    profile = data.profile;
+    leaderboardLoaded = false;
+    leaderboardData = null;
+    renderCurrentRoute();
+    syncCharacter();
+    const reward = data.reward || {};
+    if (reward.levelUp) {
+      showReward(reward, null);
+    } else {
+      showToast("刘看山已达成 Lv.10，完整流程已解锁");
+      window.setTimeout(() => showLevelEndingModal(), 500);
+    }
+  } catch (error) {
+    if (sourceButton) sourceButton.disabled = false;
+    showToast(error.message || "快速升级失败");
   }
 }
 

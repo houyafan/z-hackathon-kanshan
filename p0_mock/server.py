@@ -3208,6 +3208,98 @@ def boost_pet_to_level_10(conn, user_id):
     }
 
 
+def boost_pet_one_level(conn, user_id):
+    profile = fetch_profile(conn, user_id)
+    if profile is None or not profile["adopted"]:
+        return 409, {"error": "PET_NOT_ADOPTED", "message": "请先领养刘看山"}
+
+    old_level = int(profile["level"])
+    max_level = max(item["level"] for item in LEVEL_VISUALS)
+    if old_level < 2:
+        return 403, {"error": "LEVEL_TOO_LOW", "message": "Lv.2 后可使用快速体验升级"}
+    if old_level >= max_level:
+        return 200, {
+            "profile": camel_profile(profile, user_id, fetch_level_visual(conn, old_level)),
+            "reward": {
+                "exp": 0,
+                "satiety": 0,
+                "mood": 0,
+                "travelEnergy": 0,
+                "levelUp": False,
+                "fromLevel": old_level,
+                "toLevel": old_level,
+                "stageChanged": False,
+                "fromStage": profile["stage"],
+                "toStage": profile["stage"],
+            },
+        }
+
+    target_level = old_level + 1
+    target = conn.execute(
+        "SELECT * FROM pet_level_config WHERE level = ?",
+        (target_level,),
+    ).fetchone()
+    if target is None:
+        raise RuntimeError("TARGET_LEVEL_CONFIG_MISSING")
+
+    old_exp = int(profile["total_exp"])
+    old_stage = profile["stage"]
+    target_exp = int(target["required_total_exp"])
+    target_stage = target["stage"]
+    new_exp = max(old_exp, target_exp)
+    source_id = f"experience-boost-level-{uuid.uuid4().hex[:8]}"
+    current = now_text()
+
+    conn.execute(
+        """
+        UPDATE pet_profile
+        SET total_exp = ?,
+            level = ?,
+            stage = ?,
+            last_growth_at = ?,
+            updated_at = ?
+        WHERE user_id = ?
+        """,
+        (new_exp, target_level, target_stage, current, current, user_id),
+    )
+
+    exp_delta = new_exp - old_exp
+    if exp_delta:
+        write_growth_log(conn, user_id, source_id, "total_exp", exp_delta, old_exp, new_exp, "快速体验升一级", "manual")
+    write_growth_log(conn, user_id, source_id, "level", 1, old_level, target_level, "快速体验升一级", "manual")
+    if target_stage != old_stage:
+        write_growth_log(conn, user_id, source_id, "stage", 0, old_stage, target_stage, "等级变化触发阶段切换", "manual")
+    record_analytics_event(
+        conn,
+        "pet_level_up",
+        user_id=user_id,
+        event_id=f"analytics_{source_id}",
+        target_type="pet",
+        target_id="liukanshan",
+        props={
+            "beforeLevel": old_level,
+            "afterLevel": target_level,
+            "source": "experience_boost_one_level",
+        },
+    )
+
+    return 200, {
+        "profile": camel_profile(fetch_profile(conn, user_id), user_id, fetch_level_visual(conn, target_level)),
+        "reward": {
+            "exp": exp_delta,
+            "satiety": 0,
+            "mood": 0,
+            "travelEnergy": 0,
+            "levelUp": True,
+            "fromLevel": old_level,
+            "toLevel": target_level,
+            "stageChanged": target_stage != old_stage,
+            "fromStage": old_stage,
+            "toStage": target_stage,
+        },
+    }
+
+
 def calculate_reward(content_type, action_type):
     if action_type == "like":
         return {"exp": 1, "satiety": 0, "mood": 3, "travelEnergy": 1}
@@ -5972,6 +6064,18 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json(200, boost_pet_to_level_10(conn, session["user_id"]))
                 except RuntimeError as error:
                     self.send_json(500, {"error": str(error), "message": "Lv.10 配置缺失"})
+            return
+
+        if path == "/api/p0/pet/boost-next-level":
+            session = self.require_auth_json()
+            if session is None:
+                return
+            with connect_db() as conn:
+                try:
+                    status, response = boost_pet_one_level(conn, session["user_id"])
+                    self.send_json(status, response)
+                except RuntimeError as error:
+                    self.send_json(500, {"error": str(error), "message": "等级配置缺失"})
             return
 
         if path == "/api/p0/pet/content-events":
