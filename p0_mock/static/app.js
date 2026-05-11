@@ -3555,6 +3555,28 @@ function threeColumnScroller(page = threeColumnPage()) {
   return page?.querySelector(".recommend-main, .follow-main, .zh-hot-list-card, .community-main");
 }
 
+function captureThreeColumnScrollState() {
+  const page = threeColumnPage();
+  const scroller = threeColumnScroller(page);
+  if (!page || !scroller) return null;
+  return {
+    path: window.location.pathname,
+    scrollTop: scroller.scrollTop,
+  };
+}
+
+function restoreThreeColumnScrollState(state) {
+  if (!state) return;
+  window.requestAnimationFrame(() => {
+    if (window.location.pathname !== state.path) return;
+    const scroller = threeColumnScroller();
+    if (!scroller) return;
+    updateThreeColumnPageLayout();
+    scroller.scrollTop = Math.min(state.scrollTop, Math.max(0, scroller.scrollHeight - scroller.clientHeight));
+    updateThreeColumnFloatingColumns();
+  });
+}
+
 function bindThreeColumnPageScroll() {
   const page = threeColumnPage();
   const scroller = threeColumnScroller(page);
@@ -4506,6 +4528,7 @@ async function submitContentEvent(item, actionType, sourceElement) {
     renderCurrentRoute();
     return;
   }
+  const scrollState = captureThreeColumnScrollState();
 
   const normalizedAction = actionType === "watch" ? "watch" : actionType;
   const payload = {
@@ -4532,6 +4555,7 @@ async function submitContentEvent(item, actionType, sourceElement) {
     if (data.duplicateInteraction) {
       showToast(data.message || "已经操作过这篇内容");
       renderCurrentRoute();
+      restoreThreeColumnScrollState(scrollState);
       return;
     }
     showReward(data.reward, sourceElement);
@@ -4542,6 +4566,7 @@ async function submitContentEvent(item, actionType, sourceElement) {
       markOnboardingStep("interact");
     }
     renderCurrentRoute();
+    restoreThreeColumnScrollState(scrollState);
   } catch (error) {
     if (sourceElement) sourceElement.disabled = false;
     showToast(error.message || "事件提交失败");
