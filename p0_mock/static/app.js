@@ -631,7 +631,7 @@ function typeStoryText(target, text, done) {
 }
 
 function maybeShowStoryIntro() {
-  if (!currentUser || profile?.adopted || hasSeenStoryIntro() || document.querySelector(".story-intro-modal")) {
+  if (!currentUser || profile?.adopted || document.querySelector(".story-intro-modal")) {
     return false;
   }
   removeOnboardingGuide();
@@ -640,11 +640,9 @@ function maybeShowStoryIntro() {
   modal.innerHTML = `
     <section class="story-intro-dialog" role="dialog" aria-modal="true" aria-label="刘看山背景故事">
       <div class="story-orbit" aria-hidden="true"></div>
-      <div class="story-kicker">刘看山背景故事</div>
       <h1>知乎星等待重新点亮</h1>
       <p class="story-typewriter" data-story-text></p>
       <div class="story-actions" data-story-actions hidden>
-        <button type="button" class="story-secondary" data-story-later>稍后再说</button>
         <button type="button" class="story-primary" data-story-adopt>领养刘看山</button>
       </div>
     </section>
@@ -655,15 +653,9 @@ function maybeShowStoryIntro() {
   typeStoryText(textNode, STORY_INTRO_TEXT, () => {
     actions.hidden = false;
   });
-  modal.querySelector("[data-story-later]").addEventListener("click", () => {
-    closeStoryIntro(true);
-  });
   modal.querySelector("[data-story-adopt]").addEventListener("click", () => {
     markStoryIntroSeen();
     adoptPet();
-  });
-  modal.addEventListener("click", (event) => {
-    if (event.target === modal && !actions.hidden) closeStoryIntro(true);
   });
   return true;
 }
