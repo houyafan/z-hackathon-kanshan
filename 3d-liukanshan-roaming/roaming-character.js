@@ -760,6 +760,7 @@ const DEFAULT_TRAVEL_GATE_CONFIG = {
     fadeInDuration: 1.5,
     fadeOutDuration: 1.5,
     gateCloseDuration: 0.6,
+    renderGateVisuals: false,
     travelState: "idle",
 };
 
@@ -846,6 +847,10 @@ export function createPetTravelGate(petModel, scene, config = {}) {
         gateGroup.clear();
         gateParts = [];
         ringList = [];
+        centerPane = null;
+        innerPane = null;
+
+        if (!cfg.renderGateVisuals) return;
 
         const vortexMaterial = new THREE.MeshBasicMaterial({
             color: cfg.vortexColor,

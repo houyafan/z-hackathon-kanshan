@@ -37,8 +37,8 @@
     z-index: 1400;
 }
 
-.roaming-character.roaming-traveling::before {
-    content: '';
+.roaming-character .travel-portal {
+    display: none;
     position: absolute;
     left: 50%;
     top: 52%;
@@ -50,7 +50,11 @@
         drop-shadow(0 0 24px var(--travel-portal-glow, rgba(88, 183, 255, 0.42)));
     animation: travelPortalPulse 2.2s ease-in-out infinite;
     pointer-events: none;
-    z-index: 0;
+    z-index: 1;
+}
+
+.roaming-character.roaming-traveling .travel-portal {
+    display: block;
 }
 
 .roaming-character.roaming-departing {
@@ -156,7 +160,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .roaming-character.roaming-traveling::before {
+    .roaming-character.roaming-traveling .travel-portal {
         animation: none;
         opacity: 0.9;
     }

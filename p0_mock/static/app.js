@@ -1,4 +1,4 @@
-import { initRoamingCharacter } from "/3d-liukanshan-roaming/roaming-character.js?v=34";
+import { initRoamingCharacter } from "/3d-liukanshan-roaming/roaming-character.js?v=35";
 
 const app = document.getElementById("app");
 const toast = document.getElementById("toast");
