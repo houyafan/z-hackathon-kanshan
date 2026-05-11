@@ -361,7 +361,10 @@ button {
   gap: 10px;
 }
 
-.recommend-page {
+.recommend-page,
+.follow-page,
+.hot-page,
+.community-page {
   height: calc(100vh - 62px);
   grid-template-rows: minmax(0, 1fr);
   align-items: start;
@@ -373,7 +376,10 @@ button {
   min-width: 0;
 }
 
-.recommend-page .recommend-main {
+.recommend-page .recommend-main,
+.follow-page .follow-main,
+.hot-page .zh-hot-list-card,
+.community-page .community-main {
   position: relative;
   top: auto;
   height: 100%;
@@ -1425,11 +1431,22 @@ button {
 }
 
 .recommend-page .author-note,
-.recommend-page .side-stack {
+.recommend-page .side-stack,
+.follow-page .author-note,
+.follow-page .side-stack,
+.hot-page .author-note,
+.hot-page .side-stack,
+.community-page .author-note,
+.community-page .side-stack {
   position: relative;
   top: auto;
   max-height: none;
   overflow: visible;
+}
+
+.three-column-scroll-spacer {
+  height: 0;
+  pointer-events: none;
 }
 
 .side-card {
@@ -4671,13 +4688,19 @@ button {
     padding-right: 0;
   }
 
-  .recommend-page {
+  .recommend-page,
+  .follow-page,
+  .hot-page,
+  .community-page {
     height: auto;
     padding-bottom: 48px;
     overflow: visible;
   }
 
-  .recommend-page .recommend-main {
+  .recommend-page .recommend-main,
+  .follow-page .follow-main,
+  .hot-page .zh-hot-list-card,
+  .community-page .community-main {
     position: static;
     top: auto;
     height: auto;

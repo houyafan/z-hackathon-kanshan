@@ -16,7 +16,7 @@ let feedNextOffset = 0;
 let feedHasMore = true;
 let feedLoading = false;
 let feedScrollBound = false;
-let recommendLayoutFrame = 0;
+let threeColumnLayoutFrame = 0;
 let hotItems = [];
 let hotItemsPromise = null;
 let hotItemsLoaded = false;
@@ -1969,7 +1969,7 @@ function replaceSidebarLeaderboards() {
   });
   replacePetPanels();
   bindSidebarLeaderboard();
-  updateRecommendPageLayout();
+  updateThreeColumnPageLayout();
 }
 
 function replacePetPanels() {
@@ -1981,7 +1981,7 @@ function replacePetPanels() {
   bindPetHoverCard();
   bindSidebarLeaderboard();
   bindPanelBasics();
-  updateRecommendPageLayout();
+  updateThreeColumnPageLayout();
 }
 
 function ensureSidebarLeaderboard() {
@@ -3439,24 +3439,11 @@ function bindCommon() {
   bindPetHoverCard();
   bindSidebarLeaderboard();
   ensureSidebarLeaderboard();
+  bindThreeColumnPageScroll();
 }
 
 function bindRecommend() {
   bindRecommendScroll();
-  updateRecommendPageLayout();
-  const recommendScroller = document.querySelector(".recommend-page .recommend-main");
-  if (recommendScroller && !recommendScroller.dataset.scrollBound) {
-    recommendScroller.dataset.scrollBound = "1";
-    recommendScroller.addEventListener("scroll", () => {
-      maybeLoadMoreContents(recommendScroller);
-      scheduleRecommendFloatingColumns();
-    }, { passive: true });
-    window.requestAnimationFrame(() => {
-      maybeLoadMoreContents(recommendScroller);
-      updateRecommendFloatingColumns();
-    });
-  }
-  bindRecommendPageWheel();
   document.querySelectorAll("[data-consume]").forEach((button) => {
     button.addEventListener("click", () => {
       const item = feedItems.find((entry) => entry.id === button.dataset.consume);
@@ -3495,10 +3482,27 @@ function bindRecommend() {
   });
 }
 
-function bindRecommendPageWheel() {
-  const page = document.querySelector(".recommend-page");
-  const scroller = page?.querySelector(".recommend-main");
-  if (!page || !scroller || page.dataset.wheelBound) return;
+function threeColumnPage() {
+  return document.querySelector(".recommend-page, .follow-page, .hot-page, .community-page");
+}
+
+function threeColumnScroller(page = threeColumnPage()) {
+  return page?.querySelector(".recommend-main, .follow-main, .zh-hot-list-card, .community-main");
+}
+
+function bindThreeColumnPageScroll() {
+  const page = threeColumnPage();
+  const scroller = threeColumnScroller(page);
+  if (!page || !scroller) return;
+  updateThreeColumnPageLayout();
+  if (!scroller.dataset.threeColumnScrollBound) {
+    scroller.dataset.threeColumnScrollBound = "1";
+    scroller.addEventListener("scroll", () => {
+      maybeLoadMoreContents(scroller);
+      scheduleThreeColumnFloatingColumns();
+    }, { passive: true });
+  }
+  if (page.dataset.wheelBound) return;
   page.dataset.wheelBound = "1";
   page.addEventListener("wheel", (event) => {
     if (window.matchMedia("(max-width: 1100px)").matches) return;
@@ -3508,27 +3512,61 @@ function bindRecommendPageWheel() {
     event.preventDefault();
     scroller.scrollTop += event.deltaY;
     maybeLoadMoreContents(scroller);
-    scheduleRecommendFloatingColumns();
+    scheduleThreeColumnFloatingColumns();
   }, { passive: false });
+  window.requestAnimationFrame(() => {
+    maybeLoadMoreContents(scroller);
+    updateThreeColumnFloatingColumns();
+  });
 }
 
-function updateRecommendPageLayout() {
-  const page = document.querySelector(".recommend-page");
+function updateThreeColumnPageLayout() {
+  const page = threeColumnPage();
   if (!page) return;
   const sideItems = [...page.querySelectorAll(".author-note, .side-stack")];
+  const scroller = threeColumnScroller(page);
+  const spacer = threeColumnScrollSpacer(scroller);
   if (window.matchMedia("(max-width: 1100px)").matches) {
     sideItems.forEach((item) => {
       item.style.transform = "";
     });
+    if (spacer) spacer.style.height = "0px";
     return;
   }
-  updateRecommendFloatingColumns();
+  if (scroller && spacer) {
+    spacer.style.height = "0px";
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+    const availableHeight = viewportHeight - scroller.getBoundingClientRect().top - 10;
+    const maxSideOffset = sideItems.reduce((maxOffset, item) => {
+      return Math.max(maxOffset, item.scrollHeight - availableHeight);
+    }, 0);
+    const currentScrollRange = scroller.scrollHeight - scroller.clientHeight;
+    const extraScrollSpace = Math.max(0, maxSideOffset - currentScrollRange);
+    spacer.style.height = `${Math.ceil(extraScrollSpace)}px`;
+    const adjustedScrollRange = scroller.scrollHeight - scroller.clientHeight;
+    if (adjustedScrollRange < maxSideOffset) {
+      spacer.style.height = `${Math.ceil(extraScrollSpace + maxSideOffset - adjustedScrollRange)}px`;
+    }
+  }
+  updateThreeColumnFloatingColumns();
 }
 
-function updateRecommendFloatingColumns() {
-  const page = document.querySelector(".recommend-page");
+function threeColumnScrollSpacer(scroller) {
+  if (!scroller) return null;
+  let spacer = scroller.querySelector(":scope > [data-three-column-scroll-spacer]");
+  if (!spacer) {
+    spacer = document.createElement("div");
+    spacer.className = "three-column-scroll-spacer";
+    spacer.dataset.threeColumnScrollSpacer = "1";
+    scroller.appendChild(spacer);
+  }
+  return spacer;
+}
+
+function updateThreeColumnFloatingColumns() {
+  const page = threeColumnPage();
   if (!page || window.matchMedia("(max-width: 1100px)").matches) return;
-  const scroller = page.querySelector(".recommend-main");
+  const scroller = threeColumnScroller(page);
   if (!scroller) return;
   const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
   const availableHeight = viewportHeight - scroller.getBoundingClientRect().top - 10;
@@ -3539,17 +3577,21 @@ function updateRecommendFloatingColumns() {
   });
 }
 
-function scheduleRecommendFloatingColumns() {
-  if (recommendLayoutFrame) return;
-  recommendLayoutFrame = window.requestAnimationFrame(() => {
-    recommendLayoutFrame = 0;
-    updateRecommendFloatingColumns();
+function scheduleThreeColumnFloatingColumns() {
+  if (threeColumnLayoutFrame) return;
+  threeColumnLayoutFrame = window.requestAnimationFrame(() => {
+    threeColumnLayoutFrame = 0;
+    updateThreeColumnFloatingColumns();
   });
 }
 
 function maybeLoadMoreContents(scrollTarget = window) {
   if (window.location.pathname !== "/" || feedLoading || !feedHasMore) return;
-  if (scrollTarget === window && document.querySelector(".recommend-page .recommend-main")) return;
+  if (
+    scrollTarget === window
+    && document.querySelector(".recommend-page .recommend-main")
+    && !window.matchMedia("(max-width: 1100px)").matches
+  ) return;
   const remaining = scrollTarget === window
     ? document.documentElement.scrollHeight - window.scrollY - window.innerHeight
     : scrollTarget.scrollHeight - scrollTarget.scrollTop - scrollTarget.clientHeight;
@@ -3566,7 +3608,7 @@ function bindRecommendScroll() {
   if (feedScrollBound) return;
   feedScrollBound = true;
   window.addEventListener("scroll", () => maybeLoadMoreContents(window), { passive: true });
-  window.addEventListener("resize", () => updateRecommendPageLayout(), { passive: true });
+  window.addEventListener("resize", () => updateThreeColumnPageLayout(), { passive: true });
 }
 
 function bindCommunity() {
