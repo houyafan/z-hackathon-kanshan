@@ -2719,7 +2719,6 @@ function petPanel() {
         </div>
       </div>
       <div class="pet-stats">
-        <div class="stat-box"><small>身份</small><strong>${escapeHTML(profileLevelTitle())}</strong></div>
         <div class="stat-box stat-box-progress"><small>累计经验</small><strong>${profile.totalExp}</strong>${levelProgressHTML()}</div>
         <div class="stat-box"><small>学识值</small><strong>${profile.satiety}</strong></div>
         <div class="stat-box"><small>心情值</small><strong>${profile.mood}</strong></div>
