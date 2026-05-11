@@ -1992,7 +1992,7 @@ button {
 .content-dialog {
   position: relative;
   width: min(760px, 100%);
-  max-height: calc(100vh - 112px);
+  height: calc(100vh - 112px);
   overflow-y: auto;
   border-radius: 8px;
   background: #fff;
@@ -5126,6 +5126,7 @@ button {
 
   .content-dialog {
     padding: 24px 20px 26px;
+    height: calc(100vh - 68px);
   }
 
   .content-dialog h1 {
