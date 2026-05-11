@@ -1662,6 +1662,12 @@ button {
   background: #f2f6fc;
 }
 
+.stat-box-progress {
+  grid-column: 1 / -1;
+  background: linear-gradient(135deg, #eef6ff 0%, #fff8ed 100%);
+  border: 1px solid rgba(22, 119, 255, 0.12);
+}
+
 .stat-box small {
   display: block;
   color: #7b8798;
@@ -1670,6 +1676,35 @@ button {
 
 .stat-box strong {
   font-size: 18px;
+}
+
+.level-progress-note {
+  display: block;
+  margin-top: 6px;
+  color: #1f5fbf;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.level-progress-note.compact {
+  font-size: 11px;
+}
+
+.level-progress-track {
+  display: block;
+  height: 6px;
+  margin-top: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(22, 119, 255, 0.12);
+}
+
+.level-progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #1677ff 0%, #ffb020 100%);
 }
 
 .adopt-btn {
@@ -2678,6 +2713,11 @@ button {
   padding: 9px 10px;
   border-radius: 8px;
   background: #f3f7ff;
+}
+
+.pet-hover-stats .pet-hover-exp {
+  grid-column: 1 / -1;
+  background: linear-gradient(135deg, #edf6ff 0%, #fff7ec 100%);
 }
 
 .pet-hover-stats small {

@@ -1202,10 +1202,12 @@ def camel_level_visual(row, fallback_level=1):
     level = row["level"] if "level" in keys else fallback_level
     image_url = row["image_url"] if "image_url" in keys else default_level_visual(level)["image_url"]
     thumbnail_url = row["thumbnail_url"] if "thumbnail_url" in keys else None
+    required_total_exp = row["required_total_exp"] if "required_total_exp" in keys else LEVEL_REQUIRED_TOTAL_EXP.get(int(level), 0)
     return {
         "level": level,
         "stage": row["stage"],
         "title": row["title"],
+        "requiredTotalExp": required_total_exp,
         "effectStyle": row["effect_style"],
         "imageUrl": image_url,
         "thumbnailUrl": thumbnail_url or image_url,
@@ -5739,7 +5741,14 @@ class Handler(BaseHTTPRequestHandler):
                 return
             with connect_db() as conn:
                 rows = conn.execute(
-                    "SELECT * FROM pet_level_visual_config ORDER BY level ASC"
+                    """
+                    SELECT
+                      lv.*,
+                      lc.required_total_exp
+                    FROM pet_level_visual_config lv
+                    LEFT JOIN pet_level_config lc ON lc.level = lv.level
+                    ORDER BY lv.level ASC
+                    """
                 ).fetchall()
                 self.send_json(200, {"visuals": [camel_level_visual(row) for row in rows]})
             return
