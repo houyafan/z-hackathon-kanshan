@@ -49,6 +49,10 @@ let idleBandVisible = true;
 let _prevWakeStatus = null;
 let _lastWakeBubbleAt = null;
 let travelDepartureVisibleUntil = 0;
+let homecomingReturnTimer = null;
+let levelUpReturnTimer = null;
+let levelEndingTimer = null;
+let travelAnimationTimer = null;
 const savedRewardWalk = localStorage.getItem("liukanshan_reward_walk_enabled") ?? localStorage.getItem("liukanshan_level_walk_enabled");
 let rewardWalkEnabled = savedRewardWalk !== "0";
 const MODEL_PATH = "/3d-liukanshan-roaming/liukanshan-slot.glb?v=2";
@@ -63,7 +67,7 @@ const EFFECT_SETTLE_MS = 650;
 const RECOMMEND_PAGE_SIZE = 10;
 const FALLBACK_LEVEL_REQUIREMENTS = [
   { level: 1, title: "星途起点", requiredTotalExp: 0 },
-  { level: 2, title: "星章萌新", requiredTotalExp: 50 },
+  { level: 2, title: "星章萌新", requiredTotalExp: 10 },
   { level: 3, title: "星光信使", requiredTotalExp: 120 },
   { level: 4, title: "行星记录员", requiredTotalExp: 250 },
   { level: 5, title: "星际见习官", requiredTotalExp: 450 },
@@ -486,7 +490,19 @@ function spawnFloatChip(text, x, y, level = false) {
   removeAfter(chip, 1500);
 }
 
+function clearCharacterEffectTimers() {
+  window.clearTimeout(homecomingReturnTimer);
+  window.clearTimeout(levelUpReturnTimer);
+  window.clearTimeout(levelEndingTimer);
+  window.clearTimeout(travelAnimationTimer);
+  homecomingReturnTimer = null;
+  levelUpReturnTimer = null;
+  levelEndingTimer = null;
+  travelAnimationTimer = null;
+}
+
 function playHomecomingEffect() {
+  clearCharacterEffectTimers();
   const milestone = LEVEL_MILESTONES[1];
   const layer = effectLayer();
   const card = document.createElement("div");
@@ -507,11 +523,12 @@ function playHomecomingEffect() {
   spawnSparks(centerX, centerY, { count: 18 });
   spawnRing(centerX, centerY, false);
 
-  window.setTimeout(() => {
+  homecomingReturnTimer = window.setTimeout(() => {
     character?.moveTo(window.innerWidth - 150, window.innerHeight - 200, {
       message: profileBubbleTitle(),
       useRandomMessage: false,
     });
+    homecomingReturnTimer = null;
   }, ADOPTION_EFFECT_MS + EFFECT_SETTLE_MS);
 }
 
@@ -4098,13 +4115,15 @@ function scheduleTravelReturnCheck() {
 }
 
 function playTravelDeparture(travel) {
+  clearCharacterEffectTimers();
   const { x: centerX, y: centerY } = effectStageCenter();
   character?.setPosition?.(centerX, centerY);
-  window.setTimeout(() => {
+  travelAnimationTimer = window.setTimeout(() => {
     character?.startGoTravel?.({
       message: travel.message || "出发旅行！",
       autoHide: 2400,
     });
+    travelAnimationTimer = null;
   }, 80);
   window.setTimeout(() => {
     if (profile?.travelStatus !== "traveling") return;
@@ -4115,14 +4134,16 @@ function playTravelDeparture(travel) {
 }
 
 function playTravelReturn(travel) {
+  clearCharacterEffectTimers();
   const { x: centerX, y: centerY } = effectStageCenter();
   character?.setPosition?.(centerX, centerY);
   character?.startBackHome?.({
     message: travel.message || "旅行回来啦！",
     autoHide: 2800,
   });
-  window.setTimeout(() => {
+  travelAnimationTimer = window.setTimeout(() => {
     character?.setPosition?.(window.innerWidth - 150, window.innerHeight - 200);
+    travelAnimationTimer = null;
   }, 3300);
 }
 
@@ -4478,6 +4499,7 @@ async function adoptPet() {
 
 async function resetPet() {
   try {
+    clearCharacterEffectTimers();
     const data = await api("/api/p0/pet/reset", {
       method: "POST",
       body: JSON.stringify({}),
@@ -4607,9 +4629,13 @@ function showReward(reward, sourceElement) {
     : `看山成长了：${partsText}`;
   showToast(message);
   if (reward.levelUp) {
+    clearCharacterEffectTimers();
     showLevelUpPreview(reward).catch((error) => console.warn("level preview failed", error));
     if (Number(reward.toLevel) >= 10 && Number(reward.fromLevel || 0) < 10) {
-      window.setTimeout(() => showLevelEndingModal(), LEVEL_UP_EFFECT_MS + EFFECT_SETTLE_MS);
+      levelEndingTimer = window.setTimeout(() => {
+        showLevelEndingModal();
+        levelEndingTimer = null;
+      }, LEVEL_UP_EFFECT_MS + EFFECT_SETTLE_MS);
     }
   }
   if (character && reward.levelUp) {
@@ -4617,9 +4643,10 @@ function showReward(reward, sourceElement) {
     character.setPosition?.(centerX, centerY);
     character.playEvolveEffect?.({ message, autoHide: LEVEL_UP_EFFECT_MS });
     pulseCharacter("pet-level-up", LEVEL_UP_EFFECT_MS);
-    window.setTimeout(() => {
+    levelUpReturnTimer = window.setTimeout(() => {
       character?.setPosition?.(window.innerWidth - 150, window.innerHeight - 200);
       character?.setMessage?.(profileBubbleTitle(), { autoHide: 2200 });
+      levelUpReturnTimer = null;
     }, LEVEL_UP_EFFECT_MS + EFFECT_SETTLE_MS);
   }
   if (sourceElement && character && !reward.levelUp && rewardWalkEnabled) {
