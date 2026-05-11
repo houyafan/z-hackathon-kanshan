@@ -1,4 +1,4 @@
-import { initRoamingCharacter } from "/3d-liukanshan-roaming/roaming-character.js?v=33";
+import { initRoamingCharacter } from "/3d-liukanshan-roaming/roaming-character.js?v=34";
 
 const app = document.getElementById("app");
 const toast = document.getElementById("toast");
@@ -4088,7 +4088,7 @@ function playTravelDeparture(travel) {
   window.setTimeout(() => {
     if (profile?.travelStatus !== "traveling") return;
     travelDepartureVisibleUntil = 0;
-    characterElement()?.classList.remove("roaming-traveling");
+    characterElement()?.classList.remove("roaming-traveling", "roaming-departing", "roaming-returning");
     syncCharacter();
   }, 3600);
 }
