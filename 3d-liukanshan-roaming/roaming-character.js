@@ -1062,12 +1062,6 @@ class RoamingCharacter {
             evolveCameraZ: 4.2,
             scale: 1.3,
             speed: 250,
-            teleportDistance: 420,
-            teleportDuration: 2400,
-            ghostCount: 5,
-            screenGhostDuration: 2200,
-            screenGhostDelay: 72,
-            sceneGhostDuration: 1300,
             spawnEffectDuration: 2800,
             enableGhostTrail: true,
             maxGhostCount: 8,
@@ -1115,9 +1109,7 @@ class RoamingCharacter {
         this.targetX = this.characterX;
         this.targetY = this.characterY;
         this.isMoving = false;
-        this.isTeleporting = false;
         this.isSpawning = false;
-        this.teleportTimers = [];
         this.bubbleTimer = null;
         this.ghostTrail = null;
         this.emojiBubble = null;
@@ -1385,7 +1377,7 @@ class RoamingCharacter {
     }
 
     updatePosition(delta) {
-        if (!this.isMoving || this.isTeleporting || this.isSpawning || this.isEvolving() || this.isTraveling()) return;
+        if (!this.isMoving || this.isSpawning || this.isEvolving() || this.isTraveling()) return;
 
         const dx = this.targetX - this.characterX;
         const dy = this.targetY - this.characterY;
@@ -1532,7 +1524,6 @@ class RoamingCharacter {
         this.dragStart.characterX = this.characterX;
         this.dragStart.characterY = this.characterY;
         this.isMoving = false;
-        this.isTeleporting = false;
         this.targetX = this.characterX;
         this.targetY = this.characterY;
         this.characterElement.classList.add(shouldRotate ? 'is-drag-rotating' : 'is-drag-moving');
@@ -1669,9 +1660,7 @@ class RoamingCharacter {
             this.restoreWavePose();
         }
 
-        this.clearTeleportTimers();
         this.isMoving = false;
-        this.isTeleporting = false;
         this.isSpawning = false;
         this.resetViewRotation();
         this.faceFront();
@@ -1733,7 +1722,7 @@ class RoamingCharacter {
 
     updateGhostTrail() {
         if (!this.ghostTrail || !this.model) return;
-        const isTrailActive = this.isMoving || this.isTeleporting || this.isSpawning || this.isEvolving() || this.isTraveling();
+        const isTrailActive = this.isMoving || this.isSpawning || this.isEvolving() || this.isTraveling();
         this.ghostTrail(isTrailActive);
     }
 
@@ -1815,7 +1804,6 @@ class RoamingCharacter {
         }
         if (!this.travelGate) return;
         this.isMoving = false;
-        this.isTeleporting = false;
         this.isSpawning = false;
         this.resetViewRotation();
         this.faceFront();
@@ -1855,7 +1843,6 @@ class RoamingCharacter {
         }
         if (!this.travelGate) return;
         this.isMoving = false;
-        this.isTeleporting = false;
         this.isSpawning = false;
         this.resetViewRotation();
         this.faceFront();
@@ -1885,7 +1872,6 @@ class RoamingCharacter {
             this.showBubbleMessage(options.message, { autoHide: options.autoHide || 3200 });
         }
         this.isMoving = false;
-        this.isTeleporting = false;
         this.isSpawning = false;
         this.resetViewRotation();
         this.faceFront();
@@ -2029,9 +2015,7 @@ class RoamingCharacter {
         if (!this.model) return;
 
         this.cleanupSpawnEffect();
-        this.clearTeleportTimers();
         this.isMoving = false;
-        this.isTeleporting = false;
         this.isSpawning = true;
         this.resetViewRotation();
         this.hideInstruction();
@@ -2168,129 +2152,6 @@ class RoamingCharacter {
         }
     }
 
-    makeGhostMaterial(material, opacity) {
-        const ghostMaterial = material.clone();
-        ghostMaterial.transparent = true;
-        ghostMaterial.opacity = opacity;
-        ghostMaterial.depthWrite = false;
-        return ghostMaterial;
-    }
-
-    clearTeleportTimers() {
-        this.teleportTimers.forEach((timer) => window.clearTimeout(timer));
-        this.teleportTimers = [];
-    }
-
-    createSceneGhost(opacity = 0.32, duration = this.config.sceneGhostDuration) {
-        if (!this.model) return;
-        const ghost = this.model.clone(true);
-        ghost.traverse((child) => {
-            if (!child.isMesh) return;
-            if (Array.isArray(child.material)) {
-                child.material = child.material.map((material) => this.makeGhostMaterial(material, opacity));
-            } else {
-                child.material = this.makeGhostMaterial(child.material, opacity);
-            }
-        });
-        ghost.position.copy(this.model.position);
-        ghost.rotation.copy(this.model.rotation);
-        ghost.scale.copy(this.model.scale);
-        this.scene.add(ghost);
-
-        const startedAt = performance.now();
-        const fade = () => {
-            const progress = Math.min((performance.now() - startedAt) / duration, 1);
-            ghost.traverse((child) => {
-                if (!child.isMesh) return;
-                const materials = Array.isArray(child.material) ? child.material : [child.material];
-                materials.forEach((material) => {
-                    material.opacity = opacity * (1 - progress);
-                });
-            });
-            if (progress < 1) {
-                requestAnimationFrame(fade);
-            } else {
-                this.scene.remove(ghost);
-                ghost.traverse((child) => {
-                    if (!child.isMesh) return;
-                    const materials = Array.isArray(child.material) ? child.material : [child.material];
-                    materials.forEach((material) => material.dispose());
-                });
-            }
-        };
-        fade();
-    }
-
-    createScreenGhost(x, y, index = 0) {
-        const ghost = document.createElement('div');
-        ghost.className = 'roaming-screen-ghost';
-        ghost.style.left = `${x}px`;
-        ghost.style.top = `${y}px`;
-        ghost.style.width = `${this.config.width}px`;
-        ghost.style.height = `${this.config.height}px`;
-        ghost.style.animationDelay = `${index * this.config.screenGhostDelay}ms`;
-        ghost.style.setProperty('--ghost-duration', `${this.config.screenGhostDuration}ms`);
-
-        const canvas = document.createElement('canvas');
-        canvas.width = this.renderer.domElement.width;
-        canvas.height = this.renderer.domElement.height;
-        canvas.className = 'roaming-screen-ghost-canvas';
-        const context = canvas.getContext('2d');
-        if (context) {
-            context.drawImage(this.renderer.domElement, 0, 0);
-        }
-
-        ghost.appendChild(canvas);
-        document.body.appendChild(ghost);
-        window.setTimeout(() => ghost.remove(), this.config.screenGhostDuration + index * this.config.screenGhostDelay + 80);
-    }
-
-    createTeleportTrail(startX, startY, endX, endY) {
-        const count = this.config.ghostCount;
-        for (let index = 0; index < count; index += 1) {
-            const ratio = count === 1 ? 0 : index / (count - 1);
-            const x = startX + (endX - startX) * ratio;
-            const y = startY + (endY - startY) * ratio;
-            this.createScreenGhost(x, y, index);
-        }
-        this.createSceneGhost(0.38, this.config.sceneGhostDuration);
-    }
-
-    teleportTo(targetX, targetY, options = {}) {
-        this.clearTeleportTimers();
-        const startX = this.characterX;
-        const startY = this.characterY;
-        this.targetX = targetX;
-        this.targetY = targetY;
-        this.isMoving = false;
-        this.isTeleporting = true;
-        this.applyMoveMessage(options);
-        this.hideInstruction();
-        this.createTeleportTrail(startX, startY, targetX, targetY);
-
-        this.characterElement.classList.remove('roaming-teleporting');
-        void this.characterElement.offsetWidth;
-        this.characterElement.classList.add('roaming-teleporting');
-
-        this.teleportTimers.push(window.setTimeout(() => {
-            this.characterX = targetX;
-            this.characterY = targetY;
-            this.characterElement.style.left = this.characterX + 'px';
-            this.characterElement.style.top = this.characterY + 'px';
-            this.createSceneGhost(0.28);
-        }, this.config.teleportDuration * 0.62));
-
-        this.teleportTimers.push(window.setTimeout(() => {
-            this.isTeleporting = false;
-            this.characterElement.classList.remove('roaming-teleporting');
-            this.showBubbleMessage(options.message || this.config.arrivedMessage, { autoHide: 1800 });
-            window.setTimeout(() => {
-                this.setDomMessage(this.config.idleMessage);
-            }, 1800);
-            this.teleportTimers = [];
-        }, this.config.teleportDuration));
-    }
-
     moveTo(x, y, options = {}) {
         const target = this.clampTarget(x - 50, y - 60);
         this.targetX = target.x;
@@ -2298,22 +2159,12 @@ class RoamingCharacter {
 
         const dx = this.targetX - this.characterX;
         const dy = this.targetY - this.characterY;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        const shouldTeleport = options.teleport !== false && distance >= this.config.teleportDistance;
 
         if (this.model) {
             const angle = Math.atan2(dx, dy);
             this.model.rotation.y = angle;
         }
 
-        if (shouldTeleport) {
-            this.teleportTo(this.targetX, this.targetY, options);
-            return;
-        }
-
-        this.clearTeleportTimers();
-        this.isTeleporting = false;
-        this.characterElement.classList.remove('roaming-teleporting');
         this.isMoving = true;
         this.applyMoveMessage(options);
         this.hideInstruction();

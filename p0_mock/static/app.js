@@ -1010,18 +1010,6 @@ async function runEffectTest(action) {
     return;
   }
 
-  if (action === "teleport") {
-    pet.setPosition?.(window.innerWidth - 150, window.innerHeight - 200);
-    window.setTimeout(() => {
-      pet.moveTo(180, window.innerHeight * 0.5, {
-        message: "咻，瞬移！",
-        useRandomMessage: false,
-      });
-    }, 80);
-    showToast("触发远距离瞬移");
-    return;
-  }
-
   if (action === "exp") {
     centerCharacterForTest();
     pet.setMessage("经验 +10，心情 +3 🥰", { autoHide: 2600 });
@@ -1109,7 +1097,6 @@ function renderEffectTestPanel() {
       <button data-effect-test="center">居中</button>
       <button data-effect-test="spawn">领养出场</button>
       <button data-effect-test="evolve">升级进化</button>
-      <button data-effect-test="teleport">瞬移残影</button>
       <button data-effect-test="exp">经验获得</button>
       <button data-effect-test="bubble">文字气泡</button>
       <button data-effect-test="emoji">Emoji</button>
@@ -2302,12 +2289,6 @@ function syncCharacter() {
         enableClickMove: false,
         scale: 1.25,
         speed: 280,
-        teleportDistance: 360,
-        teleportDuration: 2400,
-        ghostCount: 8,
-        screenGhostDuration: 2200,
-        screenGhostDelay: 72,
-        sceneGhostDuration: 1300,
         spawnEffectDuration: ADOPTION_EFFECT_MS,
         maxGhostCount: 8,
         spawnIntervalFrames: 5,
