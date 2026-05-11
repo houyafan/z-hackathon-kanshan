@@ -56,8 +56,9 @@ const ONBOARDING_KEY = `liukanshan_onboarding_${ONBOARDING_VERSION}`;
 const STORY_INTRO_VERSION = "v1";
 const AUTHOR_NOTE_COLLAPSED_KEY = "liukanshan_author_note_collapsed";
 const AUTHOR_ARTICLE_URL = "";
-const ADOPTION_STAY_MS = 10000;
-const LEVEL_UP_STAY_MS = 10000;
+const ADOPTION_EFFECT_MS = 6200;
+const LEVEL_UP_EFFECT_MS = 6500;
+const EFFECT_SETTLE_MS = 650;
 const RECOMMEND_PAGE_SIZE = 10;
 const ADMIN_USER_TOKENS = new Set(["p2wcex", "sunny-27-1-97"]);
 const ADMIN_USER_UIDS = new Set(["1908940156829918831", "2013197829758268031"]);
@@ -417,18 +418,18 @@ function playHomecomingEffect() {
   card.className = "pet-home-card";
   card.innerHTML = `<strong>Lv.1 · ${escapeHTML(milestone.title)}</strong><span>${escapeHTML(milestone.quote)}</span>`;
   layer.appendChild(card);
-  removeAfter(card, ADOPTION_STAY_MS);
+  removeAfter(card, ADOPTION_EFFECT_MS + EFFECT_SETTLE_MS);
 
   const centerX = window.innerWidth / 2;
   const centerY = window.innerHeight * 0.58;
   character?.setPosition(centerX, centerY);
   character?.playSpawnEffect({
     message: "我回家啦，以后一起看知乎~",
-    duration: 3400,
+    duration: ADOPTION_EFFECT_MS,
     particleCount: 156,
     scaleMultiplier: 1.34,
   });
-  pulseCharacter("pet-homecoming", 3600);
+  pulseCharacter("pet-homecoming", ADOPTION_EFFECT_MS);
   spawnSparks(centerX, centerY, { count: 18 });
   spawnRing(centerX, centerY, false);
 
@@ -437,7 +438,7 @@ function playHomecomingEffect() {
       message: profileBubbleTitle(),
       useRandomMessage: false,
     });
-  }, ADOPTION_STAY_MS);
+  }, ADOPTION_EFFECT_MS + EFFECT_SETTLE_MS);
 }
 
 function rewardText(reward) {
@@ -924,19 +925,19 @@ async function runEffectTest(action) {
     centerCharacterForTest();
     pet.playSpawnEffect?.({
       message: "我回家啦，以后一起看知乎~",
-      duration: 3400,
+      duration: ADOPTION_EFFECT_MS,
       particleCount: 156,
       scaleMultiplier: 1.34,
     });
-    pulseCharacter("pet-homecoming", 3600);
+    pulseCharacter("pet-homecoming", ADOPTION_EFFECT_MS);
     showToast("触发领养出场");
     return;
   }
 
   if (action === "evolve") {
     centerCharacterForTest();
-    pet.playEvolveEffect?.({ message: "看山升级啦！✨", autoHide: 3900 });
-    pulseCharacter("pet-level-up", 1800);
+    pet.playEvolveEffect?.({ message: "看山升级啦！✨", autoHide: LEVEL_UP_EFFECT_MS });
+    pulseCharacter("pet-level-up", LEVEL_UP_EFFECT_MS);
     showToast("触发升级进化");
     return;
   }
@@ -2229,7 +2230,7 @@ function syncCharacter() {
         screenGhostDuration: 2200,
         screenGhostDelay: 72,
         sceneGhostDuration: 1300,
-        spawnEffectDuration: 3000,
+        spawnEffectDuration: ADOPTION_EFFECT_MS,
         maxGhostCount: 8,
         spawnIntervalFrames: 5,
         initialGhostOpacity: 0.34,
@@ -2256,7 +2257,7 @@ function syncCharacter() {
           particleColor: 0xffdd44,
           particleUpSpeed: 1.48,
           particleSpread: 1.7,
-          evolveTotalTime: 3.8,
+          evolveTotalTime: LEVEL_UP_EFFECT_MS / 1000,
           evolveScaleMultiplier: 1.28,
           scalePunchFactor: 1.22,
         },
@@ -4251,11 +4252,11 @@ async function adoptPet() {
     syncCharacter();
     closeStoryIntro(true);
     removeOnboardingGuide();
-    onboardingSnoozedUntil = Date.now() + ADOPTION_STAY_MS + 400;
+    onboardingSnoozedUntil = Date.now() + ADOPTION_EFFECT_MS + EFFECT_SETTLE_MS + 400;
     renderCurrentRoute();
     showToast("刘看山已到家");
-    character?.setMessage("你好，我是刘看山~", { autoHide: ADOPTION_STAY_MS });
-    scheduleOnboardingGuide(ADOPTION_STAY_MS + 400);
+    character?.setMessage("你好，我是刘看山~", { autoHide: ADOPTION_EFFECT_MS + EFFECT_SETTLE_MS });
+    scheduleOnboardingGuide(ADOPTION_EFFECT_MS + EFFECT_SETTLE_MS + 400);
     window.requestAnimationFrame(() => playHomecomingEffect());
   } catch (error) {
     showToast(error.message || "领养失败");
@@ -4300,7 +4301,7 @@ async function boostPetToLevel10() {
       showReward(reward, null);
     } else {
       showToast("刘看山已是 Lv.10，结尾彩蛋已打开");
-      character?.setMessage?.("宇宙知识领航者，归位！", { autoHide: LEVEL_UP_STAY_MS });
+      character?.setMessage?.("宇宙知识领航者，归位！", { autoHide: LEVEL_UP_EFFECT_MS });
       window.setTimeout(() => showLevelEndingModal(), 500);
     }
   } catch (error) {
@@ -4367,18 +4368,19 @@ function showReward(reward, sourceElement) {
   if (reward.levelUp) {
     showLevelUpPreview(reward).catch((error) => console.warn("level preview failed", error));
     if (Number(reward.toLevel) >= 10 && Number(reward.fromLevel || 0) < 10) {
-      window.setTimeout(() => showLevelEndingModal(), LEVEL_UP_STAY_MS);
+      window.setTimeout(() => showLevelEndingModal(), LEVEL_UP_EFFECT_MS + EFFECT_SETTLE_MS);
     }
   }
   if (character && reward.levelUp) {
     const centerX = window.innerWidth / 2;
     const centerY = window.innerHeight * 0.58;
     character.setPosition?.(centerX, centerY);
-    character.playEvolveEffect?.({ message, autoHide: LEVEL_UP_STAY_MS });
+    character.playEvolveEffect?.({ message, autoHide: LEVEL_UP_EFFECT_MS });
+    pulseCharacter("pet-level-up", LEVEL_UP_EFFECT_MS);
     window.setTimeout(() => {
       character?.setPosition?.(window.innerWidth - 150, window.innerHeight - 200);
       character?.setMessage?.(profileBubbleTitle(), { autoHide: 2200 });
-    }, LEVEL_UP_STAY_MS);
+    }, LEVEL_UP_EFFECT_MS + EFFECT_SETTLE_MS);
   }
   if (sourceElement && character && !reward.levelUp && rewardWalkEnabled) {
     const defaultArrivedMessage = character.config.arrivedMessage;
@@ -4413,7 +4415,7 @@ async function showLevelUpPreview(reward) {
     </div>
   `;
   document.body.appendChild(panel);
-  removeAfter(panel, LEVEL_UP_STAY_MS);
+  removeAfter(panel, LEVEL_UP_EFFECT_MS + EFFECT_SETTLE_MS);
 }
 
 async function showLevelEndingModal() {
@@ -4457,7 +4459,7 @@ function playRewardEffect(reward, sourceElement, message) {
   const sourceY = sourceRect ? sourceRect.top + sourceRect.height / 2 : center.y;
 
   if (reward.levelUp) {
-    pulseCharacter("pet-level-up", 1800);
+    pulseCharacter("pet-level-up", LEVEL_UP_EFFECT_MS);
     spawnRing(center.x, center.y, true);
     spawnSparks(center.x, center.y, { count: 20, warm: true });
     spawnFloatChip(`Lv.${reward.toLevel} 升级`, center.x - 36, center.y - 28, true);
