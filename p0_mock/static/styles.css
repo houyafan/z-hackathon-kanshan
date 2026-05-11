@@ -2638,6 +2638,7 @@ button {
 
 .leaderboard-panel {
   width: min(920px, calc(100vw - 48px));
+  height: min(720px, calc(100vh - 96px));
   max-height: calc(100vh - 96px);
   display: flex;
   flex-direction: column;
@@ -3984,6 +3985,10 @@ button {
 }
 
 .leaderboard-empty {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
   padding: 26px 18px 30px;
   color: #8491a5;
   font-size: 14px;
@@ -4770,6 +4775,7 @@ button {
 
   .leaderboard-panel {
     width: calc(100vw - 24px);
+    height: calc(100vh - 24px);
     max-height: calc(100vh - 24px);
     border-radius: 14px 14px 10px 10px;
   }
