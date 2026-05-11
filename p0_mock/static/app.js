@@ -4427,7 +4427,6 @@ async function showLevelEndingModal() {
   modal.className = "level-ending-modal";
   modal.innerHTML = `
     <section class="level-ending-dialog level-${escapeHTML(visual?.effectStyle || "legendary")}" role="dialog" aria-modal="true" aria-label="刘看山终极结局">
-      <button type="button" class="level-ending-close" aria-label="关闭">×</button>
       <div class="ending-stars" aria-hidden="true"></div>
       <div class="story-kicker">终极彩蛋</div>
       <h1>知乎星，重新亮起</h1>
@@ -4445,11 +4444,7 @@ async function showLevelEndingModal() {
   document.body.appendChild(modal);
   removeOnboardingGuide();
   const close = () => closeBlockingModal(modal);
-  modal.querySelector(".level-ending-close").addEventListener("click", close);
   modal.querySelector("[data-ending-close]").addEventListener("click", close);
-  modal.addEventListener("click", (event) => {
-    if (event.target === modal) close();
-  });
 }
 
 function playRewardEffect(reward, sourceElement, message) {
