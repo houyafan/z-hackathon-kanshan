@@ -16,6 +16,7 @@ let feedNextOffset = 0;
 let feedHasMore = true;
 let feedLoading = false;
 let feedScrollBound = false;
+let threeColumnLayoutFrame = 0;
 let hotItems = [];
 let hotItemsPromise = null;
 let hotItemsLoaded = false;
@@ -60,6 +61,18 @@ const ADOPTION_EFFECT_MS = 6200;
 const LEVEL_UP_EFFECT_MS = 6500;
 const EFFECT_SETTLE_MS = 650;
 const RECOMMEND_PAGE_SIZE = 10;
+const FALLBACK_LEVEL_REQUIREMENTS = [
+  { level: 1, title: "星途起点", requiredTotalExp: 0 },
+  { level: 2, title: "星章萌新", requiredTotalExp: 50 },
+  { level: 3, title: "星光信使", requiredTotalExp: 120 },
+  { level: 4, title: "行星记录员", requiredTotalExp: 250 },
+  { level: 5, title: "星际见习官", requiredTotalExp: 450 },
+  { level: 6, title: "星图导航员", requiredTotalExp: 700 },
+  { level: 7, title: "深空开拓者", requiredTotalExp: 1000 },
+  { level: 8, title: "知识探测者", requiredTotalExp: 1400 },
+  { level: 9, title: "星际领航员", requiredTotalExp: 1900 },
+  { level: 10, title: "宇宙知识领航者", requiredTotalExp: 2500 },
+];
 const RECOMMEND_GROWTH_TIP = "刘看山成长互动仅在推荐列表生效，进入推荐页阅读、点赞、评论、收藏后可获得成长。";
 const ADMIN_USER_TOKENS = new Set(["p2wcex", "sunny-27-1-97"]);
 const ADMIN_USER_UIDS = new Set(["1908940156829918831", "2013197829758268031"]);
@@ -355,6 +368,60 @@ function visualForLevel(level) {
   return [...visuals]
     .filter((item) => Number(item.level) <= safeLevel)
     .sort((a, b) => Number(b.level) - Number(a.level))[0] || null;
+}
+
+function levelRequirementRows() {
+  const rows = (levelVisuals?.length ? levelVisuals : FALLBACK_LEVEL_REQUIREMENTS)
+    .map((item) => ({
+      level: Number(item.level),
+      title: item.title || `Lv.${item.level}`,
+      requiredTotalExp: Number(item.requiredTotalExp ?? item.required_total_exp ?? 0),
+    }))
+    .filter((item) => Number.isFinite(item.level) && Number.isFinite(item.requiredTotalExp))
+    .sort((a, b) => a.level - b.level);
+  return rows.length ? rows : FALLBACK_LEVEL_REQUIREMENTS;
+}
+
+function levelProgressInfo() {
+  if (!profile?.adopted) return null;
+  const rows = levelRequirementRows();
+  const currentLevel = Number(profile.level || 1);
+  const totalExp = Number(profile.totalExp || 0);
+  const current = [...rows].reverse().find((item) => item.level <= currentLevel) || rows[0];
+  const next = rows.find((item) => item.level > currentLevel);
+  if (!next) {
+    return {
+      isMaxLevel: true,
+      percent: 100,
+      summary: "已满级，继续探索知乎星",
+    };
+  }
+  const currentRequired = Number(current?.requiredTotalExp || 0);
+  const nextRequired = Number(next.requiredTotalExp || 0);
+  const span = Math.max(1, nextRequired - currentRequired);
+  const gained = Math.min(span, Math.max(0, totalExp - currentRequired));
+  const remaining = Math.max(0, nextRequired - totalExp);
+  return {
+    isMaxLevel: false,
+    nextLevel: next.level,
+    nextTitle: next.title,
+    remaining,
+    percent: Math.max(0, Math.min(100, Math.round((gained / span) * 100))),
+    summary: remaining > 0
+      ? `还差 ${remaining} 经验升 Lv.${next.level}「${next.title}」`
+      : `即将晋升 Lv.${next.level}「${next.title}」`,
+  };
+}
+
+function levelProgressHTML(compact = false) {
+  const info = levelProgressInfo();
+  if (!info) return "";
+  return `
+    <span class="${compact ? "level-progress-note compact" : "level-progress-note"}">${escapeHTML(info.summary)}</span>
+    <span class="level-progress-track" aria-hidden="true">
+      <span style="width:${info.percent}%"></span>
+    </span>
+  `;
 }
 
 function characterCenter() {
@@ -1306,7 +1373,7 @@ function renderPetHoverCard() {
       </div>
     </div>
     <div class="pet-hover-stats">
-      <div><small>经验</small><strong>${profile.totalExp}</strong></div>
+      <div class="pet-hover-exp"><small>经验</small><strong>${profile.totalExp}</strong>${levelProgressHTML(true)}</div>
       <div><small>心情</small><strong>${profile.mood}</strong></div>
       <div><small>学识</small><strong>${profile.satiety}</strong></div>
       <div><small>精力</small><strong>${profile.travelEnergy ?? 0}</strong></div>
@@ -1473,7 +1540,7 @@ async function loadProfile() {
   const data = await api("/api/p0/pet/profile");
   profile = data.profile;
   if (profile?.adopted) {
-    loadLevelVisuals().catch((error) => console.warn("level visuals preload failed", error));
+    await loadLevelVisuals().catch((error) => console.warn("level visuals preload failed", error));
   }
   handleDecayNotice(data.decayNotice);
   syncCharacter();
@@ -1546,10 +1613,18 @@ async function loadContents({ reset = true } = {}) {
 
 async function loadMoreContents() {
   if (feedLoading || !feedHasMore || window.location.pathname !== "/") return;
+  const currentScroller = document.querySelector(".recommend-page .recommend-main");
+  const previousScrollTop = currentScroller ? currentScroller.scrollTop : null;
   const beforeCount = feedItems.length;
   await loadContents({ reset: false });
   if (window.location.pathname === "/" && feedItems.length !== beforeCount) {
     renderRecommend();
+    if (previousScrollTop !== null) {
+      window.requestAnimationFrame(() => {
+        const nextScroller = document.querySelector(".recommend-page .recommend-main");
+        if (nextScroller) nextScroller.scrollTop = previousScrollTop;
+      });
+    }
   } else {
     updateRecommendFooter();
   }
@@ -1960,6 +2035,7 @@ function replaceSidebarLeaderboards() {
   });
   replacePetPanels();
   bindSidebarLeaderboard();
+  updateThreeColumnPageLayout();
 }
 
 function replacePetPanels() {
@@ -1971,6 +2047,7 @@ function replacePetPanels() {
   bindPetHoverCard();
   bindSidebarLeaderboard();
   bindPanelBasics();
+  updateThreeColumnPageLayout();
 }
 
 function ensureSidebarLeaderboard() {
@@ -2642,8 +2719,7 @@ function petPanel() {
         </div>
       </div>
       <div class="pet-stats">
-        <div class="stat-box"><small>身份</small><strong>${escapeHTML(profileLevelTitle())}</strong></div>
-        <div class="stat-box"><small>累计经验</small><strong>${profile.totalExp}</strong></div>
+        <div class="stat-box stat-box-progress"><small>累计经验</small><strong>${profile.totalExp}</strong>${levelProgressHTML()}</div>
         <div class="stat-box"><small>学识值</small><strong>${profile.satiety}</strong></div>
         <div class="stat-box"><small>心情值</small><strong>${profile.mood}</strong></div>
         <div class="stat-box"><small>游历精力</small><strong>${profile.travelEnergy ?? 0}</strong></div>
@@ -3236,7 +3312,7 @@ function renderAdmin() {
 function renderRecommend() {
   app.innerHTML = `
     ${shell("recommend")}
-    <main class="page">
+    <main class="page recommend-page">
       ${renderAuthorNote()}
       <section class="recommend-main">
         ${composer()}
@@ -3428,6 +3504,7 @@ function bindCommon() {
   bindPetHoverCard();
   bindSidebarLeaderboard();
   ensureSidebarLeaderboard();
+  bindThreeColumnPageScroll();
 }
 
 function bindRecommend() {
@@ -3470,21 +3547,133 @@ function bindRecommend() {
   });
 }
 
+function threeColumnPage() {
+  return document.querySelector(".recommend-page, .follow-page, .hot-page, .community-page");
+}
+
+function threeColumnScroller(page = threeColumnPage()) {
+  return page?.querySelector(".recommend-main, .follow-main, .zh-hot-list-card, .community-main");
+}
+
+function bindThreeColumnPageScroll() {
+  const page = threeColumnPage();
+  const scroller = threeColumnScroller(page);
+  if (!page || !scroller) return;
+  updateThreeColumnPageLayout();
+  if (!scroller.dataset.threeColumnScrollBound) {
+    scroller.dataset.threeColumnScrollBound = "1";
+    scroller.addEventListener("scroll", () => {
+      maybeLoadMoreContents(scroller);
+      scheduleThreeColumnFloatingColumns();
+    }, { passive: true });
+  }
+  if (page.dataset.wheelBound) return;
+  page.dataset.wheelBound = "1";
+  page.addEventListener("wheel", (event) => {
+    if (window.matchMedia("(max-width: 1100px)").matches) return;
+    const editableTarget = event.target.closest?.("input, textarea, select, [contenteditable='true']");
+    if (editableTarget) return;
+    if (!event.deltaY) return;
+    event.preventDefault();
+    scroller.scrollTop += event.deltaY;
+    maybeLoadMoreContents(scroller);
+    scheduleThreeColumnFloatingColumns();
+  }, { passive: false });
+  window.requestAnimationFrame(() => {
+    maybeLoadMoreContents(scroller);
+    updateThreeColumnFloatingColumns();
+  });
+}
+
+function updateThreeColumnPageLayout() {
+  const page = threeColumnPage();
+  if (!page) return;
+  const sideItems = [...page.querySelectorAll(".author-note, .side-stack")];
+  const scroller = threeColumnScroller(page);
+  const spacer = threeColumnScrollSpacer(scroller);
+  if (window.matchMedia("(max-width: 1100px)").matches) {
+    sideItems.forEach((item) => {
+      item.style.transform = "";
+    });
+    if (spacer) spacer.style.height = "0px";
+    return;
+  }
+  if (scroller && spacer) {
+    spacer.style.height = "0px";
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+    const availableHeight = viewportHeight - scroller.getBoundingClientRect().top - 10;
+    const maxSideOffset = sideItems.reduce((maxOffset, item) => {
+      return Math.max(maxOffset, item.scrollHeight - availableHeight);
+    }, 0);
+    const currentScrollRange = scroller.scrollHeight - scroller.clientHeight;
+    const extraScrollSpace = Math.max(0, maxSideOffset - currentScrollRange);
+    spacer.style.height = `${Math.ceil(extraScrollSpace)}px`;
+    const adjustedScrollRange = scroller.scrollHeight - scroller.clientHeight;
+    if (adjustedScrollRange < maxSideOffset) {
+      spacer.style.height = `${Math.ceil(extraScrollSpace + maxSideOffset - adjustedScrollRange)}px`;
+    }
+  }
+  updateThreeColumnFloatingColumns();
+}
+
+function threeColumnScrollSpacer(scroller) {
+  if (!scroller) return null;
+  let spacer = scroller.querySelector(":scope > [data-three-column-scroll-spacer]");
+  if (!spacer) {
+    spacer = document.createElement("div");
+    spacer.className = "three-column-scroll-spacer";
+    spacer.dataset.threeColumnScrollSpacer = "1";
+    scroller.appendChild(spacer);
+  }
+  return spacer;
+}
+
+function updateThreeColumnFloatingColumns() {
+  const page = threeColumnPage();
+  if (!page || window.matchMedia("(max-width: 1100px)").matches) return;
+  const scroller = threeColumnScroller(page);
+  if (!scroller) return;
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+  const availableHeight = viewportHeight - scroller.getBoundingClientRect().top - 10;
+  page.querySelectorAll(".author-note, .side-stack").forEach((item) => {
+    const maxOffset = Math.max(0, item.scrollHeight - availableHeight);
+    const offset = Math.min(scroller.scrollTop, maxOffset);
+    item.style.transform = offset > 0 ? `translateY(${-offset}px)` : "";
+  });
+}
+
+function scheduleThreeColumnFloatingColumns() {
+  if (threeColumnLayoutFrame) return;
+  threeColumnLayoutFrame = window.requestAnimationFrame(() => {
+    threeColumnLayoutFrame = 0;
+    updateThreeColumnFloatingColumns();
+  });
+}
+
+function maybeLoadMoreContents(scrollTarget = window) {
+  if (window.location.pathname !== "/" || feedLoading || !feedHasMore) return;
+  if (
+    scrollTarget === window
+    && document.querySelector(".recommend-page .recommend-main")
+    && !window.matchMedia("(max-width: 1100px)").matches
+  ) return;
+  const remaining = scrollTarget === window
+    ? document.documentElement.scrollHeight - window.scrollY - window.innerHeight
+    : scrollTarget.scrollHeight - scrollTarget.scrollTop - scrollTarget.clientHeight;
+  if (remaining < 520) {
+    loadMoreContents().catch(() => {
+      feedLoading = false;
+      updateRecommendFooter();
+      showToast("推荐内容加载失败");
+    });
+  }
+}
+
 function bindRecommendScroll() {
   if (feedScrollBound) return;
   feedScrollBound = true;
-  window.addEventListener("scroll", () => {
-    if (window.location.pathname !== "/" || feedLoading || !feedHasMore) return;
-    const doc = document.documentElement;
-    const remaining = doc.scrollHeight - window.scrollY - window.innerHeight;
-    if (remaining < 520) {
-      loadMoreContents().catch(() => {
-        feedLoading = false;
-        updateRecommendFooter();
-        showToast("推荐内容加载失败");
-      });
-    }
-  }, { passive: true });
+  window.addEventListener("scroll", () => maybeLoadMoreContents(window), { passive: true });
+  window.addEventListener("resize", () => updateThreeColumnPageLayout(), { passive: true });
 }
 
 function bindCommunity() {
