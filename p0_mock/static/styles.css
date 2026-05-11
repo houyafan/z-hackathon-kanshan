@@ -361,8 +361,24 @@ button {
   gap: 10px;
 }
 
+.recommend-page {
+  height: calc(100vh - 62px);
+  grid-template-rows: minmax(0, 1fr);
+  padding-bottom: 10px;
+  overflow: hidden;
+}
+
 .recommend-main {
   min-width: 0;
+}
+
+.recommend-page .recommend-main {
+  height: 100%;
+  min-height: 0;
+  padding-bottom: 38px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
 }
 
 .author-note {
@@ -1403,6 +1419,12 @@ button {
   gap: 10px;
   overscroll-behavior: contain;
   scrollbar-width: thin;
+}
+
+.recommend-page .author-note,
+.recommend-page .side-stack {
+  max-height: none;
+  overflow: visible;
 }
 
 .side-card {
@@ -4642,6 +4664,18 @@ button {
     width: min(100% - 32px, 760px);
     padding-left: 0;
     padding-right: 0;
+  }
+
+  .recommend-page {
+    height: auto;
+    padding-bottom: 48px;
+    overflow: visible;
+  }
+
+  .recommend-page .recommend-main {
+    height: auto;
+    padding-bottom: 0;
+    overflow: visible;
   }
 
   .side-stack {

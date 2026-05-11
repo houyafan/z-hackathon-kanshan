@@ -1546,10 +1546,18 @@ async function loadContents({ reset = true } = {}) {
 
 async function loadMoreContents() {
   if (feedLoading || !feedHasMore || window.location.pathname !== "/") return;
+  const currentScroller = document.querySelector(".recommend-page .recommend-main");
+  const previousScrollTop = currentScroller ? currentScroller.scrollTop : null;
   const beforeCount = feedItems.length;
   await loadContents({ reset: false });
   if (window.location.pathname === "/" && feedItems.length !== beforeCount) {
     renderRecommend();
+    if (previousScrollTop !== null) {
+      window.requestAnimationFrame(() => {
+        const nextScroller = document.querySelector(".recommend-page .recommend-main");
+        if (nextScroller) nextScroller.scrollTop = previousScrollTop;
+      });
+    }
   } else {
     updateRecommendFooter();
   }
@@ -3236,7 +3244,7 @@ function renderAdmin() {
 function renderRecommend() {
   app.innerHTML = `
     ${shell("recommend")}
-    <main class="page">
+    <main class="page recommend-page">
       ${renderAuthorNote()}
       <section class="recommend-main">
         ${composer()}
@@ -3432,6 +3440,12 @@ function bindCommon() {
 
 function bindRecommend() {
   bindRecommendScroll();
+  const recommendScroller = document.querySelector(".recommend-page .recommend-main");
+  if (recommendScroller && !recommendScroller.dataset.scrollBound) {
+    recommendScroller.dataset.scrollBound = "1";
+    recommendScroller.addEventListener("scroll", () => maybeLoadMoreContents(recommendScroller), { passive: true });
+    window.requestAnimationFrame(() => maybeLoadMoreContents(recommendScroller));
+  }
   document.querySelectorAll("[data-consume]").forEach((button) => {
     button.addEventListener("click", () => {
       const item = feedItems.find((entry) => entry.id === button.dataset.consume);
@@ -3470,21 +3484,24 @@ function bindRecommend() {
   });
 }
 
+function maybeLoadMoreContents(scrollTarget = window) {
+  if (window.location.pathname !== "/" || feedLoading || !feedHasMore) return;
+  const remaining = scrollTarget === window
+    ? document.documentElement.scrollHeight - window.scrollY - window.innerHeight
+    : scrollTarget.scrollHeight - scrollTarget.scrollTop - scrollTarget.clientHeight;
+  if (remaining < 520) {
+    loadMoreContents().catch(() => {
+      feedLoading = false;
+      updateRecommendFooter();
+      showToast("推荐内容加载失败");
+    });
+  }
+}
+
 function bindRecommendScroll() {
   if (feedScrollBound) return;
   feedScrollBound = true;
-  window.addEventListener("scroll", () => {
-    if (window.location.pathname !== "/" || feedLoading || !feedHasMore) return;
-    const doc = document.documentElement;
-    const remaining = doc.scrollHeight - window.scrollY - window.innerHeight;
-    if (remaining < 520) {
-      loadMoreContents().catch(() => {
-        feedLoading = false;
-        updateRecommendFooter();
-        showToast("推荐内容加载失败");
-      });
-    }
-  }, { passive: true });
+  window.addEventListener("scroll", () => maybeLoadMoreContents(window), { passive: true });
 }
 
 function bindCommunity() {
