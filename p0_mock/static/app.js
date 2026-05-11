@@ -2042,20 +2042,23 @@ async function openLeaderboardPanel(type = leaderboardType) {
     showToast("领养刘看山后查看排行榜");
     return;
   }
+  const nextType = type === "travel_count" ? "travel_count" : "pet_level";
   markOnboardingStep("leaderboard");
   trackEvent("leaderboard_open", {
     targetType: "leaderboard",
-    targetId: type === "travel_count" ? "travel_count" : "pet_level",
+    targetId: nextType,
     props: { source: "pet_panel" },
   });
   leaderboardPanelOpen = true;
-  leaderboardType = type === "travel_count" ? "travel_count" : "pet_level";
-  renderLeaderboardPanel();
+  leaderboardType = nextType;
   character?.setMessage?.("看看大家的看山都长到哪儿啦", { autoHide: 2200 });
-  try {
-    await loadLeaderboard(leaderboardType, { refresh: true });
-  } catch (error) {
-    showToast(error.message || "排行榜加载失败");
+
+  if (!(leaderboardData?.rankType === leaderboardType && leaderboardLoaded)) {
+    try {
+      await loadLeaderboard(leaderboardType);
+    } catch (error) {
+      showToast(error.message || "排行榜加载失败");
+    }
   }
   if (leaderboardPanelOpen) renderLeaderboardPanel();
 }
