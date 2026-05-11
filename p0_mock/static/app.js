@@ -598,6 +598,10 @@ function markStoryIntroSeen() {
   localStorage.setItem(storyIntroKey(), "1");
 }
 
+function resetStoryIntroSeen() {
+  localStorage.removeItem(storyIntroKey());
+}
+
 function clearStoryTypingTimer() {
   if (storyIntroTypingTimer) {
     window.clearInterval(storyIntroTypingTimer);
@@ -4060,6 +4064,7 @@ async function resetPet() {
     });
     profile = data.profile;
     travelState = null;
+    resetStoryIntroSeen();
     closeLeaderboardPanel();
     const element = characterElement();
     if (element) {
