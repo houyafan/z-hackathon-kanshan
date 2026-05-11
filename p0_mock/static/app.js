@@ -1010,18 +1010,6 @@ async function runEffectTest(action) {
     return;
   }
 
-  if (action === "teleport") {
-    pet.setPosition?.(window.innerWidth - 150, window.innerHeight - 200);
-    window.setTimeout(() => {
-      pet.moveTo(180, window.innerHeight * 0.5, {
-        message: "咻，瞬移！",
-        useRandomMessage: false,
-      });
-    }, 80);
-    showToast("触发远距离瞬移");
-    return;
-  }
-
   if (action === "exp") {
     centerCharacterForTest();
     pet.setMessage("经验 +10，心情 +3 🥰", { autoHide: 2600 });
@@ -1109,7 +1097,6 @@ function renderEffectTestPanel() {
       <button data-effect-test="center">居中</button>
       <button data-effect-test="spawn">领养出场</button>
       <button data-effect-test="evolve">升级进化</button>
-      <button data-effect-test="teleport">瞬移残影</button>
       <button data-effect-test="exp">经验获得</button>
       <button data-effect-test="bubble">文字气泡</button>
       <button data-effect-test="emoji">Emoji</button>
@@ -2302,12 +2289,6 @@ function syncCharacter() {
         enableClickMove: false,
         scale: 1.25,
         speed: 280,
-        teleportDistance: 360,
-        teleportDuration: 2400,
-        ghostCount: 8,
-        screenGhostDuration: 2200,
-        screenGhostDelay: 72,
-        sceneGhostDuration: 1300,
         spawnEffectDuration: ADOPTION_EFFECT_MS,
         maxGhostCount: 8,
         spawnIntervalFrames: 5,
@@ -3555,6 +3536,28 @@ function threeColumnScroller(page = threeColumnPage()) {
   return page?.querySelector(".recommend-main, .follow-main, .zh-hot-list-card, .community-main");
 }
 
+function captureThreeColumnScrollState() {
+  const page = threeColumnPage();
+  const scroller = threeColumnScroller(page);
+  if (!page || !scroller) return null;
+  return {
+    path: window.location.pathname,
+    scrollTop: scroller.scrollTop,
+  };
+}
+
+function restoreThreeColumnScrollState(state) {
+  if (!state) return;
+  window.requestAnimationFrame(() => {
+    if (window.location.pathname !== state.path) return;
+    const scroller = threeColumnScroller();
+    if (!scroller) return;
+    updateThreeColumnPageLayout();
+    scroller.scrollTop = Math.min(state.scrollTop, Math.max(0, scroller.scrollHeight - scroller.clientHeight));
+    updateThreeColumnFloatingColumns();
+  });
+}
+
 function bindThreeColumnPageScroll() {
   const page = threeColumnPage();
   const scroller = threeColumnScroller(page);
@@ -4506,6 +4509,7 @@ async function submitContentEvent(item, actionType, sourceElement) {
     renderCurrentRoute();
     return;
   }
+  const scrollState = captureThreeColumnScrollState();
 
   const normalizedAction = actionType === "watch" ? "watch" : actionType;
   const payload = {
@@ -4532,6 +4536,7 @@ async function submitContentEvent(item, actionType, sourceElement) {
     if (data.duplicateInteraction) {
       showToast(data.message || "已经操作过这篇内容");
       renderCurrentRoute();
+      restoreThreeColumnScrollState(scrollState);
       return;
     }
     showReward(data.reward, sourceElement);
@@ -4542,6 +4547,7 @@ async function submitContentEvent(item, actionType, sourceElement) {
       markOnboardingStep("interact");
     }
     renderCurrentRoute();
+    restoreThreeColumnScrollState(scrollState);
   } catch (error) {
     if (sourceElement) sourceElement.disabled = false;
     showToast(error.message || "事件提交失败");
