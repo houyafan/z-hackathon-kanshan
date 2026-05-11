@@ -1628,10 +1628,17 @@ function renderGrowthLogModal(logs = []) {
   `;
   document.body.appendChild(modal);
   removeOnboardingGuide();
-  modal.querySelector(".content-close").addEventListener("click", () => closeBlockingModal(modal));
+  setLeaderboardScrollLock(true);
+  modal.querySelector(".content-close").addEventListener("click", () => closeGrowthLogModal(modal));
   modal.addEventListener("click", (event) => {
-    if (event.target === modal) closeBlockingModal(modal);
+    if (event.target === modal) closeGrowthLogModal(modal);
   });
+}
+
+function closeGrowthLogModal(modal = document.querySelector(".growth-log-modal")) {
+  modal?.remove();
+  setLeaderboardScrollLock(false);
+  scheduleOnboardingGuide(260);
 }
 
 async function openGrowthLog() {
@@ -1648,7 +1655,7 @@ async function openGrowthLog() {
     renderGrowthLogModal(data.logs || []);
   } catch (error) {
     showToast(error.message || "成长日志加载失败");
-    document.querySelector(".growth-log-modal")?.remove();
+    closeGrowthLogModal();
   }
 }
 

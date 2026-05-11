@@ -2054,6 +2054,7 @@ button {
   padding: 72px 24px 40px;
   background: rgba(18, 18, 18, 0.38);
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .growth-log-dialog {
@@ -2065,6 +2066,7 @@ button {
   background: #fff;
   box-shadow: 0 24px 80px rgba(18, 18, 18, 0.22);
   padding: 28px 32px 32px;
+  overscroll-behavior: contain;
 }
 
 .growth-log-dialog h1 {
