@@ -1098,6 +1098,19 @@ function travelThemeText(theme) {
   }[theme] || theme || "游历";
 }
 
+function travelRequirementText({ isSleeping = false, wakeRemaining = 0 } = {}) {
+  if (isSleeping) return `先阅读 ${wakeRemaining || 1} 篇内容唤醒看山后，就可以再次出门游历`;
+  return travelState?.blockReason || "阅读内容积攒学识和精力后出门";
+}
+
+function disabledTravelButtonHTML(label, reason, className = "") {
+  return `
+    <span class="travel-disabled-tip" data-tip="${escapeHTML(reason)}" title="${escapeHTML(reason)}">
+      <button class="${escapeHTML(className)}" data-hover-travel-start disabled>${escapeHTML(label)}</button>
+    </span>
+  `;
+}
+
 function formatCountdown(target) {
   const time = target ? new Date(target).getTime() : 0;
   const diff = Math.max(0, time - Date.now());
@@ -1259,13 +1272,16 @@ function renderPetHoverCard() {
     ? Math.max((profile.wakeRequired ?? 3) - (profile.wakeProgress ?? 0), 1)
     : 0;
   const travelDisabledForSleep = isSleeping;
+  const travelDisabledReason = travelRequirementText({ isSleeping, wakeRemaining });
   const travelAction = isSleeping
-    ? `<button data-hover-travel-start disabled>看山休眠中</button>`
+    ? disabledTravelButtonHTML("看山休眠中", travelDisabledReason)
     : activeTravel?.status === "traveling"
     ? `<button data-hover-travel-return>立即归来</button>`
     : activeTravel?.status === "returned"
       ? `<button data-hover-travel-claim="${escapeHTML(activeTravel.travelId)}">领取内容</button>`
-      : `<button data-hover-travel-start ${canTravel === false || travelDisabledForSleep ? "disabled" : ""}>出门游历</button>`;
+      : canTravel === false || travelDisabledForSleep
+        ? disabledTravelButtonHTML("出门游历", travelDisabledReason)
+        : `<button data-hover-travel-start>出门游历</button>`;
   const travelHint = isSleeping
     ? `看山休眠中 · 还需阅读 ${wakeRemaining} 篇内容唤醒`
     : activeTravel?.status === "traveling"
@@ -2584,11 +2600,17 @@ function petPanel() {
   }
 
   const activeTravel = travelState?.activeTravel;
+  const travelDisabledReason = travelRequirementText({
+    isSleeping: profile?.wakeStatus === "sleeping",
+    wakeRemaining: Math.max((profile?.wakeRequired ?? 3) - (profile?.wakeProgress ?? 0), 1),
+  });
   const travelAction = activeTravel?.status === "traveling"
     ? `<button class="outline-btn" data-hover-travel-return>立即归来</button>`
     : activeTravel?.status === "returned"
       ? `<button class="outline-btn" data-hover-travel-claim="${escapeHTML(activeTravel.travelId)}">领取带回内容</button>`
-      : `<button class="outline-btn" data-hover-travel-start ${travelState?.canTravel === false ? "disabled" : ""}>出门游历</button>`;
+      : travelState?.canTravel === false
+        ? disabledTravelButtonHTML("出门游历", travelDisabledReason, "outline-btn")
+        : `<button class="outline-btn" data-hover-travel-start>出门游历</button>`;
   const visual = currentLevelVisual();
   const visualImage = visual?.imageUrl || visual?.thumbnailUrl;
   const resetButton = isAdminUser()

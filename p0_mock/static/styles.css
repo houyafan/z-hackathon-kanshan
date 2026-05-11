@@ -2631,6 +2631,47 @@ button {
   cursor: not-allowed;
 }
 
+.travel-disabled-tip {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+
+.travel-disabled-tip button {
+  width: 100%;
+}
+
+.travel-disabled-tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 20;
+  width: max-content;
+  max-width: 260px;
+  padding: 8px 10px;
+  border: 1px solid rgba(22, 119, 255, 0.18);
+  border-radius: 8px;
+  background: #1f2329;
+  box-shadow: 0 10px 24px rgba(31, 35, 41, 0.18);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+  text-align: left;
+  white-space: normal;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.travel-disabled-tip:hover::after,
+.travel-disabled-tip:focus-within::after {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 .travel-panel-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
