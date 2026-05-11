@@ -4329,18 +4329,27 @@ def start_comment_assist_log(user_id, content_id, content_type, title, excerpt, 
 def serve_comment_assist_sse(handler, user_id, content_id):
     """Look up the content, write a streaming log, then stream SSE chunks to the response."""
     with connect_db() as conn:
-        row = conn.execute(
-            "SELECT content_id, content_type, title, excerpt, full_content "
-            "FROM zhihu_content_pool WHERE content_id = ?",
-            (content_id,),
-        ).fetchone()
+        row = fetch_content(conn, content_id)
     if row is None:
         handler.send_json(404, {"error": "CONTENT_NOT_FOUND"})
         return
 
+    if isinstance(row, dict):
+        resolved_id = str(row.get("id") or content_id)
+        resolved_type = str(row.get("type") or "article")
+        resolved_title = row.get("title") or ""
+        resolved_excerpt = row.get("excerpt") or ""
+        resolved_full = row.get("fullContent") or row.get("excerpt") or ""
+    else:
+        resolved_id = row["content_id"]
+        resolved_type = row["content_type"]
+        resolved_title = row["title"]
+        resolved_excerpt = row["excerpt"]
+        resolved_full = row["full_content"]
+
     log_id, payload = start_comment_assist_log(
-        user_id, row["content_id"], row["content_type"],
-        row["title"], row["excerpt"], row["full_content"],
+        user_id, resolved_id, resolved_type,
+        resolved_title, resolved_excerpt, resolved_full,
     )
 
     handler.send_response(200)
