@@ -2,8 +2,8 @@
 
 const SHARE_CARD_THEMES = {
   polar: {
-    // 知乎蓝 #1772F6 → 深色舞台用其同色相低明度版
-    background: '#0a1f44',
+    // 直接用知乎蓝 #1772F6 作为卡面主色
+    background: '#1772f6',
     accent: '#1772f6',
     gold: '#e8d28a',
     label: '极地旅行',
@@ -11,9 +11,9 @@ const SHARE_CARD_THEMES = {
     railEn: 'POLAR JOURNEY',
   },
   hotspot: {
-    // 与知乎蓝同饱和度/明度的红 #F6173B → 深色舞台用其低明度版
-    background: '#44070f',
-    accent: '#f6173b',
+    // 浅一些的暖玫红 — 不再黑沉,跟"陪伴感"更搭
+    background: '#8e2638',
+    accent: '#ee5872',
     gold: '#f5c87a',
     label: '热点旅行',
     labelEn: 'HOTSPOT REPORT',
@@ -73,7 +73,7 @@ function renderShareCardHtml({ theme, summary, petQuote, highlights, sceneDataUr
   const bgImage = shareBgImage ? `, url('${escapeCssUrl(shareBgImage)}') center/cover no-repeat` : '';
   return `
     <div class="share-card share-card--${escapeShareHtml(theme || 'polar')}"
-         style="background: radial-gradient(120% 80% at 20% 0%, rgba(255,255,255,0.06), transparent 60%), linear-gradient(155deg, ${themeMeta.background} 0%, ${shadeColor(themeMeta.background, 18)} 55%, ${themeMeta.background} 100%)${bgImage}">
+         style="background: radial-gradient(120% 70% at 20% 0%, rgba(255,255,255,0.08), transparent 60%), linear-gradient(170deg, ${shadeColor(themeMeta.background, 6)} 0%, ${themeMeta.background} 50%, ${shadeColor(themeMeta.background, -8)} 100%)${bgImage}">
       <header class="share-card__meta">
         <div class="share-card__meta-issue">
           <span class="share-card__meta-eyebrow">ISSUE NO.</span>
@@ -99,7 +99,7 @@ function renderShareCardHtml({ theme, summary, petQuote, highlights, sceneDataUr
         </aside>
         <div class="share-card__stage-wrap">
           <div class="share-card__stage"
-               style="background-image: radial-gradient(60% 32% at 50% 92%, ${hexAlpha(themeMeta.accent, 0.42)}, transparent 70%)${sceneDataUrl ? `, url('${sceneDataUrl}')` : ''}; background-size: 100% 100%, contain; background-position: center 100%, center bottom; background-repeat: no-repeat, no-repeat"></div>
+               style="background-image: radial-gradient(34% 8% at 50% 97%, rgba(0,0,0,0.28), transparent 70%)${sceneDataUrl ? `, url('${sceneDataUrl}')` : ''}; background-size: 70% 6%, contain; background-position: center 96%, center bottom; background-repeat: no-repeat, no-repeat"></div>
           <div class="share-card__title">
             <span class="share-card__title-cn">${escapeShareHtml(themeMeta.label)}</span>
             <span class="share-card__title-en" style="color:${hexAlpha(themeMeta.gold, 0.9)}">${escapeShareHtml(themeMeta.labelEn)}</span>
