@@ -2698,6 +2698,16 @@ def fallback_hot_items(limit):
     return items[:limit]
 
 
+# 热榜缓存：10 分钟刷新一次真实接口，期间所有调用共享缓存；
+# 接口失败时优先用缓存（即使已过期）兜底，再不行才走静态 fallback。
+_HOT_LIST_CACHE = {
+    "lock": threading.Lock(),
+    "fetched_at": 0.0,
+    "items": None,
+}
+_HOT_LIST_CACHE_TTL = 600
+
+
 def fetch_hot_items(limit=30):
     limit = max(1, min(int(limit), 30))
     if not ZH_HOT_LIST_ACCESS_SECRET:
@@ -2708,9 +2718,25 @@ def fetch_hot_items(limit=30):
             "items": fallback_hot_items(limit),
         }
 
-    api_url = ZH_HOT_LIST_API_URL.format(limit=limit, Limit=limit)
+    now = time.time()
+    with _HOT_LIST_CACHE["lock"]:
+        cached_items = _HOT_LIST_CACHE["items"]
+        cached_at = _HOT_LIST_CACHE["fetched_at"]
+
+    if cached_items and (now - cached_at) < _HOT_LIST_CACHE_TTL:
+        sliced = cached_items[:limit]
+        return {
+            "source": "cache",
+            "configured": True,
+            "cachedAt": int(cached_at),
+            "total": len(sliced),
+            "items": sliced,
+        }
+
+    fetch_limit = 30
+    api_url = ZH_HOT_LIST_API_URL.format(limit=fetch_limit, Limit=fetch_limit)
     if "{limit}" not in ZH_HOT_LIST_API_URL and "{Limit}" not in ZH_HOT_LIST_API_URL:
-        api_url = append_query_param(api_url, "Limit", limit)
+        api_url = append_query_param(api_url, "Limit", fetch_limit)
     request = Request(
         api_url,
         headers={
@@ -2729,14 +2755,31 @@ def fetch_hot_items(limit=30):
             code = payload.get("Code", payload.get("code", 0))
             if code not in (0, "0", None, 20000, "20000"):
                 raise RuntimeError(str(payload.get("Message") or payload.get("message") or payload))
-        items = normalize_hot_payload(payload, limit)
+        full_items = normalize_hot_payload(payload, fetch_limit)
+        if not full_items:
+            # 接口 200 但解析为空（schema 漂移或上游异常）：视为失败，走兜底。
+            raise RuntimeError("hot_list 接口返回 0 条可用数据")
+        with _HOT_LIST_CACHE["lock"]:
+            _HOT_LIST_CACHE["items"] = full_items
+            _HOT_LIST_CACHE["fetched_at"] = now
+        sliced = full_items[:limit]
         return {
             "source": "zhihu_public_api",
             "configured": True,
-            "total": len(items),
-            "items": items,
+            "total": len(sliced),
+            "items": sliced,
         }
     except Exception as error:
+        if cached_items:
+            sliced = cached_items[:limit]
+            return {
+                "source": "cache_backup",
+                "configured": True,
+                "error": str(error),
+                "cachedAt": int(cached_at),
+                "total": len(sliced),
+                "items": sliced,
+            }
         return {
             "source": "fallback",
             "configured": True,
