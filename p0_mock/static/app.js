@@ -983,11 +983,11 @@ async function playStoryComicFrame(modal, frame, index) {
   }));
   if (state.cancelled || !modal.isConnected) return;
 
+  thumb.classList.remove("is-pending");
+  thumb.classList.add("is-visible");
   focus.hidden = true;
   focus.className = "story-comic-focus";
   focus.removeAttribute("style");
-  thumb.classList.remove("is-pending");
-  thumb.classList.add("is-visible");
 }
 
 async function playStoryComic(modal) {
