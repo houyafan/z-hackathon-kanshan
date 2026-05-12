@@ -605,18 +605,41 @@ button {
   border: 0;
 }
 
-.composer-placeholder {
+.composer-input {
   position: absolute;
   left: 54px;
   top: 18px;
-  max-width: 220px;
+  right: 200px;
+  height: 28px;
+  max-height: 56px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  resize: none;
+  background: transparent;
   color: #2f3338;
+  font-family: inherit;
   font-size: 15px;
   font-weight: 600;
   line-height: 28px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  caret-color: #1677ff;
+}
+
+.composer-input::placeholder {
+  color: #2f3338;
+  opacity: 1;
+}
+
+.composer-input:focus {
+  outline: 0;
+}
+
+.composer.is-focused .composer-input {
+  height: 56px;
 }
 
 .composer-tools {
@@ -5302,10 +5325,10 @@ button {
     top: 16px;
   }
 
-  .composer-placeholder {
+  .composer-input {
     left: 54px;
     top: 16px;
-    max-width: calc(100% - 150px);
+    right: 100px;
   }
 
   .composer-tools {

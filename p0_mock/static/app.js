@@ -3593,11 +3593,11 @@ function composer() {
     <section class="card composer">
       <div class="composer-top">
         <span class="composer-avatar avatar"></span>
-        <span class="composer-placeholder">分享此刻的想法...</span>
+        <textarea class="composer-input" rows="1" maxlength="500" placeholder="分享此刻的想法..." aria-label="分享此刻的想法"></textarea>
         <div class="composer-tools" aria-hidden="true">${composerToolIcons()}</div>
         <div class="composer-submit">
           <span class="sync-target">同步到圈子${svgIcon("composer-caret", `<path d="m7 10 5 5 5-5"></path>`)}</span>
-          <button class="blue-btn">发想法</button>
+          <button class="blue-btn composer-publish-btn" type="button">发想法</button>
         </div>
       </div>
       <div class="composer-bottom">
@@ -4255,6 +4255,7 @@ function bindCommon() {
 
 function bindRecommend() {
   bindRecommendScroll();
+  bindComposerPetInteraction();
   document.querySelectorAll("[data-consume]").forEach((button) => {
     button.addEventListener("click", () => {
       const item = feedItems.find((entry) => entry.id === button.dataset.consume);
@@ -4705,6 +4706,84 @@ function sendPetHomeFromCommentAssist() {
       pet.classList.remove("roaming-comment-assist");
     }, 900);
   }, 260);
+}
+
+const COMPOSER_PET_PHRASES = [
+  "想到什么就写下来呗～",
+  "嗯嗯，我在听～",
+  "今天想分享点什么呀？",
+  "把脑子里的小火花记下来吧✨",
+  "我陪你一起想想～",
+];
+let composerPetMoveTimer = 0;
+let composerPetHomeTimer = 0;
+
+function movePetToComposer(composerSection) {
+  const pet = characterElement();
+  if (!character || !pet || !composerSection) return;
+  const rect = composerSection.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+  // 停靠到 composer 左侧外缘，竖向对齐到输入行附近。
+  const targetX = Math.max(60, rect.left - 24);
+  const targetY = Math.max(120, Math.min(window.innerHeight - 140, rect.top + 32));
+  pet.classList.add("roaming-composer-assist");
+  character.moveTo?.(targetX, targetY, { useRandomMessage: false });
+
+  const phrase = COMPOSER_PET_PHRASES[Math.floor(Math.random() * COMPOSER_PET_PHRASES.length)];
+  const startedAt = Date.now();
+  const speakWhenArrived = () => {
+    if (!pet.classList.contains("roaming-composer-assist")) return;
+    const stillMoving = character.isMovingStatus?.();
+    const timedOut = Date.now() - startedAt > 5000;
+    if (stillMoving && !timedOut) {
+      composerPetMoveTimer = window.setTimeout(speakWhenArrived, 80);
+      return;
+    }
+    character.setMessage?.(phrase, { autoHide: 4000 });
+  };
+  window.clearTimeout(composerPetMoveTimer);
+  composerPetMoveTimer = window.setTimeout(speakWhenArrived, 80);
+}
+
+function sendPetHomeFromComposer() {
+  const pet = characterElement();
+  if (!pet) return;
+  if (!pet.classList.contains("roaming-composer-assist")) return;
+  window.clearTimeout(composerPetHomeTimer);
+  composerPetHomeTimer = window.setTimeout(() => {
+    if (!character) {
+      pet.classList.remove("roaming-composer-assist");
+      return;
+    }
+    const homeX = window.innerWidth - 150;
+    const homeY = window.innerHeight - 200;
+    character.moveTo?.(homeX, homeY, { useRandomMessage: false });
+    window.setTimeout(() => {
+      pet.classList.remove("roaming-composer-assist");
+    }, 900);
+  }, 260);
+}
+
+function bindComposerPetInteraction() {
+  const composerSection = document.querySelector(".recommend-main .composer");
+  if (!composerSection) return;
+  const input = composerSection.querySelector(".composer-input");
+  if (!input || composerSection.dataset.petBound === "1") return;
+  composerSection.dataset.petBound = "1";
+
+  composerSection.addEventListener("focusin", () => {
+    if (composerSection.classList.contains("is-focused")) return;
+    window.clearTimeout(composerPetHomeTimer);
+    composerSection.classList.add("is-focused");
+    movePetToComposer(composerSection);
+  });
+
+  composerSection.addEventListener("focusout", (event) => {
+    // 焦点仍在 composer 内部（比如从 textarea 跳到发布按钮）时，不让看山离开。
+    if (composerSection.contains(event.relatedTarget)) return;
+    composerSection.classList.remove("is-focused");
+    sendPetHomeFromComposer();
+  });
 }
 
 function bindCommentEditor(modalRoot) {
