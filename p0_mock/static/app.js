@@ -3036,7 +3036,7 @@ function syncCharacter() {
         arrivedMessage: "我来啦",
         enableClickMove: false,
         scale: 1.25,
-        speed: 280,
+        speed: 480,
         spawnEffectDuration: ADOPTION_EFFECT_MS,
         maxGhostCount: 8,
         spawnIntervalFrames: 5,
