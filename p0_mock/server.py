@@ -23,6 +23,7 @@ DB_PATH = Path(os.environ.get("DB_PATH") or ROOT / "db" / "sqlite" / "liukanshan
 INIT_SQL = ROOT / "db" / "sqlite" / "init_p0.sql"
 STATIC_DIR = ROOT / "p0_mock" / "static"
 ROAMING_DIR = ROOT / "3d-liukanshan-roaming"
+IMGS_DIR = ROOT / "imgs"
 CONFIG_PATH = Path(os.environ.get("CONFIG_PATH") or ROOT / "p0_mock" / "config.json")
 BUNDLED_CONFIG_PATH = ROOT / "p0_mock" / "config.json"
 LEVEL_VISUAL_CONFIG_PATH = ROOT / "p0_mock" / "level_visuals.json"
@@ -306,6 +307,8 @@ def safe_next_url(value):
 
 def cache_control_for(path):
     if path.name == "index.html":
+        return "no-store"
+    if path.resolve().is_relative_to(IMGS_DIR.resolve()):
         return "no-store"
     if path.suffix == ".glb":
         return "public, max-age=31536000, immutable"
@@ -5540,6 +5543,9 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/static/"):
             self.send_file(STATIC_DIR / unquote(path.removeprefix("/static/")))
             return
+        if path.startswith("/imgs/"):
+            self.send_file(IMGS_DIR / unquote(path.removeprefix("/imgs/")))
+            return
         if path.startswith("/3d-liukanshan-roaming/"):
             self.send_file(ROAMING_DIR / unquote(path.removeprefix("/3d-liukanshan-roaming/")))
             return
@@ -5966,6 +5972,8 @@ class Handler(BaseHTTPRequestHandler):
             target = STATIC_DIR / "index.html"
         elif path.startswith("/static/"):
             target = STATIC_DIR / unquote(path.removeprefix("/static/"))
+        elif path.startswith("/imgs/"):
+            target = IMGS_DIR / unquote(path.removeprefix("/imgs/"))
         elif path.startswith("/3d-liukanshan-roaming/"):
             target = ROAMING_DIR / unquote(path.removeprefix("/3d-liukanshan-roaming/"))
         else:
