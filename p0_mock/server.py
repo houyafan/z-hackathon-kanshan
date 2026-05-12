@@ -23,6 +23,7 @@ DB_PATH = Path(os.environ.get("DB_PATH") or ROOT / "db" / "sqlite" / "liukanshan
 INIT_SQL = ROOT / "db" / "sqlite" / "init_p0.sql"
 STATIC_DIR = ROOT / "p0_mock" / "static"
 ROAMING_DIR = ROOT / "3d-liukanshan-roaming"
+IMGS_DIR = ROOT / "imgs"
 CONFIG_PATH = Path(os.environ.get("CONFIG_PATH") or ROOT / "p0_mock" / "config.json")
 BUNDLED_CONFIG_PATH = ROOT / "p0_mock" / "config.json"
 LEVEL_VISUAL_CONFIG_PATH = ROOT / "p0_mock" / "level_visuals.json"
@@ -307,6 +308,8 @@ def safe_next_url(value):
 def cache_control_for(path):
     if path.name == "index.html":
         return "no-store"
+    if path.resolve().is_relative_to(IMGS_DIR.resolve()):
+        return "no-store"
     if path.suffix == ".glb":
         return "public, max-age=31536000, immutable"
     if path.suffix in (".js", ".css"):
@@ -472,7 +475,7 @@ def load_level_visual_config():
 LEVEL_VISUALS = load_level_visual_config()
 LEVEL_REQUIRED_TOTAL_EXP = {
     1: 0,
-    2: 50,
+    2: 10,
     3: 120,
     4: 250,
     5: 450,
@@ -564,6 +567,7 @@ def seed_level_config(conn):
             VALUES (?, ?, ?, ?, '[]')
             ON CONFLICT(level) DO UPDATE SET
               stage = excluded.stage,
+              required_total_exp = excluded.required_total_exp,
               title = excluded.title,
               updated_at = CURRENT_TIMESTAMP
             """,
@@ -3208,6 +3212,98 @@ def boost_pet_to_level_10(conn, user_id):
     }
 
 
+def boost_pet_one_level(conn, user_id):
+    profile = fetch_profile(conn, user_id)
+    if profile is None or not profile["adopted"]:
+        return 409, {"error": "PET_NOT_ADOPTED", "message": "请先领养刘看山"}
+
+    old_level = int(profile["level"])
+    max_level = max(item["level"] for item in LEVEL_VISUALS)
+    if old_level < 2:
+        return 403, {"error": "LEVEL_TOO_LOW", "message": "Lv.2 后可使用快速体验升级"}
+    if old_level >= max_level:
+        return 200, {
+            "profile": camel_profile(profile, user_id, fetch_level_visual(conn, old_level)),
+            "reward": {
+                "exp": 0,
+                "satiety": 0,
+                "mood": 0,
+                "travelEnergy": 0,
+                "levelUp": False,
+                "fromLevel": old_level,
+                "toLevel": old_level,
+                "stageChanged": False,
+                "fromStage": profile["stage"],
+                "toStage": profile["stage"],
+            },
+        }
+
+    target_level = old_level + 1
+    target = conn.execute(
+        "SELECT * FROM pet_level_config WHERE level = ?",
+        (target_level,),
+    ).fetchone()
+    if target is None:
+        raise RuntimeError("TARGET_LEVEL_CONFIG_MISSING")
+
+    old_exp = int(profile["total_exp"])
+    old_stage = profile["stage"]
+    target_exp = int(target["required_total_exp"])
+    target_stage = target["stage"]
+    new_exp = max(old_exp, target_exp)
+    source_id = f"experience-boost-level-{uuid.uuid4().hex[:8]}"
+    current = now_text()
+
+    conn.execute(
+        """
+        UPDATE pet_profile
+        SET total_exp = ?,
+            level = ?,
+            stage = ?,
+            last_growth_at = ?,
+            updated_at = ?
+        WHERE user_id = ?
+        """,
+        (new_exp, target_level, target_stage, current, current, user_id),
+    )
+
+    exp_delta = new_exp - old_exp
+    if exp_delta:
+        write_growth_log(conn, user_id, source_id, "total_exp", exp_delta, old_exp, new_exp, "快速体验升一级", "manual")
+    write_growth_log(conn, user_id, source_id, "level", 1, old_level, target_level, "快速体验升一级", "manual")
+    if target_stage != old_stage:
+        write_growth_log(conn, user_id, source_id, "stage", 0, old_stage, target_stage, "等级变化触发阶段切换", "manual")
+    record_analytics_event(
+        conn,
+        "pet_level_up",
+        user_id=user_id,
+        event_id=f"analytics_{source_id}",
+        target_type="pet",
+        target_id="liukanshan",
+        props={
+            "beforeLevel": old_level,
+            "afterLevel": target_level,
+            "source": "experience_boost_one_level",
+        },
+    )
+
+    return 200, {
+        "profile": camel_profile(fetch_profile(conn, user_id), user_id, fetch_level_visual(conn, target_level)),
+        "reward": {
+            "exp": exp_delta,
+            "satiety": 0,
+            "mood": 0,
+            "travelEnergy": 0,
+            "levelUp": True,
+            "fromLevel": old_level,
+            "toLevel": target_level,
+            "stageChanged": target_stage != old_stage,
+            "fromStage": old_stage,
+            "toStage": target_stage,
+        },
+    }
+
+
 def calculate_reward(content_type, action_type):
     if action_type == "like":
         return {"exp": 1, "satiety": 0, "mood": 3, "travelEnergy": 1}
@@ -4569,7 +4665,14 @@ def refresh_travel_status(conn, user_id):
     return profile, travel
 
 
-def travel_block_reason(profile, active_travel):
+def has_travel_history(conn, user_id):
+    return conn.execute(
+        "SELECT 1 FROM pet_travel_event WHERE user_id = ? LIMIT 1",
+        (user_id,),
+    ).fetchone() is not None
+
+
+def travel_block_reason(conn, profile, active_travel):
     if profile is None or not profile["adopted"]:
         return "请先领养刘看山"
     profile_keys = profile.keys() if hasattr(profile, "keys") else []
@@ -4588,6 +4691,8 @@ def travel_block_reason(profile, active_travel):
         return "刘看山刚旅行回来，正在休息冷却"
     if profile["level"] < 2:
         return "Lv.2 后可以出门游历"
+    if not has_travel_history(conn, profile["user_id"]):
+        return None
     if profile["satiety"] < TRAVEL_MIN_SATIETY:
         return f"学识值达到 {TRAVEL_MIN_SATIETY} 后可以出门"
     if profile["travel_energy"] < TRAVEL_DEFAULT_ENERGY_COST:
@@ -4725,11 +4830,15 @@ def _select_hot_list_materials(conn, limit):
     hot = fetch_hot_items(limit=max(limit, 5))
     items = hot.get("items") or []
     materials = []
-    for item in items[:limit]:
+    seen_refs = set()
+    for item in items:
         url = item.get("url") or ""
         ref = url or hashlib.sha256(
             json.dumps(item, ensure_ascii=False, sort_keys=True).encode("utf-8")
         ).hexdigest()
+        if ref in seen_refs:
+            continue
+        seen_refs.add(ref)
         meta = {
             "rank": item.get("rank"),
             "heatText": item.get("heatText"),
@@ -4749,6 +4858,8 @@ def _select_hot_list_materials(conn, limit):
                 "meta": meta,
             }
         )
+        if len(materials) >= limit:
+            break
     return materials
 
 
@@ -4944,7 +5055,7 @@ def schedule_travel_summary(user_id, travel_id, theme):
 def travel_status_payload(conn, user_id):
     decay_notice = apply_pet_decay(conn, user_id)
     profile, travel = refresh_travel_status(conn, user_id)
-    reason = travel_block_reason(profile, travel)
+    reason = travel_block_reason(conn, profile, travel)
     handbook_count = conn.execute(
         "SELECT COUNT(*) FROM pet_travel_handbook WHERE user_id = ?",
         (user_id,),
@@ -4964,15 +5075,16 @@ def start_travel(user_id, requested_theme="auto"):
         conn.execute("BEGIN")
         decay_notice = apply_pet_decay(conn, user_id)
         profile, active_travel = refresh_travel_status(conn, user_id)
-        reason = travel_block_reason(profile, active_travel)
+        first_travel = not has_travel_history(conn, user_id)
+        reason = travel_block_reason(conn, profile, active_travel)
         if reason:
             conn.commit()
             return 409, {"error": "TRAVEL_NOT_READY", "message": reason, "decayNotice": decay_notice}
 
-        theme = choose_travel_theme(conn, user_id, requested_theme)
+        theme = "hotspot" if first_travel and requested_theme == "auto" else choose_travel_theme(conn, user_id, requested_theme)
         theme_row = fetch_theme_config(conn, theme)
         meta = theme_meta(theme)
-        energy_cost = theme_row["energy_cost"] if theme_row else TRAVEL_DEFAULT_ENERGY_COST
+        energy_cost = 0 if first_travel else (theme_row["energy_cost"] if theme_row else TRAVEL_DEFAULT_ENERGY_COST)
         raw_duration = theme_row["duration_sec"] if theme_row else 60
         duration_sec = max(5, int(raw_duration / max(TRAVEL_SPEEDUP, 0.0001)))
         material_count = 6 if theme == "hotspot" else 5
@@ -5431,6 +5543,9 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/static/"):
             self.send_file(STATIC_DIR / unquote(path.removeprefix("/static/")))
             return
+        if path.startswith("/imgs/"):
+            self.send_file(IMGS_DIR / unquote(path.removeprefix("/imgs/")))
+            return
         if path.startswith("/3d-liukanshan-roaming/"):
             self.send_file(ROAMING_DIR / unquote(path.removeprefix("/3d-liukanshan-roaming/")))
             return
@@ -5857,6 +5972,8 @@ class Handler(BaseHTTPRequestHandler):
             target = STATIC_DIR / "index.html"
         elif path.startswith("/static/"):
             target = STATIC_DIR / unquote(path.removeprefix("/static/"))
+        elif path.startswith("/imgs/"):
+            target = IMGS_DIR / unquote(path.removeprefix("/imgs/"))
         elif path.startswith("/3d-liukanshan-roaming/"):
             target = ROAMING_DIR / unquote(path.removeprefix("/3d-liukanshan-roaming/"))
         else:
@@ -5972,6 +6089,18 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json(200, boost_pet_to_level_10(conn, session["user_id"]))
                 except RuntimeError as error:
                     self.send_json(500, {"error": str(error), "message": "Lv.10 配置缺失"})
+            return
+
+        if path == "/api/p0/pet/boost-next-level":
+            session = self.require_auth_json()
+            if session is None:
+                return
+            with connect_db() as conn:
+                try:
+                    status, response = boost_pet_one_level(conn, session["user_id"])
+                    self.send_json(status, response)
+                except RuntimeError as error:
+                    self.send_json(500, {"error": str(error), "message": "等级配置缺失"})
             return
 
         if path == "/api/p0/pet/content-events":

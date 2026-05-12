@@ -511,7 +511,7 @@ INSERT OR IGNORE INTO pet_level_config
   (level, stage, required_total_exp, title, unlock_features)
 VALUES
   (1, 'cub', 0, '星途起点', '[]'),
-  (2, 'cub', 50, '星章萌新', '[]'),
+  (2, 'cub', 10, '星章萌新', '[]'),
   (3, 'cub', 120, '星光信使', '[]'),
   (4, 'growing', 250, '行星记录员', '[]'),
   (5, 'growing', 450, '星际见习官', '[]'),

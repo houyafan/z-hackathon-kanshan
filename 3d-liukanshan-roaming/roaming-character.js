@@ -744,9 +744,9 @@ export function createPetIdleRingBand(petModel, scene, config = {}) {
 const DEFAULT_TRAVEL_GATE_CONFIG = {
     gateRadius: 0.92,
     gateRingCount: 3,
-    gateColor: 0x4488ff,
+    gateColor: 0x1677ff,
     vortexColor: 0x66ccff,
-    innerColor: 0x9966ff,
+    innerColor: 0x005dd8,
     centerOpacity: 0.34,
     innerOpacity: 0.3,
     ringOpacity: 0.92,
@@ -760,7 +760,21 @@ const DEFAULT_TRAVEL_GATE_CONFIG = {
     fadeInDuration: 1.5,
     fadeOutDuration: 1.5,
     gateCloseDuration: 0.6,
+    renderGateVisuals: false,
     travelState: "idle",
+};
+
+const TRAVEL_GATE_PALETTES = {
+    departure: {
+        gateColor: 0x1677ff,
+        vortexColor: 0x66ccff,
+        innerColor: 0x005dd8,
+    },
+    returning: {
+        gateColor: 0xf5a623,
+        vortexColor: 0xffd666,
+        innerColor: 0x9a5b00,
+    },
 };
 
 export function createPetTravelGate(petModel, scene, config = {}) {
@@ -833,6 +847,10 @@ export function createPetTravelGate(petModel, scene, config = {}) {
         gateGroup.clear();
         gateParts = [];
         ringList = [];
+        centerPane = null;
+        innerPane = null;
+
+        if (!cfg.renderGateVisuals) return;
 
         const vortexMaterial = new THREE.MeshBasicMaterial({
             color: cfg.vortexColor,
@@ -885,6 +903,23 @@ export function createPetTravelGate(petModel, scene, config = {}) {
         }
     };
 
+    const applyPalette = (name) => {
+        const palette = TRAVEL_GATE_PALETTES[name] || TRAVEL_GATE_PALETTES.departure;
+        cfg.gateColor = palette.gateColor;
+        cfg.vortexColor = palette.vortexColor;
+        cfg.innerColor = palette.innerColor;
+
+        if (centerPane?.material) {
+            centerPane.material.color.setHex(cfg.vortexColor);
+        }
+        if (innerPane?.material) {
+            innerPane.material.color.setHex(cfg.innerColor);
+        }
+        ringList.forEach((ring) => {
+            ring.material?.color?.setHex(cfg.gateColor);
+        });
+    };
+
     const syncGatePosition = () => {
         gateGroup.position.set(
             originPetPos.x,
@@ -935,6 +970,7 @@ export function createPetTravelGate(petModel, scene, config = {}) {
 
     const startGoTravel = () => {
         if (!prepareTravel("goTravel")) return;
+        applyPalette("departure");
         petModel.visible = true;
         petModel.position.copy(originPetPos);
         petModel.rotation.copy(originPetRotation);
@@ -945,6 +981,7 @@ export function createPetTravelGate(petModel, scene, config = {}) {
 
     const startBackHome = () => {
         if (!prepareTravel("backHome")) return;
+        applyPalette("returning");
         petModel.visible = true;
         petModel.position.copy(originPetPos);
         petModel.position.z += cfg.walkDistance;
@@ -1790,7 +1827,7 @@ class RoamingCharacter {
         this.travelGate.update(delta);
         const isTraveling = this.isTraveling();
         if (wasTraveling && !isTraveling) {
-            this.characterElement.classList.remove('roaming-traveling');
+            this.characterElement.classList.remove('roaming-traveling', 'roaming-departing', 'roaming-returning');
             if (this.model?.visible !== false) {
                 this.showIdleRingBand();
             }
@@ -1808,7 +1845,8 @@ class RoamingCharacter {
         this.resetViewRotation();
         this.faceFront();
         this.hideIdleRingBand();
-        this.characterElement.classList.add('roaming-traveling');
+        this.characterElement.classList.remove('roaming-returning');
+        this.characterElement.classList.add('roaming-traveling', 'roaming-departing');
         if (options.message) {
             this.showBubbleMessage(options.message, { autoHide: options.autoHide || 2200 });
         }
@@ -1847,7 +1885,8 @@ class RoamingCharacter {
         this.resetViewRotation();
         this.faceFront();
         this.hideIdleRingBand();
-        this.characterElement.classList.add('roaming-traveling');
+        this.characterElement.classList.remove('roaming-departing');
+        this.characterElement.classList.add('roaming-traveling', 'roaming-returning');
         if (options.message) {
             this.showBubbleMessage(options.message, { autoHide: options.autoHide || 2600 });
         }

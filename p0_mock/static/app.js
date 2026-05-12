@@ -1,4 +1,6 @@
-import { initRoamingCharacter } from "/3d-liukanshan-roaming/roaming-character.js?v=33";
+import * as THREE from "three";
+import { gsap } from "https://cdn.jsdelivr.net/npm/gsap@3.12.5/+esm";
+import { initRoamingCharacter } from "/3d-liukanshan-roaming/roaming-character.js?v=35";
 
 const app = document.getElementById("app");
 const toast = document.getElementById("toast");
@@ -49,6 +51,10 @@ let idleBandVisible = true;
 let _prevWakeStatus = null;
 let _lastWakeBubbleAt = null;
 let travelDepartureVisibleUntil = 0;
+let homecomingReturnTimer = null;
+let levelUpReturnTimer = null;
+let levelEndingTimer = null;
+let travelAnimationTimer = null;
 const savedRewardWalk = localStorage.getItem("liukanshan_reward_walk_enabled") ?? localStorage.getItem("liukanshan_level_walk_enabled");
 let rewardWalkEnabled = savedRewardWalk !== "0";
 const MODEL_PATH = "/3d-liukanshan-roaming/liukanshan-slot.glb?v=2";
@@ -56,14 +62,14 @@ const ONBOARDING_VERSION = "v2";
 const ONBOARDING_KEY = `liukanshan_onboarding_${ONBOARDING_VERSION}`;
 const STORY_INTRO_VERSION = "v1";
 const AUTHOR_NOTE_COLLAPSED_KEY = "liukanshan_author_note_collapsed";
-const AUTHOR_ARTICLE_URL = "https://zhuanlan.zhihu.com/p/2037102849608430174";
+const AUTHOR_ARTICLE_URL = "https://www.zhihu.com/pin/2037504688950437025";
 const ADOPTION_EFFECT_MS = 6200;
 const LEVEL_UP_EFFECT_MS = 6500;
 const EFFECT_SETTLE_MS = 650;
 const RECOMMEND_PAGE_SIZE = 10;
 const FALLBACK_LEVEL_REQUIREMENTS = [
   { level: 1, title: "星途起点", requiredTotalExp: 0 },
-  { level: 2, title: "星章萌新", requiredTotalExp: 50 },
+  { level: 2, title: "星章萌新", requiredTotalExp: 10 },
   { level: 3, title: "星光信使", requiredTotalExp: 120 },
   { level: 4, title: "行星记录员", requiredTotalExp: 250 },
   { level: 5, title: "星际见习官", requiredTotalExp: 450 },
@@ -101,6 +107,9 @@ let analyticsQueue = [];
 let analyticsFlushTimer = null;
 let analyticsLastPagePath = "";
 let storyIntroTypingTimer = null;
+let storyIntroComicState = null;
+let levelEndingComicState = null;
+let storyIntroScrollState = null;
 const ONBOARDING_BLOCKING_SELECTOR = [
   ".content-modal",
   ".growth-log-modal",
@@ -114,9 +123,83 @@ const ONBOARDING_BLOCKING_SELECTOR = [
 
 const STORY_INTRO_TEXT = [
   "在知识宇宙的边缘，有一颗名叫「知乎星」的星球。",
-  "很久以前，这颗星球因为人们不再分享、不再阅读，光芒渐渐黯淡，变成了宇宙里一颗不起眼的灰色小点。而住在这颗星球上的小狐狸「刘看山」，也失去了所有能量，变成了一只只能眨眼睛的「星途小白」。",
+  "很久以前，这颗星球因为人们不再分享、不再阅读，光芒渐渐黯淡，变成了宇宙里一颗不起眼的灰色小点。而住在这颗星球上的北极熊「刘看山」，也失去了所有能量，变成了一只只能眨眼睛的「星途小白」。",
   "直到知乎向全宇宙发出邀请：谁能陪人类一起阅读、收集知识的星光，谁就能重新点亮这颗星球。于是，刘看山来到了你的首页，开启了他的星程。",
 ].join("\n\n");
+
+const STORY_COMIC_ASSET_VERSION = "20260512-1134";
+const STORY_COMIC_FRAMES = [
+  {
+    image: `/imgs/1.png?v=${STORY_COMIC_ASSET_VERSION}`,
+    alt: "刘看山背景故事分镜 1",
+  },
+  {
+    image: `/imgs/2.png?v=${STORY_COMIC_ASSET_VERSION}`,
+    alt: "刘看山背景故事分镜 2",
+  },
+  {
+    image: `/imgs/3.png?v=${STORY_COMIC_ASSET_VERSION}`,
+    alt: "刘看山背景故事分镜 3",
+  },
+  {
+    image: `/imgs/4.png?v=${STORY_COMIC_ASSET_VERSION}`,
+    alt: "刘看山背景故事分镜 4",
+  },
+  {
+    image: `/imgs/5.png?v=${STORY_COMIC_ASSET_VERSION}`,
+    alt: "刘看山背景故事分镜 5",
+  },
+  {
+    image: `/imgs/6.png?v=${STORY_COMIC_ASSET_VERSION}`,
+    alt: "刘看山背景故事分镜 6",
+  },
+  {
+    image: `/imgs/7.png?v=${STORY_COMIC_ASSET_VERSION}`,
+    alt: "刘看山背景故事分镜 7",
+  },
+  {
+    image: `/imgs/8.png?v=${STORY_COMIC_ASSET_VERSION}`,
+    alt: "刘看山背景故事分镜 8",
+  },
+];
+const STORY_COMIC_AGGREGATE_IMAGE = `/imgs/漫剧.png?v=${STORY_COMIC_ASSET_VERSION}`;
+
+const LEVEL_ENDING_COMIC_ASSET_VERSION = "20260512-1339";
+const LEVEL_ENDING_COMIC_FRAMES = [
+  {
+    image: `/imgs/9.png?v=${LEVEL_ENDING_COMIC_ASSET_VERSION}`,
+    alt: "刘看山终章故事分镜 1",
+  },
+  {
+    image: `/imgs/10.png?v=${LEVEL_ENDING_COMIC_ASSET_VERSION}`,
+    alt: "刘看山终章故事分镜 2",
+  },
+  {
+    image: `/imgs/11.png?v=${LEVEL_ENDING_COMIC_ASSET_VERSION}`,
+    alt: "刘看山终章故事分镜 3",
+  },
+  {
+    image: `/imgs/12.png?v=${LEVEL_ENDING_COMIC_ASSET_VERSION}`,
+    alt: "刘看山终章故事分镜 4",
+  },
+  {
+    image: `/imgs/13.png?v=${LEVEL_ENDING_COMIC_ASSET_VERSION}`,
+    alt: "刘看山终章故事分镜 5",
+  },
+  {
+    image: `/imgs/14.png?v=${LEVEL_ENDING_COMIC_ASSET_VERSION}`,
+    alt: "刘看山终章故事分镜 6",
+  },
+  {
+    image: `/imgs/15.png?v=${LEVEL_ENDING_COMIC_ASSET_VERSION}`,
+    alt: "刘看山终章故事分镜 7",
+  },
+  {
+    image: `/imgs/16.png?v=${LEVEL_ENDING_COMIC_ASSET_VERSION}`,
+    alt: "刘看山终章故事分镜 8",
+  },
+];
+const LEVEL_ENDING_COMIC_AGGREGATE_IMAGE = `/imgs/终章.png?v=${LEVEL_ENDING_COMIC_ASSET_VERSION}`;
 
 const LEVEL_MILESTONES = {
   1: {
@@ -424,6 +507,13 @@ function levelProgressHTML(compact = false) {
   `;
 }
 
+function effectStageCenter() {
+  return {
+    x: window.innerWidth / 2,
+    y: window.innerHeight * 0.64,
+  };
+}
+
 function characterCenter() {
   const element = characterElement();
   if (!element) return { x: window.innerWidth - 110, y: window.innerHeight - 120 };
@@ -479,7 +569,19 @@ function spawnFloatChip(text, x, y, level = false) {
   removeAfter(chip, 1500);
 }
 
+function clearCharacterEffectTimers() {
+  window.clearTimeout(homecomingReturnTimer);
+  window.clearTimeout(levelUpReturnTimer);
+  window.clearTimeout(levelEndingTimer);
+  window.clearTimeout(travelAnimationTimer);
+  homecomingReturnTimer = null;
+  levelUpReturnTimer = null;
+  levelEndingTimer = null;
+  travelAnimationTimer = null;
+}
+
 function playHomecomingEffect() {
+  clearCharacterEffectTimers();
   const milestone = LEVEL_MILESTONES[1];
   const layer = effectLayer();
   const card = document.createElement("div");
@@ -488,8 +590,7 @@ function playHomecomingEffect() {
   layer.appendChild(card);
   removeAfter(card, ADOPTION_EFFECT_MS + EFFECT_SETTLE_MS);
 
-  const centerX = window.innerWidth / 2;
-  const centerY = window.innerHeight * 0.58;
+  const { x: centerX, y: centerY } = effectStageCenter();
   character?.setPosition(centerX, centerY);
   character?.playSpawnEffect({
     message: "我回家啦，以后一起看知乎~",
@@ -501,11 +602,12 @@ function playHomecomingEffect() {
   spawnSparks(centerX, centerY, { count: 18 });
   spawnRing(centerX, centerY, false);
 
-  window.setTimeout(() => {
+  homecomingReturnTimer = window.setTimeout(() => {
     character?.moveTo(window.innerWidth - 150, window.innerHeight - 200, {
       message: profileBubbleTitle(),
       useRandomMessage: false,
     });
+    homecomingReturnTimer = null;
   }, ADOPTION_EFFECT_MS + EFFECT_SETTLE_MS);
 }
 
@@ -701,8 +803,41 @@ function clearStoryTypingTimer() {
   }
 }
 
+function clearStoryComicState() {
+  if (!storyIntroComicState) return;
+  storyIntroComicState.cancelled = true;
+  window.clearTimeout(storyIntroComicState.timer);
+  storyIntroComicState.animation?.cancel();
+  storyIntroComicState.resolveWait?.();
+  storyIntroComicState = null;
+}
+
+function clearLevelEndingComicState() {
+  if (!levelEndingComicState) return;
+  levelEndingComicState.cancelled = true;
+  window.clearTimeout(levelEndingComicState.timer);
+  levelEndingComicState.animation?.cancel();
+  levelEndingComicState.resolveWait?.();
+  levelEndingComicState = null;
+}
+
+function clearStoryScrollState() {
+  if (!storyIntroScrollState) return;
+  storyIntroScrollState.cancelled = true;
+  storyIntroScrollState.timeline?.kill();
+  storyIntroScrollState.ticker?.();
+  storyIntroScrollState.resize?.();
+  storyIntroScrollState.renderer?.dispose();
+  storyIntroScrollState.materials?.forEach((material) => material.dispose());
+  storyIntroScrollState.geometries?.forEach((geometry) => geometry.dispose());
+  storyIntroScrollState.textures?.forEach((texture) => texture.dispose());
+  storyIntroScrollState = null;
+}
+
 function closeStoryIntro(markSeen = true) {
   clearStoryTypingTimer();
+  clearStoryComicState();
+  clearStoryScrollState();
   document.querySelector(".story-intro-modal")?.remove();
   if (markSeen) markStoryIntroSeen();
   scheduleOnboardingGuide(320);
@@ -722,10 +857,617 @@ function typeStoryText(target, text, done) {
   }, 38);
 }
 
-function maybeShowStoryIntro() {
-  if (!currentUser || profile?.adopted || document.querySelector(".story-intro-modal")) {
-    return false;
+function storyComicDuration(ms) {
+  return storyIntroComicState?.fast ? Math.max(160, Math.round(ms * 0.32)) : ms;
+}
+
+function waitStoryComic(ms) {
+  const state = storyIntroComicState;
+  if (!state?.fast) {
+    return new Promise((resolve) => {
+      state.resolveWait = () => {
+        state.resolveWait = null;
+        window.clearTimeout(state.timer);
+        resolve();
+      };
+      state.timer = window.setTimeout(state.resolveWait, ms);
+    });
   }
+  return new Promise((resolve) => {
+    state.timer = window.setTimeout(resolve, storyComicDuration(ms));
+  });
+}
+
+function accelerateStoryComic() {
+  const state = storyIntroComicState;
+  if (!state || state.finished) return;
+  state.fast = true;
+  state.animation?.updatePlaybackRate?.(3.4);
+  state.resolveWait?.();
+}
+
+async function playStoryAnimation(animation) {
+  const state = storyIntroComicState;
+  if (!state || state.cancelled) return;
+  state.animation = animation;
+  if (state.fast) animation.updatePlaybackRate?.(3.4);
+  try {
+    await animation.finished;
+  } catch {
+    return;
+  } finally {
+    animation.cancel();
+    if (state.animation === animation) state.animation = null;
+  }
+}
+
+async function decodeStoryImage(img) {
+  try {
+    if (img.decode) await img.decode();
+  } catch {
+    return;
+  }
+}
+
+async function playStoryComicFrame(modal, frame, index) {
+  const state = storyIntroComicState;
+  const grid = modal.querySelector("[data-comic-grid]");
+  const focus = modal.querySelector("[data-comic-focus]");
+  const img = modal.querySelector("[data-comic-image]");
+  if (!state || state.cancelled || !grid || !focus || !img) return;
+
+  const thumb = document.createElement("article");
+  thumb.className = "story-comic-thumb is-pending";
+  thumb.innerHTML = `
+    <img src="${escapeHTML(frame.image)}" alt="${escapeHTML(frame.alt)}">
+    <span>${index + 1}</span>
+  `;
+  grid.appendChild(thumb);
+
+  img.src = frame.image;
+  img.alt = frame.alt;
+  modal.style.setProperty("--story-comic-bg", `url("${frame.image}")`);
+  modal.classList.add("has-extended-bg");
+  await decodeStoryImage(img);
+  if (state.cancelled || !modal.isConnected) return;
+
+  focus.hidden = false;
+  focus.className = "story-comic-focus";
+  focus.removeAttribute("style");
+  await playStoryAnimation(focus.animate([
+    { opacity: 0, transform: "translate(-50%, -42%) scale(0.84)" },
+    { opacity: 1, transform: "translate(-50%, -50%) scale(1)" },
+  ], {
+    duration: storyComicDuration(760),
+    easing: "cubic-bezier(.18,.82,.22,1)",
+    fill: "both",
+  }));
+  if (state.cancelled || !modal.isConnected) return;
+
+  focus.classList.add("is-breathing");
+  await waitStoryComic(2000);
+  if (state.cancelled || !modal.isConnected) return;
+
+  focus.classList.remove("is-breathing");
+  const from = focus.getBoundingClientRect();
+  const to = thumb.getBoundingClientRect();
+  focus.classList.add("is-moving");
+  Object.assign(focus.style, {
+    position: "fixed",
+    left: `${from.left}px`,
+    top: `${from.top}px`,
+    width: `${from.width}px`,
+    height: `${from.height}px`,
+    transform: "none",
+    overflow: "hidden",
+  });
+  await playStoryAnimation(focus.animate([
+    {
+      left: `${from.left}px`,
+      top: `${from.top}px`,
+      width: `${from.width}px`,
+      height: `${from.height}px`,
+      opacity: 1,
+    },
+    {
+      left: `${to.left}px`,
+      top: `${to.top}px`,
+      width: `${to.width}px`,
+      height: `${to.height}px`,
+      opacity: 0.82,
+    },
+  ], {
+    duration: storyComicDuration(760),
+    easing: "cubic-bezier(.22,.82,.2,1)",
+    fill: "both",
+  }));
+  if (state.cancelled || !modal.isConnected) return;
+
+  focus.hidden = true;
+  focus.className = "story-comic-focus";
+  focus.removeAttribute("style");
+  thumb.classList.remove("is-pending");
+  thumb.classList.add("is-visible");
+}
+
+async function playStoryComic(modal) {
+  storyIntroComicState = {
+    cancelled: false,
+    fast: false,
+    finished: false,
+    timer: null,
+    animation: null,
+    resolveWait: null,
+  };
+  for (let index = 0; index < STORY_COMIC_FRAMES.length; index += 1) {
+    await playStoryComicFrame(modal, STORY_COMIC_FRAMES[index], index);
+    if (!storyIntroComicState || storyIntroComicState.cancelled || !modal.isConnected) return;
+  }
+  const final = modal.querySelector("[data-comic-final]");
+  if (!final || !storyIntroComicState) return;
+  storyIntroComicState.finished = true;
+  modal.style.setProperty("--story-comic-bg", `url("${STORY_COMIC_AGGREGATE_IMAGE}")`);
+  final.hidden = false;
+  final.animate([
+    { opacity: 0, transform: "translate(-50%, 18px) scale(0.94)" },
+    { opacity: 1, transform: "translate(-50%, 0) scale(1)" },
+  ], {
+    duration: 520,
+    easing: "cubic-bezier(.18,.82,.22,1)",
+    fill: "both",
+  });
+}
+
+function showComicStoryIntro() {
+  removeOnboardingGuide();
+  const modal = document.createElement("div");
+  modal.className = "story-intro-modal story-comic-modal";
+  modal.innerHTML = `
+    <section class="story-comic-dialog" role="dialog" aria-modal="true" aria-label="刘看山背景故事漫剧">
+      <div class="story-comic-extended-bg" aria-hidden="true"></div>
+      <div class="story-comic-grid" data-comic-grid aria-label="背景故事分镜"></div>
+      <figure class="story-comic-focus" data-comic-focus hidden>
+        <div class="story-comic-frame">
+          <img data-comic-image alt="">
+        </div>
+      </figure>
+      <div class="story-comic-final" data-comic-final hidden>
+        <button type="button" class="story-primary story-comic-adopt" data-story-adopt>领养刘看山</button>
+      </div>
+    </section>
+  `;
+  document.body.appendChild(modal);
+  modal.addEventListener("click", (event) => {
+    if (event.target.closest("[data-story-adopt]")) return;
+    accelerateStoryComic();
+  });
+  modal.querySelector("[data-story-adopt]").addEventListener("click", () => {
+    markStoryIntroSeen();
+    adoptPet();
+  });
+  playStoryComic(modal);
+  return true;
+}
+
+function levelEndingComicDuration(ms) {
+  return levelEndingComicState?.fast ? Math.max(160, Math.round(ms * 0.32)) : ms;
+}
+
+function waitLevelEndingComic(ms) {
+  const state = levelEndingComicState;
+  if (!state?.fast) {
+    return new Promise((resolve) => {
+      state.resolveWait = () => {
+        state.resolveWait = null;
+        window.clearTimeout(state.timer);
+        resolve();
+      };
+      state.timer = window.setTimeout(state.resolveWait, ms);
+    });
+  }
+  return new Promise((resolve) => {
+    state.timer = window.setTimeout(resolve, levelEndingComicDuration(ms));
+  });
+}
+
+function accelerateLevelEndingComic() {
+  const state = levelEndingComicState;
+  if (!state || state.finished) return;
+  state.fast = true;
+  state.animation?.updatePlaybackRate?.(3.4);
+  state.resolveWait?.();
+}
+
+async function playLevelEndingAnimation(animation) {
+  const state = levelEndingComicState;
+  if (!state || state.cancelled) return;
+  state.animation = animation;
+  if (state.fast) animation.updatePlaybackRate?.(3.4);
+  try {
+    await animation.finished;
+  } catch {
+    return;
+  } finally {
+    animation.cancel();
+    if (state.animation === animation) state.animation = null;
+  }
+}
+
+async function playLevelEndingComicFrame(modal, frame, index) {
+  const state = levelEndingComicState;
+  const grid = modal.querySelector("[data-comic-grid]");
+  const focus = modal.querySelector("[data-comic-focus]");
+  const img = modal.querySelector("[data-comic-image]");
+  if (!state || state.cancelled || !grid || !focus || !img) return;
+
+  const thumb = document.createElement("article");
+  thumb.className = "story-comic-thumb is-pending";
+  thumb.innerHTML = `
+    <img src="${escapeHTML(frame.image)}" alt="${escapeHTML(frame.alt)}">
+    <span>${index + 1}</span>
+  `;
+  grid.appendChild(thumb);
+
+  img.src = frame.image;
+  img.alt = frame.alt;
+  modal.style.setProperty("--story-comic-bg", `url("${frame.image}")`);
+  modal.classList.add("has-extended-bg");
+  await decodeStoryImage(img);
+  if (state.cancelled || !modal.isConnected) return;
+
+  focus.hidden = false;
+  focus.className = "story-comic-focus";
+  focus.removeAttribute("style");
+  await playLevelEndingAnimation(focus.animate([
+    { opacity: 0, transform: "translate(-50%, -42%) scale(0.84)" },
+    { opacity: 1, transform: "translate(-50%, -50%) scale(1)" },
+  ], {
+    duration: levelEndingComicDuration(760),
+    easing: "cubic-bezier(.18,.82,.22,1)",
+    fill: "both",
+  }));
+  if (state.cancelled || !modal.isConnected) return;
+
+  focus.classList.add("is-breathing");
+  await waitLevelEndingComic(2000);
+  if (state.cancelled || !modal.isConnected) return;
+
+  focus.classList.remove("is-breathing");
+  const from = focus.getBoundingClientRect();
+  const to = thumb.getBoundingClientRect();
+  focus.classList.add("is-moving");
+  Object.assign(focus.style, {
+    position: "fixed",
+    left: `${from.left}px`,
+    top: `${from.top}px`,
+    width: `${from.width}px`,
+    height: `${from.height}px`,
+    transform: "none",
+    overflow: "hidden",
+  });
+  await playLevelEndingAnimation(focus.animate([
+    {
+      left: `${from.left}px`,
+      top: `${from.top}px`,
+      width: `${from.width}px`,
+      height: `${from.height}px`,
+      opacity: 1,
+    },
+    {
+      left: `${to.left}px`,
+      top: `${to.top}px`,
+      width: `${to.width}px`,
+      height: `${to.height}px`,
+      opacity: 0.82,
+    },
+  ], {
+    duration: levelEndingComicDuration(760),
+    easing: "cubic-bezier(.22,.82,.2,1)",
+    fill: "both",
+  }));
+  if (state.cancelled || !modal.isConnected) return;
+
+  focus.hidden = true;
+  focus.className = "story-comic-focus";
+  focus.removeAttribute("style");
+  thumb.classList.remove("is-pending");
+  thumb.classList.add("is-visible");
+}
+
+async function playLevelEndingComic(modal) {
+  levelEndingComicState = {
+    cancelled: false,
+    fast: false,
+    finished: false,
+    timer: null,
+    animation: null,
+    resolveWait: null,
+  };
+  for (let index = 0; index < LEVEL_ENDING_COMIC_FRAMES.length; index += 1) {
+    await playLevelEndingComicFrame(modal, LEVEL_ENDING_COMIC_FRAMES[index], index);
+    if (!levelEndingComicState || levelEndingComicState.cancelled || !modal.isConnected) return;
+  }
+  const final = modal.querySelector("[data-comic-final]");
+  if (!final || !levelEndingComicState) return;
+  levelEndingComicState.finished = true;
+  modal.style.setProperty("--story-comic-bg", `url("${LEVEL_ENDING_COMIC_AGGREGATE_IMAGE}")`);
+  final.hidden = false;
+  final.animate([
+    { opacity: 0, transform: "translate(-50%, 18px) scale(0.94)" },
+    { opacity: 1, transform: "translate(-50%, 0) scale(1)" },
+  ], {
+    duration: 520,
+    easing: "cubic-bezier(.18,.82,.22,1)",
+    fill: "both",
+  });
+}
+
+const STORY_SCROLL_VERTEX_SHADER = `
+  varying vec2 vUv;
+
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const STORY_SCROLL_FRAGMENT_SHADER = `
+  uniform sampler2D uTexture;
+  uniform float uDissolve;
+  uniform float uOpacity;
+  uniform float uScroll;
+  uniform float uTime;
+  varying vec2 vUv;
+
+  float random(vec2 value) {
+    return fract(sin(dot(value, vec2(12.9898, 78.233))) * 43758.5453123);
+  }
+
+  void main() {
+    vec2 uv = vUv;
+    uv.y += uScroll * 0.035;
+    vec4 color = texture2D(uTexture, uv);
+    float wave = sin((uv.y + uTime * 0.18) * 26.0) * 0.055;
+    float noise = random(floor(uv * 78.0)) + wave;
+    float mask = smoothstep(uDissolve - 0.18, uDissolve + 0.18, noise);
+    gl_FragColor = vec4(color.rgb, color.a * uOpacity * mask);
+  }
+`;
+
+function storyScrollPlaneSize(texture) {
+  const image = texture.image || {};
+  const ratio = image.width && image.height ? image.width / image.height : 0.885;
+  const height = window.innerWidth <= 640 ? 1.02 : 1.18;
+  return { width: height * ratio, height };
+}
+
+function storyScrollMaterial(texture) {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uTexture: { value: texture },
+      uDissolve: { value: 1.2 },
+      uOpacity: { value: 0 },
+      uScroll: { value: 0 },
+      uTime: { value: 0 },
+    },
+    vertexShader: STORY_SCROLL_VERTEX_SHADER,
+    fragmentShader: STORY_SCROLL_FRAGMENT_SHADER,
+    transparent: true,
+    depthWrite: false,
+  });
+}
+
+function updateStoryScrollLayout(state) {
+  if (!state?.renderer || !state.camera || !state.canvas) return;
+  const rect = state.canvas.getBoundingClientRect();
+  const width = Math.max(1, rect.width);
+  const height = Math.max(1, rect.height);
+  const aspect = width / height;
+  state.camera.left = -aspect;
+  state.camera.right = aspect;
+  state.camera.top = 1;
+  state.camera.bottom = -1;
+  state.camera.updateProjectionMatrix();
+  state.renderer.setSize(width, height, false);
+}
+
+async function createStoryScrollState(modal) {
+  const canvas = modal.querySelector("[data-scroll-canvas]");
+  const captionTitle = modal.querySelector("[data-scroll-title]");
+  const captionDescription = modal.querySelector("[data-scroll-description]");
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  const scene = new THREE.Scene();
+  const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
+  camera.position.z = 3;
+  const textureLoader = new THREE.TextureLoader();
+  const textures = await Promise.all(STORY_COMIC_FRAMES.map((frame) => textureLoader.loadAsync(frame.image)));
+  textures.forEach((texture) => {
+    texture.colorSpace = THREE.SRGBColorSpace;
+  });
+  const materials = [];
+  const geometries = [];
+  const meshes = textures.map((texture) => {
+    const size = storyScrollPlaneSize(texture);
+    const geometry = new THREE.PlaneGeometry(size.width, size.height, 48, 48);
+    const material = storyScrollMaterial(texture);
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.visible = false;
+    scene.add(mesh);
+    materials.push(material);
+    geometries.push(geometry);
+    return mesh;
+  });
+  const state = {
+    cancelled: false,
+    finished: false,
+    fast: false,
+    canvas,
+    scene,
+    camera,
+    renderer,
+    textures,
+    materials,
+    geometries,
+    meshes,
+    captionTitle,
+    captionDescription,
+    timeline: null,
+    ticker: null,
+    resize: null,
+  };
+  updateStoryScrollLayout(state);
+  const render = () => {
+    const time = performance.now() / 1000;
+    materials.forEach((material) => {
+      material.uniforms.uTime.value = time;
+    });
+    renderer.render(scene, camera);
+  };
+  gsap.ticker.add(render);
+  state.ticker = () => gsap.ticker.remove(render);
+  const onResize = () => updateStoryScrollLayout(state);
+  window.addEventListener("resize", onResize);
+  state.resize = () => window.removeEventListener("resize", onResize);
+  return state;
+}
+
+function updateStoryScrollFrame(state, mesh, progress) {
+  mesh.position.y = progress.y;
+  mesh.rotation.z = progress.rotate;
+  mesh.material.uniforms.uOpacity.value = progress.opacity;
+  mesh.material.uniforms.uDissolve.value = progress.dissolve;
+  mesh.material.uniforms.uScroll.value = progress.scroll;
+}
+
+function buildStoryScrollTimeline(modal, state) {
+  const timeline = gsap.timeline({
+    defaults: { ease: "power2.inOut" },
+    onComplete: () => finishStoryScroll(modal),
+  });
+  STORY_COMIC_FRAMES.forEach((frame, index) => {
+    const direction = index % 2 === 0 ? 1 : -1;
+    const mesh = state.meshes[index];
+    const progress = {
+      y: direction * 1.72,
+      rotate: direction * 0.035,
+      opacity: 0,
+      dissolve: 1.18,
+      scroll: 0,
+    };
+    timeline.call(() => {
+      state.captionTitle.textContent = frame.title || frame.alt || "";
+      state.captionDescription.textContent = frame.description || "";
+      modal.classList.remove("is-final");
+      mesh.visible = true;
+      updateStoryScrollFrame(state, mesh, progress);
+    });
+    timeline.to(progress, {
+      y: 0,
+      rotate: 0,
+      opacity: 1,
+      dissolve: -0.18,
+      scroll: direction * 1.2,
+      duration: 1.25,
+      onUpdate: () => updateStoryScrollFrame(state, mesh, progress),
+    });
+    timeline.to(progress, {
+      scroll: direction * 1.55,
+      duration: 0.88,
+      ease: "none",
+      onUpdate: () => updateStoryScrollFrame(state, mesh, progress),
+    });
+    timeline.to(progress, {
+      y: direction * -1.72,
+      rotate: direction * -0.04,
+      opacity: 0,
+      dissolve: 1.18,
+      scroll: direction * 2.8,
+      duration: 1.05,
+      onUpdate: () => updateStoryScrollFrame(state, mesh, progress),
+      onComplete: () => {
+        mesh.visible = false;
+      },
+    });
+  });
+  return timeline;
+}
+
+function accelerateStoryScroll() {
+  const state = storyIntroScrollState;
+  if (!state || state.finished) return;
+  state.fast = true;
+  state.timeline?.timeScale(3.2);
+}
+
+function finishStoryScroll(modal) {
+  const state = storyIntroScrollState;
+  if (!state || state.cancelled || !modal.isConnected) return;
+  state.finished = true;
+  modal.classList.add("is-final");
+  state.meshes.forEach((mesh) => {
+    mesh.visible = false;
+  });
+  const final = modal.querySelector("[data-scroll-final]");
+  if (!final) return;
+  final.hidden = false;
+  gsap.fromTo(final, {
+    autoAlpha: 0,
+    y: 22,
+    scale: 0.94,
+  }, {
+    autoAlpha: 1,
+    y: 0,
+    scale: 1,
+    duration: 0.58,
+    ease: "back.out(1.35)",
+  });
+}
+
+function showScrollStoryIntro() {
+  removeOnboardingGuide();
+  const modal = document.createElement("div");
+  modal.className = "story-intro-modal story-scroll-modal";
+  modal.innerHTML = `
+    <section class="story-scroll-dialog" role="dialog" aria-modal="true" aria-label="刘看山背景故事滚动溶解">
+      <canvas class="story-scroll-canvas" data-scroll-canvas aria-hidden="true"></canvas>
+      <div class="story-scroll-caption" data-scroll-caption>
+        <strong data-scroll-title></strong>
+        <span data-scroll-description></span>
+      </div>
+      <div class="story-scroll-final" data-scroll-final hidden>
+        <img src="${escapeHTML(STORY_COMIC_AGGREGATE_IMAGE)}" alt="刘看山背景故事八格漫剧">
+        <button type="button" class="story-primary story-scroll-adopt" data-story-adopt>领养刘看山</button>
+      </div>
+    </section>
+  `;
+  document.body.appendChild(modal);
+  modal.addEventListener("click", (event) => {
+    if (event.target.closest("[data-story-adopt]")) return;
+    accelerateStoryScroll();
+  });
+  modal.querySelector("[data-story-adopt]").addEventListener("click", () => {
+    markStoryIntroSeen();
+    adoptPet();
+  });
+  createStoryScrollState(modal)
+    .then((state) => {
+      if (!modal.isConnected) {
+        state.renderer.dispose();
+        return;
+      }
+      storyIntroScrollState = state;
+      state.timeline = buildStoryScrollTimeline(modal, state);
+    })
+    .catch((error) => {
+      console.warn("Story scroll intro failed", error);
+      closeStoryIntro(false);
+      showComicStoryIntro();
+    });
+  return true;
+}
+
+function showTextStoryIntro() {
   removeOnboardingGuide();
   const modal = document.createElement("div");
   modal.className = "story-intro-modal";
@@ -750,6 +1492,13 @@ function maybeShowStoryIntro() {
     adoptPet();
   });
   return true;
+}
+
+function maybeShowStoryIntro() {
+  if (!currentUser || profile?.adopted || document.querySelector(".story-intro-modal")) {
+    return false;
+  }
+  return showComicStoryIntro();
 }
 
 function hasOnboardingBlockingOverlay() {
@@ -969,8 +1718,7 @@ async function ensureEffectCharacter() {
 }
 
 function centerCharacterForTest() {
-  const centerX = window.innerWidth / 2;
-  const centerY = window.innerHeight * 0.58;
+  const { x: centerX, y: centerY } = effectStageCenter();
   character?.setPosition?.(centerX, centerY);
   return { x: centerX, y: centerY };
 }
@@ -2294,6 +3042,8 @@ function syncCharacter() {
         spawnIntervalFrames: 5,
         initialGhostOpacity: 0.34,
         ghostFadeSpeed: 0.045,
+        evolveCanvasMarginLeft: -130,
+        evolveCanvasMarginTop: -150,
         spawnScaleMultiplier: 1.28,
         enableEmojiBubble: false,
         emojiBubbleConfig: {
@@ -2676,6 +3426,14 @@ function petPanel() {
   const resetButton = isAdminUser()
     ? `<button class="reset-pet-btn" data-reset-pet>重置刘看山</button>`
     : "";
+  const experienceBoostButton = Number(profile.level) >= 2 && Number(profile.level) < 10
+    ? `<button class="outline-btn wide-action" data-boost-next-level>快速体验升一级</button>`
+    : "";
+  const experienceHint = Number(profile.level) < 2
+    ? `<div class="pet-experience-hint">升到 <strong>Lv.2</strong> 后，可用「快速体验升一级」一路体验完整养成流程。</div>`
+    : Number(profile.level) < 10
+      ? `<div class="pet-experience-hint unlocked"><strong>已解锁快速体验</strong>，可逐级升级体验到 Lv.10 终极彩蛋。</div>`
+      : `<div class="pet-experience-hint unlocked"><strong>完整流程已达成</strong>，Lv.10 终极形态已解锁。</div>`;
   return `
     <section class="card side-card pet-panel" data-pet-panel>
       <div class="pet-title">
@@ -2686,11 +3444,13 @@ function petPanel() {
         <span class="level-pill">Lv.${profile.level}</span>
       </div>
       <div class="travel-panel-actions">
+        ${experienceBoostButton}
         ${travelAction}
         <button class="outline-btn" data-hover-handbook>旅行手账</button>
         <button class="outline-btn" data-hover-growth-log>成长日志</button>
         <button class="outline-btn" data-open-leaderboard>查看排行榜</button>
       </div>
+      ${experienceHint}
       ${currentUserRankCard()}
       <div class="pet-level-showcase level-${escapeHTML(visual?.effectStyle || "cute")}">
         ${visualImage ? `<img src="${escapeHTML(visualImage)}" alt="${escapeHTML(visual.title || "刘看山等级形象")}">` : ""}
@@ -3477,6 +4237,11 @@ function bindPanelBasics() {
     button.dataset.basicBound = "1";
     button.addEventListener("click", resetPet);
   });
+  document.querySelectorAll("[data-boost-next-level]").forEach((button) => {
+    if (button.dataset.basicBound) return;
+    button.dataset.basicBound = "1";
+    button.addEventListener("click", () => boostPetOneLevel(button));
+  });
 }
 
 function bindCommon() {
@@ -4076,33 +4841,35 @@ function scheduleTravelReturnCheck() {
 }
 
 function playTravelDeparture(travel) {
-  const centerX = window.innerWidth / 2;
-  const centerY = window.innerHeight * 0.58;
+  clearCharacterEffectTimers();
+  const { x: centerX, y: centerY } = effectStageCenter();
   character?.setPosition?.(centerX, centerY);
-  window.setTimeout(() => {
+  travelAnimationTimer = window.setTimeout(() => {
     character?.startGoTravel?.({
       message: travel.message || "出发旅行！",
       autoHide: 2400,
     });
+    travelAnimationTimer = null;
   }, 80);
   window.setTimeout(() => {
     if (profile?.travelStatus !== "traveling") return;
     travelDepartureVisibleUntil = 0;
-    characterElement()?.classList.remove("roaming-traveling");
+    characterElement()?.classList.remove("roaming-traveling", "roaming-departing", "roaming-returning");
     syncCharacter();
   }, 3600);
 }
 
 function playTravelReturn(travel) {
-  const centerX = window.innerWidth / 2;
-  const centerY = window.innerHeight * 0.58;
+  clearCharacterEffectTimers();
+  const { x: centerX, y: centerY } = effectStageCenter();
   character?.setPosition?.(centerX, centerY);
   character?.startBackHome?.({
     message: travel.message || "旅行回来啦！",
     autoHide: 2800,
   });
-  window.setTimeout(() => {
+  travelAnimationTimer = window.setTimeout(() => {
     character?.setPosition?.(window.innerWidth - 150, window.innerHeight - 200);
+    travelAnimationTimer = null;
   }, 3300);
 }
 
@@ -4458,6 +5225,7 @@ async function adoptPet() {
 
 async function resetPet() {
   try {
+    clearCharacterEffectTimers();
     const data = await api("/api/p0/pet/reset", {
       method: "POST",
       body: JSON.stringify({}),
@@ -4499,6 +5267,31 @@ async function boostPetToLevel10() {
     }
   } catch (error) {
     showToast(error.message || "一键升级失败");
+  }
+}
+
+async function boostPetOneLevel(sourceButton) {
+  if (sourceButton) sourceButton.disabled = true;
+  try {
+    const data = await api("/api/p0/pet/boost-next-level", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    profile = data.profile;
+    leaderboardLoaded = false;
+    leaderboardData = null;
+    renderCurrentRoute();
+    syncCharacter();
+    const reward = data.reward || {};
+    if (reward.levelUp) {
+      showReward(reward, null);
+    } else {
+      showToast("刘看山已达成 Lv.10，完整流程已解锁");
+      window.setTimeout(() => showLevelEndingModal(), 500);
+    }
+  } catch (error) {
+    if (sourceButton) sourceButton.disabled = false;
+    showToast(error.message || "快速升级失败");
   }
 }
 
@@ -4562,20 +5355,24 @@ function showReward(reward, sourceElement) {
     : `看山成长了：${partsText}`;
   showToast(message);
   if (reward.levelUp) {
+    clearCharacterEffectTimers();
     showLevelUpPreview(reward).catch((error) => console.warn("level preview failed", error));
     if (Number(reward.toLevel) >= 10 && Number(reward.fromLevel || 0) < 10) {
-      window.setTimeout(() => showLevelEndingModal(), LEVEL_UP_EFFECT_MS + EFFECT_SETTLE_MS);
+      levelEndingTimer = window.setTimeout(() => {
+        showLevelEndingModal();
+        levelEndingTimer = null;
+      }, LEVEL_UP_EFFECT_MS + EFFECT_SETTLE_MS);
     }
   }
   if (character && reward.levelUp) {
-    const centerX = window.innerWidth / 2;
-    const centerY = window.innerHeight * 0.58;
+    const { x: centerX, y: centerY } = effectStageCenter();
     character.setPosition?.(centerX, centerY);
     character.playEvolveEffect?.({ message, autoHide: LEVEL_UP_EFFECT_MS });
     pulseCharacter("pet-level-up", LEVEL_UP_EFFECT_MS);
-    window.setTimeout(() => {
+    levelUpReturnTimer = window.setTimeout(() => {
       character?.setPosition?.(window.innerWidth - 150, window.innerHeight - 200);
       character?.setMessage?.(profileBubbleTitle(), { autoHide: 2200 });
+      levelUpReturnTimer = null;
     }, LEVEL_UP_EFFECT_MS + EFFECT_SETTLE_MS);
   }
   if (sourceElement && character && !reward.levelUp && rewardWalkEnabled) {
@@ -4616,31 +5413,36 @@ async function showLevelUpPreview(reward) {
 
 async function showLevelEndingModal() {
   await loadLevelVisuals().catch(() => {});
-  const visual = visualForLevel(10) || currentLevelVisual();
-  const image = visual?.imageUrl || visual?.thumbnailUrl;
+  clearLevelEndingComicState();
   document.querySelector(".level-ending-modal")?.remove();
   const modal = document.createElement("div");
-  modal.className = "level-ending-modal";
+  modal.className = "level-ending-modal story-comic-modal level-ending-comic-modal";
   modal.innerHTML = `
-    <section class="level-ending-dialog level-${escapeHTML(visual?.effectStyle || "legendary")}" role="dialog" aria-modal="true" aria-label="刘看山终极结局">
-      <div class="ending-stars" aria-hidden="true"></div>
-      <div class="story-kicker">终极彩蛋</div>
-      <h1>知乎星，重新亮起</h1>
-      <div class="ending-hero">
-        ${image ? `<img src="${escapeHTML(image)}" alt="Lv.10 宇宙知识领航者">` : ""}
-        <div>
-          <strong>Lv.10 · 宇宙知识领航者</strong>
-          <span>${escapeHTML(LEVEL_MILESTONES[10].quote)}</span>
+    <section class="story-comic-dialog level-ending-comic-dialog" role="dialog" aria-modal="true" aria-label="刘看山终极彩蛋">
+      <div class="story-comic-extended-bg" aria-hidden="true"></div>
+      <div class="story-comic-grid" data-comic-grid aria-label="终章故事分镜"></div>
+      <figure class="story-comic-focus" data-comic-focus hidden>
+        <div class="story-comic-frame">
+          <img data-comic-image alt="">
         </div>
+      </figure>
+      <div class="story-comic-final level-ending-comic-final" data-comic-final hidden>
+        <button type="button" class="story-primary story-comic-adopt level-ending-comic-continue" data-ending-close>继续探索知乎星</button>
       </div>
-      <p>${escapeHTML(LEVEL_10_ENDING_TEXT)}</p>
-      <button type="button" class="story-primary" data-ending-close>继续探索知乎星</button>
     </section>
   `;
   document.body.appendChild(modal);
   removeOnboardingGuide();
-  const close = () => closeBlockingModal(modal);
+  modal.addEventListener("click", (event) => {
+    if (event.target.closest("[data-ending-close]")) return;
+    accelerateLevelEndingComic();
+  });
+  const close = () => {
+    clearLevelEndingComicState();
+    closeBlockingModal(modal);
+  };
   modal.querySelector("[data-ending-close]").addEventListener("click", close);
+  playLevelEndingComic(modal);
 }
 
 function playRewardEffect(reward, sourceElement, message) {

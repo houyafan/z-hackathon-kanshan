@@ -16,6 +16,7 @@ RUN mkdir -p /app/data /app/config /app/db/sqlite
 COPY db/sqlite/init_p0.sql /app/db/sqlite/init_p0.sql
 COPY p0_mock /app/p0_mock
 COPY 3d-liukanshan-roaming /app/3d-liukanshan-roaming
+COPY imgs /app/imgs
 
 EXPOSE 5173
 
