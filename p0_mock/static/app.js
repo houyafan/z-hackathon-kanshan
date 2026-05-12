@@ -4652,21 +4652,39 @@ function renderContentModal(content) {
 function movePetToCommentAssist(modal) {
   const pet = characterElement();
   if (!character || !pet) return;
-  const aiBtn = modal.querySelector(".comment-ai-btn");
-  if (!aiBtn) return;
+  const dialog = modal.querySelector(".content-dialog");
+  if (!dialog) return;
   const place = () => {
-    const rect = aiBtn.getBoundingClientRect();
+    const rect = dialog.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
+    // 锚到弹框右外边框附近：X 贴弹框右缘外侧、Y 取弹框下半的固定比例，
+    // 避免依赖评论编辑器在弹框内的滚动位置导致位置抖动。
     const targetX = Math.min(
       window.innerWidth - 80,
-      Math.max(80, rect.left + rect.width * 0.72),
+      Math.max(rect.right + 56, rect.right + 24),
     );
-    const targetY = Math.max(90, rect.top - 30);
+    const targetY = Math.max(
+      120,
+      Math.min(window.innerHeight - 140, rect.top + rect.height * 0.66),
+    );
     pet.classList.add("roaming-comment-assist");
-    character.moveTo?.(targetX, targetY, {
-      message: "我来帮你想想~✨",
-      useRandomMessage: false,
-    });
+    // 出发时静默：内置 arrivedMessage 会在到达瞬间盖掉移动期消息，
+    // 所以等 isMovingStatus 变 false 再 setMessage 才能让台词稳定出现。
+    character.moveTo?.(targetX, targetY, { useRandomMessage: false });
+
+    const startedAt = Date.now();
+    const speakWhenArrived = () => {
+      if (!modal.isConnected) return;
+      if (!pet.classList.contains("roaming-comment-assist")) return;
+      const stillMoving = character.isMovingStatus?.();
+      const timedOut = Date.now() - startedAt > 5000;
+      if (stillMoving && !timedOut) {
+        window.setTimeout(speakWhenArrived, 80);
+        return;
+      }
+      character.setMessage?.("我陪你一起写一句吧～", { autoHide: 4000 });
+    };
+    window.setTimeout(speakWhenArrived, 80);
   };
   window.requestAnimationFrame(place);
 }
