@@ -6186,9 +6186,9 @@ button {
 .handbook-share-btn {
   margin-top: 12px;
   padding: 10px 20px;
-  border: 1px solid #1772f6;
+  border: 1px solid #558EFF;
   background: #fff;
-  color: #1772f6;
+  color: #558EFF;
   border-radius: 999px;
   cursor: pointer;
   font-size: 13px;
@@ -6197,7 +6197,7 @@ button {
   transition: background 160ms ease, color 160ms ease, transform 160ms ease;
 }
 .handbook-share-btn:hover:not(:disabled) {
-  background: #1772f6;
+  background: #558EFF;
   color: #fff;
   transform: translateY(-1px);
 }

@@ -12,7 +12,7 @@ const SHARE_CARD_THEMES = {
   },
   hotspot: {
     // 浅一些的暖玫红 — 不再黑沉,跟"陪伴感"更搭
-    background: '#8e2638',
+    background: '#FF5066',
     accent: '#ee5872',
     gold: '#f5c87a',
     label: '热点旅行',
