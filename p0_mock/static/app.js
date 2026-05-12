@@ -62,7 +62,7 @@ const ONBOARDING_VERSION = "v2";
 const ONBOARDING_KEY = `liukanshan_onboarding_${ONBOARDING_VERSION}`;
 const STORY_INTRO_VERSION = "v1";
 const AUTHOR_NOTE_COLLAPSED_KEY = "liukanshan_author_note_collapsed";
-const AUTHOR_ARTICLE_URL = "https://www.zhihu.com/pin/2037504688950437025";
+const AUTHOR_ARTICLE_URL = "https://zhuanlan.zhihu.com/p/2037610794875970544";
 const ADOPTION_EFFECT_MS = 6200;
 const LEVEL_UP_EFFECT_MS = 6500;
 const EFFECT_SETTLE_MS = 650;
@@ -983,11 +983,11 @@ async function playStoryComicFrame(modal, frame, index) {
   }));
   if (state.cancelled || !modal.isConnected) return;
 
+  thumb.classList.remove("is-pending");
+  thumb.classList.add("is-visible");
   focus.hidden = true;
   focus.className = "story-comic-focus";
   focus.removeAttribute("style");
-  thumb.classList.remove("is-pending");
-  thumb.classList.add("is-visible");
 }
 
 async function playStoryComic(modal) {
@@ -3969,6 +3969,54 @@ function adminAnalyticsFunnel(funnel = []) {
   `;
 }
 
+function formatAdminDateTime(value) {
+  if (!value) return "暂无";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function adminWatchedUsersSection(items = []) {
+  const rows = Array.isArray(items) ? items : [];
+  return `
+    <section class="card admin-section">
+      <div class="side-title"><span>我关注的使用了平台</span><small>固定观察 token：zhouyuan、a-le-85-17、qhlee</small></div>
+      <div class="admin-watched-users">
+        ${rows.map((item) => {
+          const registered = Boolean(item.registered);
+          const used = Boolean(item.usedPlatform);
+          const statusText = used ? "已使用" : registered ? "已注册" : "未使用";
+          const statusClass = used ? "used" : registered ? "registered" : "idle";
+          const name = item.fullname || item.token;
+          return `
+            <article>
+              <div class="admin-watched-user-main">
+                <strong>${escapeHTML(name)}</strong>
+                <small>${escapeHTML(item.token || "")}</small>
+              </div>
+              <span class="admin-watch-status ${statusClass}">${statusText}</span>
+              <div class="admin-watched-user-meta">
+                <span>最近登录：${escapeHTML(formatAdminDateTime(item.lastLoginAt))}</span>
+                <span>最近行为：${escapeHTML(formatAdminDateTime(item.lastEventAt))}</span>
+              </div>
+              <div class="admin-watched-user-stats">
+                <span>访问 ${formatCount(item.pageViews || 0)}</span>
+                <span>消费 ${formatCount(item.contentConsumes || 0)}</span>
+                <span>${item.adopted ? `Lv.${formatCount(item.level || 1)} · ${formatCount(item.totalExp || 0)} 经验` : "未领养"}</span>
+              </div>
+            </article>
+          `;
+        }).join("") || `<p class="admin-empty">暂无观察 token</p>`}
+      </div>
+    </section>
+  `;
+}
+
 function renderAdmin() {
   if (!isAdminUser()) {
     app.innerHTML = `
@@ -3997,6 +4045,7 @@ function renderAdmin() {
   const projectDailyMetrics = adminOverview?.projectDailyMetrics || [];
   const analytics = adminOverview?.analytics || {};
   const analyticsToday = analytics.today || {};
+  const watchedUsers = adminOverview?.watchedUsers || [];
   app.innerHTML = `
     ${shell("admin")}
     <main class="admin-page">
@@ -4023,6 +4072,7 @@ function renderAdmin() {
         ${adminStatCard("今日游历 UV", analyticsToday.travelStartUv ?? 0)}
         ${adminStatCard("今日分享成功 UV", analyticsToday.shareSuccessUv ?? 0)}
       </section>
+      ${adminWatchedUsersSection(watchedUsers)}
       ${adminDailyMetricChart(projectDailyMetrics)}
       ${adminAnalyticsChart(analytics.series || [])}
       ${adminAnalyticsFunnel(analytics.funnel || [])}

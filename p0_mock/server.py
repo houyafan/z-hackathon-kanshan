@@ -33,6 +33,7 @@ SESSION_COOKIE_NAME = "lks_session"
 APP_TZ = timezone(timedelta(hours=8), "Asia/Shanghai")
 ADMIN_USER_TOKENS = {"p2wcex", "sunny-27-1-97"}
 ADMIN_USER_UIDS = {1908940156829918831, 2013197829758268031}
+ADMIN_WATCHED_USER_TOKENS = ("zhouyuan", "a-le-85-17", "qhlee")
 _RECOMMEND_FEED_CACHE = {"mtime": None, "contents": [], "by_id": {}}
 
 
@@ -1805,6 +1806,78 @@ def project_daily_metric_series(conn, days=14):
     return series
 
 
+def admin_watched_users_payload(conn):
+    placeholders = ",".join("?" for _ in ADMIN_WATCHED_USER_TOKENS)
+    rows = conn.execute(
+        f"""
+        SELECT
+          u.uid,
+          u.user_token,
+          u.fullname,
+          u.avatar_path,
+          u.last_login_at,
+          p.adopted,
+          p.level,
+          p.total_exp,
+          COALESCE(a.page_views, 0) AS page_views,
+          COALESCE(a.content_consumes, 0) AS content_consumes,
+          COALESCE(a.level_ups, 0) AS level_ups,
+          COALESCE(a.share_successes, 0) AS share_successes,
+          e.last_event_at
+        FROM zhihu_user u
+        LEFT JOIN pet_profile p ON p.user_id = u.uid
+        LEFT JOIN (
+          SELECT
+            user_id,
+            SUM(page_view_count) AS page_views,
+            SUM(read_count + watch_count) AS content_consumes,
+            SUM(level_up_count) AS level_ups,
+            SUM(share_success_count) AS share_successes
+          FROM analytics_user_daily
+          GROUP BY user_id
+        ) a ON a.user_id = u.uid
+        LEFT JOIN (
+          SELECT user_id, MAX(server_ts) AS last_event_at
+          FROM analytics_event
+          GROUP BY user_id
+        ) e ON e.user_id = u.uid
+        WHERE u.user_token IN ({placeholders})
+        """,
+        ADMIN_WATCHED_USER_TOKENS,
+    ).fetchall()
+    by_token = {row["user_token"]: row for row in rows}
+    watched = []
+    for token in ADMIN_WATCHED_USER_TOKENS:
+        row = by_token.get(token)
+        if row is None:
+            watched.append({
+                "token": token,
+                "registered": False,
+                "usedPlatform": False,
+            })
+            continue
+        page_views = int(row["page_views"] or 0)
+        adopted = bool(row["adopted"])
+        watched.append({
+            "token": token,
+            "userId": row["uid"],
+            "fullname": row["fullname"],
+            "avatarPath": row["avatar_path"],
+            "registered": True,
+            "usedPlatform": bool(row["last_login_at"] or row["last_event_at"] or page_views or adopted),
+            "lastLoginAt": row["last_login_at"],
+            "lastEventAt": row["last_event_at"],
+            "adopted": adopted,
+            "level": int(row["level"] or 1) if row["level"] is not None else None,
+            "totalExp": int(row["total_exp"] or 0) if row["total_exp"] is not None else 0,
+            "pageViews": page_views,
+            "contentConsumes": int(row["content_consumes"] or 0),
+            "levelUps": int(row["level_ups"] or 0),
+            "shareSuccesses": int(row["share_successes"] or 0),
+        })
+    return watched
+
+
 def admin_overview_payload(conn):
     today = now_dt().date().isoformat()
     today_metric = conn.execute(
@@ -1850,6 +1923,7 @@ def admin_overview_payload(conn):
         "levels": levels,
         "projectDailyMetrics": project_daily_metric_series(conn, 14),
         "analytics": analytics_overview_payload(conn, 14),
+        "watchedUsers": admin_watched_users_payload(conn),
         "adminTokens": sorted(ADMIN_USER_TOKENS),
     }
 
