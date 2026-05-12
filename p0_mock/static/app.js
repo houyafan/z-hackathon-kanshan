@@ -62,7 +62,7 @@ const ONBOARDING_VERSION = "v2";
 const ONBOARDING_KEY = `liukanshan_onboarding_${ONBOARDING_VERSION}`;
 const STORY_INTRO_VERSION = "v1";
 const AUTHOR_NOTE_COLLAPSED_KEY = "liukanshan_author_note_collapsed";
-const AUTHOR_ARTICLE_URL = "https://zhuanlan.zhihu.com/p/2037102849608430174";
+const AUTHOR_ARTICLE_URL = "https://www.zhihu.com/pin/2037504688950437025";
 const ADOPTION_EFFECT_MS = 6200;
 const LEVEL_UP_EFFECT_MS = 6500;
 const EFFECT_SETTLE_MS = 650;
@@ -108,6 +108,7 @@ let analyticsFlushTimer = null;
 let analyticsLastPagePath = "";
 let storyIntroTypingTimer = null;
 let storyIntroComicState = null;
+let levelEndingComicState = null;
 let storyIntroScrollState = null;
 const ONBOARDING_BLOCKING_SELECTOR = [
   ".content-modal",
@@ -162,6 +163,43 @@ const STORY_COMIC_FRAMES = [
   },
 ];
 const STORY_COMIC_AGGREGATE_IMAGE = `/imgs/漫剧.png?v=${STORY_COMIC_ASSET_VERSION}`;
+
+const LEVEL_ENDING_COMIC_ASSET_VERSION = "20260512-1339";
+const LEVEL_ENDING_COMIC_FRAMES = [
+  {
+    image: `/imgs/9.png?v=${LEVEL_ENDING_COMIC_ASSET_VERSION}`,
+    alt: "刘看山终章故事分镜 1",
+  },
+  {
+    image: `/imgs/10.png?v=${LEVEL_ENDING_COMIC_ASSET_VERSION}`,
+    alt: "刘看山终章故事分镜 2",
+  },
+  {
+    image: `/imgs/11.png?v=${LEVEL_ENDING_COMIC_ASSET_VERSION}`,
+    alt: "刘看山终章故事分镜 3",
+  },
+  {
+    image: `/imgs/12.png?v=${LEVEL_ENDING_COMIC_ASSET_VERSION}`,
+    alt: "刘看山终章故事分镜 4",
+  },
+  {
+    image: `/imgs/13.png?v=${LEVEL_ENDING_COMIC_ASSET_VERSION}`,
+    alt: "刘看山终章故事分镜 5",
+  },
+  {
+    image: `/imgs/14.png?v=${LEVEL_ENDING_COMIC_ASSET_VERSION}`,
+    alt: "刘看山终章故事分镜 6",
+  },
+  {
+    image: `/imgs/15.png?v=${LEVEL_ENDING_COMIC_ASSET_VERSION}`,
+    alt: "刘看山终章故事分镜 7",
+  },
+  {
+    image: `/imgs/16.png?v=${LEVEL_ENDING_COMIC_ASSET_VERSION}`,
+    alt: "刘看山终章故事分镜 8",
+  },
+];
+const LEVEL_ENDING_COMIC_AGGREGATE_IMAGE = `/imgs/终章.png?v=${LEVEL_ENDING_COMIC_ASSET_VERSION}`;
 
 const LEVEL_MILESTONES = {
   1: {
@@ -774,6 +812,15 @@ function clearStoryComicState() {
   storyIntroComicState = null;
 }
 
+function clearLevelEndingComicState() {
+  if (!levelEndingComicState) return;
+  levelEndingComicState.cancelled = true;
+  window.clearTimeout(levelEndingComicState.timer);
+  levelEndingComicState.animation?.cancel();
+  levelEndingComicState.resolveWait?.();
+  levelEndingComicState = null;
+}
+
 function clearStoryScrollState() {
   if (!storyIntroScrollState) return;
   storyIntroScrollState.cancelled = true;
@@ -1000,6 +1047,159 @@ function showComicStoryIntro() {
   });
   playStoryComic(modal);
   return true;
+}
+
+function levelEndingComicDuration(ms) {
+  return levelEndingComicState?.fast ? Math.max(160, Math.round(ms * 0.32)) : ms;
+}
+
+function waitLevelEndingComic(ms) {
+  const state = levelEndingComicState;
+  if (!state?.fast) {
+    return new Promise((resolve) => {
+      state.resolveWait = () => {
+        state.resolveWait = null;
+        window.clearTimeout(state.timer);
+        resolve();
+      };
+      state.timer = window.setTimeout(state.resolveWait, ms);
+    });
+  }
+  return new Promise((resolve) => {
+    state.timer = window.setTimeout(resolve, levelEndingComicDuration(ms));
+  });
+}
+
+function accelerateLevelEndingComic() {
+  const state = levelEndingComicState;
+  if (!state || state.finished) return;
+  state.fast = true;
+  state.animation?.updatePlaybackRate?.(3.4);
+  state.resolveWait?.();
+}
+
+async function playLevelEndingAnimation(animation) {
+  const state = levelEndingComicState;
+  if (!state || state.cancelled) return;
+  state.animation = animation;
+  if (state.fast) animation.updatePlaybackRate?.(3.4);
+  try {
+    await animation.finished;
+  } catch {
+    return;
+  } finally {
+    animation.cancel();
+    if (state.animation === animation) state.animation = null;
+  }
+}
+
+async function playLevelEndingComicFrame(modal, frame, index) {
+  const state = levelEndingComicState;
+  const grid = modal.querySelector("[data-comic-grid]");
+  const focus = modal.querySelector("[data-comic-focus]");
+  const img = modal.querySelector("[data-comic-image]");
+  if (!state || state.cancelled || !grid || !focus || !img) return;
+
+  const thumb = document.createElement("article");
+  thumb.className = "story-comic-thumb is-pending";
+  thumb.innerHTML = `
+    <img src="${escapeHTML(frame.image)}" alt="${escapeHTML(frame.alt)}">
+    <span>${index + 1}</span>
+  `;
+  grid.appendChild(thumb);
+
+  img.src = frame.image;
+  img.alt = frame.alt;
+  modal.style.setProperty("--story-comic-bg", `url("${frame.image}")`);
+  modal.classList.add("has-extended-bg");
+  await decodeStoryImage(img);
+  if (state.cancelled || !modal.isConnected) return;
+
+  focus.hidden = false;
+  focus.className = "story-comic-focus";
+  focus.removeAttribute("style");
+  await playLevelEndingAnimation(focus.animate([
+    { opacity: 0, transform: "translate(-50%, -42%) scale(0.84)" },
+    { opacity: 1, transform: "translate(-50%, -50%) scale(1)" },
+  ], {
+    duration: levelEndingComicDuration(760),
+    easing: "cubic-bezier(.18,.82,.22,1)",
+    fill: "both",
+  }));
+  if (state.cancelled || !modal.isConnected) return;
+
+  focus.classList.add("is-breathing");
+  await waitLevelEndingComic(2000);
+  if (state.cancelled || !modal.isConnected) return;
+
+  focus.classList.remove("is-breathing");
+  const from = focus.getBoundingClientRect();
+  const to = thumb.getBoundingClientRect();
+  focus.classList.add("is-moving");
+  Object.assign(focus.style, {
+    position: "fixed",
+    left: `${from.left}px`,
+    top: `${from.top}px`,
+    width: `${from.width}px`,
+    height: `${from.height}px`,
+    transform: "none",
+    overflow: "hidden",
+  });
+  await playLevelEndingAnimation(focus.animate([
+    {
+      left: `${from.left}px`,
+      top: `${from.top}px`,
+      width: `${from.width}px`,
+      height: `${from.height}px`,
+      opacity: 1,
+    },
+    {
+      left: `${to.left}px`,
+      top: `${to.top}px`,
+      width: `${to.width}px`,
+      height: `${to.height}px`,
+      opacity: 0.82,
+    },
+  ], {
+    duration: levelEndingComicDuration(760),
+    easing: "cubic-bezier(.22,.82,.2,1)",
+    fill: "both",
+  }));
+  if (state.cancelled || !modal.isConnected) return;
+
+  focus.hidden = true;
+  focus.className = "story-comic-focus";
+  focus.removeAttribute("style");
+  thumb.classList.remove("is-pending");
+  thumb.classList.add("is-visible");
+}
+
+async function playLevelEndingComic(modal) {
+  levelEndingComicState = {
+    cancelled: false,
+    fast: false,
+    finished: false,
+    timer: null,
+    animation: null,
+    resolveWait: null,
+  };
+  for (let index = 0; index < LEVEL_ENDING_COMIC_FRAMES.length; index += 1) {
+    await playLevelEndingComicFrame(modal, LEVEL_ENDING_COMIC_FRAMES[index], index);
+    if (!levelEndingComicState || levelEndingComicState.cancelled || !modal.isConnected) return;
+  }
+  const final = modal.querySelector("[data-comic-final]");
+  if (!final || !levelEndingComicState) return;
+  levelEndingComicState.finished = true;
+  modal.style.setProperty("--story-comic-bg", `url("${LEVEL_ENDING_COMIC_AGGREGATE_IMAGE}")`);
+  final.hidden = false;
+  final.animate([
+    { opacity: 0, transform: "translate(-50%, 18px) scale(0.94)" },
+    { opacity: 1, transform: "translate(-50%, 0) scale(1)" },
+  ], {
+    duration: 520,
+    easing: "cubic-bezier(.18,.82,.22,1)",
+    fill: "both",
+  });
 }
 
 const STORY_SCROLL_VERTEX_SHADER = `
@@ -5213,31 +5413,36 @@ async function showLevelUpPreview(reward) {
 
 async function showLevelEndingModal() {
   await loadLevelVisuals().catch(() => {});
-  const visual = visualForLevel(10) || currentLevelVisual();
-  const image = visual?.imageUrl || visual?.thumbnailUrl;
+  clearLevelEndingComicState();
   document.querySelector(".level-ending-modal")?.remove();
   const modal = document.createElement("div");
-  modal.className = "level-ending-modal";
+  modal.className = "level-ending-modal story-comic-modal level-ending-comic-modal";
   modal.innerHTML = `
-    <section class="level-ending-dialog level-${escapeHTML(visual?.effectStyle || "legendary")}" role="dialog" aria-modal="true" aria-label="刘看山终极结局">
-      <div class="ending-stars" aria-hidden="true"></div>
-      <div class="story-kicker">终极彩蛋</div>
-      <h1>知乎星，重新亮起</h1>
-      <div class="ending-hero">
-        ${image ? `<img src="${escapeHTML(image)}" alt="Lv.10 宇宙知识领航者">` : ""}
-        <div>
-          <strong>Lv.10 · 宇宙知识领航者</strong>
-          <span>${escapeHTML(LEVEL_MILESTONES[10].quote)}</span>
+    <section class="story-comic-dialog level-ending-comic-dialog" role="dialog" aria-modal="true" aria-label="刘看山终极彩蛋">
+      <div class="story-comic-extended-bg" aria-hidden="true"></div>
+      <div class="story-comic-grid" data-comic-grid aria-label="终章故事分镜"></div>
+      <figure class="story-comic-focus" data-comic-focus hidden>
+        <div class="story-comic-frame">
+          <img data-comic-image alt="">
         </div>
+      </figure>
+      <div class="story-comic-final level-ending-comic-final" data-comic-final hidden>
+        <button type="button" class="story-primary story-comic-adopt level-ending-comic-continue" data-ending-close>继续探索知乎星</button>
       </div>
-      <p>${escapeHTML(LEVEL_10_ENDING_TEXT)}</p>
-      <button type="button" class="story-primary" data-ending-close>继续探索知乎星</button>
     </section>
   `;
   document.body.appendChild(modal);
   removeOnboardingGuide();
-  const close = () => closeBlockingModal(modal);
+  modal.addEventListener("click", (event) => {
+    if (event.target.closest("[data-ending-close]")) return;
+    accelerateLevelEndingComic();
+  });
+  const close = () => {
+    clearLevelEndingComicState();
+    closeBlockingModal(modal);
+  };
   modal.querySelector("[data-ending-close]").addEventListener("click", close);
+  playLevelEndingComic(modal);
 }
 
 function playRewardEffect(reward, sourceElement, message) {

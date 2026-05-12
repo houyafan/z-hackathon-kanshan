@@ -3418,6 +3418,19 @@ button {
   animation: storyComicButtonBreath 1.55s ease-in-out infinite;
 }
 
+.level-ending-comic-dialog {
+  border-color: rgba(255, 213, 128, 0.48);
+  background:
+    radial-gradient(circle at 50% 12%, rgba(255, 221, 138, 0.22), transparent 30%),
+    radial-gradient(circle at 16% 84%, rgba(69, 145, 255, 0.16), transparent 32%),
+    linear-gradient(145deg, #07111f 0%, #171925 48%, #281f1a 100%);
+}
+
+.level-ending-comic-continue {
+  min-width: 190px;
+  background: linear-gradient(135deg, #1677ff, #2f9dff 58%, #ffb020);
+}
+
 @keyframes storyComicBreath {
   0%,
   100% {
