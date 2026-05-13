@@ -2112,7 +2112,16 @@ class RoamingCharacter {
 
     cleanupSpawnEffect() {
         if (!this.spawnEffect) return;
-        const { ring, innerRing, halo, particles, particleGeometry, particleMaterial, glowLight } = this.spawnEffect;
+        const {
+            ring,
+            innerRing,
+            halo,
+            particles,
+            particleGeometry,
+            particleMaterial,
+            glowLight,
+            usingStageCanvas,
+        } = this.spawnEffect;
         [ring, innerRing, halo, particles, glowLight].forEach((object) => {
             if (object) this.scene.remove(object);
         });
@@ -2124,7 +2133,10 @@ class RoamingCharacter {
         particleGeometry?.dispose();
         this.disposeMaterial(particleMaterial);
         this.spawnEffect = null;
-        this.characterElement.classList.remove('roaming-spawning');
+        this.characterElement.classList.remove('roaming-spawning', 'roaming-stage-spawning');
+        if (usingStageCanvas) {
+            this.restoreCharacterCanvasSize();
+        }
     }
 
     setPosition(x, y, options = {}) {
@@ -2191,6 +2203,7 @@ class RoamingCharacter {
         this.hideInstruction();
 
         const duration = (options.duration || this.config.spawnEffectDuration) / 1000;
+        const useStageCanvas = options.useStageCanvas === true;
         const ringY = this.baseModelY - 0.62;
         const normalScale = this.baseModelScale.clone();
         const spawnScale = normalScale.clone().multiplyScalar(options.scaleMultiplier || this.config.spawnScaleMultiplier);
@@ -2202,6 +2215,10 @@ class RoamingCharacter {
         this.faceFront();
         this.showBubbleMessage(options.message || "刘看山到家啦");
         this.characterElement.classList.add('roaming-spawning');
+        if (useStageCanvas) {
+            this.characterElement.classList.add('roaming-stage-spawning');
+            this.applyEvolveCanvasSize();
+        }
 
         const ringMaterial = new THREE.MeshBasicMaterial({
             color: 0x1677ff,
@@ -2258,6 +2275,7 @@ class RoamingCharacter {
             glowLight,
             normalScale,
             spawnScale,
+            usingStageCanvas: useStageCanvas,
         };
     }
 

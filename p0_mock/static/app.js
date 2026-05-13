@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { gsap } from "https://cdn.jsdelivr.net/npm/gsap@3.12.5/+esm";
-import { initRoamingCharacter } from "/3d-liukanshan-roaming/roaming-character.js?v=50";
+import { initRoamingCharacter } from "/3d-liukanshan-roaming/roaming-character.js?v=51";
 
 const app = document.getElementById("app");
 const toast = document.getElementById("toast");
@@ -685,9 +685,9 @@ function playHomecomingEffect() {
     message: "我回家啦，以后一起看知乎~",
     duration: ADOPTION_EFFECT_MS,
     particleCount: 156,
-    scaleMultiplier: 1.34,
+    scaleMultiplier: 1.28,
+    useStageCanvas: true,
   });
-  pulseCharacter("pet-homecoming", ADOPTION_EFFECT_MS);
   spawnSparks(centerX, centerY, { count: 18 });
   spawnRing(centerX, centerY, false);
 
@@ -1832,9 +1832,9 @@ async function runEffectTest(action) {
       message: "我回家啦，以后一起看知乎~",
       duration: ADOPTION_EFFECT_MS,
       particleCount: 156,
-      scaleMultiplier: 1.34,
+      scaleMultiplier: 1.28,
+      useStageCanvas: true,
     });
-    pulseCharacter("pet-homecoming", ADOPTION_EFFECT_MS);
     showToast("触发领养出场");
     return;
   }
@@ -3478,6 +3478,7 @@ function petPanel() {
   const experienceBoostButton = Number(profile.level) >= 2 && Number(profile.level) < 10
     ? `<button class="outline-btn wide-action" data-boost-next-level>快速体验升一级</button>`
     : "";
+  const primaryActions = [experienceBoostButton, boostLevel10Button].filter(Boolean).join("");
   const travelHint = isSleeping
     ? `看山休眠中 · 还需阅读 ${wakeRemaining} 篇内容唤醒`
     : activeTravel?.status === "traveling"
@@ -3492,32 +3493,40 @@ function petPanel() {
       : `<div class="pet-experience-hint unlocked"><strong>完整流程已达成</strong>，Lv.10 终极形态已解锁。</div>`;
   return `
     <section class="card side-card pet-panel" data-pet-panel>
-      <div class="pet-title">
+      <div class="pet-title pet-panel-hero">
         <span class="pet-mini pet-mini-image level-${escapeHTML(visual?.effectStyle || "cute")}">
           ${visualImage ? `<img src="${escapeHTML(visualImage)}" alt="${escapeHTML(visual.title || "刘看山等级形象")}">` : "山"}
         </span>
-        <span>${escapeHTML(petDisplayName())}</span>
+        <span class="pet-title-copy">
+          <strong>${escapeHTML(petDisplayName())}</strong>
+          <small>${escapeHTML(profileLevelTitle())}</small>
+        </span>
         <span class="level-pill">Lv.${profile.level}</span>
       </div>
-      <div class="travel-panel-actions">
-        ${experienceBoostButton}
-        ${travelAction}
-        <button class="outline-btn" data-hover-handbook>旅行手账</button>
-        <button class="outline-btn" data-hover-growth-log>成长日志</button>
-        <button class="outline-btn" data-open-leaderboard>查看排行榜</button>
-        ${boostLevel10Button}
+      <div class="pet-action-panel">
+        ${primaryActions ? `<div class="pet-primary-actions">${primaryActions}</div>` : ""}
+        <div class="travel-panel-actions">
+          ${travelAction}
+          <button class="outline-btn" data-hover-handbook>旅行手账</button>
+          <button class="outline-btn" data-hover-growth-log>成长日志</button>
+          <button class="outline-btn" data-open-leaderboard>查看排行榜</button>
+        </div>
       </div>
-      <div class="pet-travel-summary">
-        <small>${escapeHTML(travelStatusText(profile.travelStatus))}</small>
-        <strong>${escapeHTML(travelHint)}</strong>
+      <div class="pet-status-panel">
+        <div class="pet-travel-summary">
+          <small>${escapeHTML(travelStatusText(profile.travelStatus))}</small>
+          <strong>${escapeHTML(travelHint)}</strong>
+        </div>
+        <label class="pet-reward-toggle">
+          <input type="checkbox" data-hover-reward-walk ${rewardWalkEnabled ? "" : "checked"}>
+          <span>关闭看山移动</span>
+        </label>
       </div>
-      <label class="pet-reward-toggle">
-        <input type="checkbox" data-hover-reward-walk ${rewardWalkEnabled ? "" : "checked"}>
-        <span>关闭看山移动</span>
-      </label>
-      ${experienceHint}
-      ${petSkinSelectorHTML()}
-      ${petSkinGuideHTML()}
+      <div class="pet-unlock-panel">
+        ${experienceHint}
+        ${petSkinSelectorHTML()}
+        ${petSkinGuideHTML()}
+      </div>
       <div class="pet-level-showcase level-${escapeHTML(visual?.effectStyle || "cute")}">
         ${visualImage ? `<img src="${escapeHTML(visualImage)}" alt="${escapeHTML(visual.title || "刘看山等级形象")}">` : ""}
         <div>

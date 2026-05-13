@@ -1593,7 +1593,7 @@ button {
 
 .pet-panel {
   border: 1px solid #dbe8ff;
-  background: linear-gradient(180deg, #fff 0%, #f8fbff 100%);
+  background: linear-gradient(180deg, #fff 0%, #f7fbff 100%);
 }
 
 .pet-title {
@@ -1604,9 +1604,47 @@ button {
   font-weight: 700;
 }
 
+.pet-panel-hero {
+  gap: 10px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(22, 119, 255, 0.1);
+}
+
+.pet-panel-hero .level-pill {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.pet-title-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.pet-title-copy strong,
+.pet-title-copy small {
+  display: block;
+}
+
+.pet-title-copy strong {
+  overflow: hidden;
+  color: #1f2329;
+  font-size: 16px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pet-title-copy small {
+  margin-top: 3px;
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
 .pet-mini {
-  width: 42px;
-  height: 42px;
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
   border-radius: 10px;
   background: linear-gradient(145deg, #fff, #e5f0ff);
   display: flex;
@@ -1635,10 +1673,10 @@ button {
 .pet-level-showcase {
   position: relative;
   display: grid;
-  grid-template-columns: 86px minmax(0, 1fr);
+  grid-template-columns: 74px minmax(0, 1fr);
   gap: 12px;
   align-items: center;
-  margin-top: 14px;
+  margin-top: 10px;
   padding: 10px;
   border-radius: 8px;
   border: 1px solid rgba(22, 119, 255, 0.12);
@@ -1653,8 +1691,8 @@ button {
 .pet-level-showcase img {
   position: relative;
   z-index: 1;
-  width: 86px;
-  height: 86px;
+  width: 74px;
+  height: 74px;
   object-fit: cover;
   border-radius: 8px;
 }
@@ -1678,12 +1716,12 @@ button {
 .pet-stats {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-top: 14px;
+  gap: 8px;
+  margin-top: 10px;
 }
 
 .stat-box {
-  padding: 10px;
+  padding: 9px 10px;
   border-radius: 6px;
   background: #f2f6fc;
 }
@@ -2842,11 +2880,33 @@ button {
   transform: translateY(0);
 }
 
+.pet-action-panel {
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid rgba(22, 119, 255, 0.12);
+  border-radius: 8px;
+  background: #f7fbff;
+}
+
+.pet-primary-actions {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.pet-primary-actions .outline-btn {
+  width: 100%;
+  border-color: #1677ff;
+  background: #1677ff;
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(22, 119, 255, 0.16);
+}
+
 .travel-panel-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
-  margin: 10px 0;
+  margin: 0;
 }
 
 .travel-panel-actions .wide-action {
@@ -2854,11 +2914,11 @@ button {
 }
 
 .pet-experience-hint {
-  margin: 9px 0 0;
-  padding: 9px 10px;
-  border: 1px solid rgba(22, 119, 255, 0.16);
-  border-radius: 8px;
-  background: linear-gradient(135deg, rgba(232, 243, 255, 0.94), rgba(255, 255, 255, 0.96));
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(22, 119, 255, 0.12);
+  border-radius: 6px;
+  background: rgba(248, 251, 255, 0.92);
   color: #456078;
   font-size: 12px;
   font-weight: 700;
@@ -2871,23 +2931,25 @@ button {
 }
 
 .pet-experience-hint.unlocked {
-  border-color: rgba(15, 163, 127, 0.18);
-  background: linear-gradient(135deg, rgba(233, 250, 244, 0.95), rgba(255, 255, 255, 0.96));
+  border-color: rgba(15, 163, 127, 0.16);
+  background: rgba(241, 252, 248, 0.94);
 }
 
 .pet-experience-hint.unlocked strong {
   color: #0f9f7a;
 }
 
-.pet-panel > .travel-panel-actions {
-  margin: 12px 0 0;
+.pet-unlock-panel {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
 }
 
 .pet-skin-switcher {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
-  margin: 10px 0 0;
+  margin: 0;
   padding: 6px;
   border: 1px solid rgba(22, 119, 255, 0.14);
   border-radius: 8px;
@@ -2926,11 +2988,11 @@ button {
 }
 
 .pet-skin-guide {
-  margin: 10px 0 0;
-  padding: 10px 12px;
-  border: 1px solid rgba(22, 119, 255, 0.14);
-  border-radius: 8px;
-  background: #f8fbff;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(22, 119, 255, 0.12);
+  border-radius: 6px;
+  background: rgba(248, 251, 255, 0.92);
   color: #456078;
   font-size: 12px;
   font-weight: 800;
@@ -2942,8 +3004,8 @@ button {
 }
 
 .pet-skin-guide.unlocked {
-  border-color: rgba(15, 163, 127, 0.18);
-  background: linear-gradient(135deg, rgba(233, 250, 244, 0.95), rgba(255, 255, 255, 0.96));
+  border-color: rgba(15, 163, 127, 0.16);
+  background: rgba(241, 252, 248, 0.94);
 }
 
 .pet-skin-guide.unlocked strong {
@@ -2968,11 +3030,9 @@ button {
 }
 
 .pet-travel-summary {
-  margin: 10px 0 0;
-  padding: 10px 12px;
-  border: 1px solid rgba(22, 119, 255, 0.12);
-  border-radius: 8px;
-  background: #f8fbff;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
 }
 
 .pet-travel-summary small,
@@ -2993,15 +3053,24 @@ button {
   line-height: 1.45;
 }
 
+.pet-status-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid rgba(22, 119, 255, 0.1);
+  border-radius: 8px;
+  background: #fff;
+}
+
 .pet-reward-toggle {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 10px 0 0;
-  padding: 9px 10px;
-  border: 1px solid rgba(22, 119, 255, 0.12);
-  border-radius: 8px;
-  background: #fff;
+  margin: 0;
+  padding-top: 8px;
+  border-top: 1px solid rgba(22, 119, 255, 0.08);
   color: #456078;
   font-size: 12px;
   font-weight: 800;
