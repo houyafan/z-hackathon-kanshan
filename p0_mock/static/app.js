@@ -465,6 +465,23 @@ function petSkinSelectorHTML() {
   `;
 }
 
+function petSkinGuideHTML() {
+  const level = Number(profile?.level || 1);
+  const skinNames = PET_SKINS.map((skin) => skin.label).join("、");
+  if (level < 2) {
+    return `
+      <div class="pet-skin-guide">
+        升到 <strong>Lv.2</strong> 后解锁 ${escapeHTML(skinNames)} 三套 2D 皮肤。
+      </div>
+    `;
+  }
+  return `
+    <div class="pet-skin-guide unlocked">
+      <strong>Lv.2 皮肤已解锁</strong>，可在上方切换 ${escapeHTML(skinNames)} 形象。
+    </div>
+  `;
+}
+
 function switchPetSkin(skinId) {
   const nextSkin = normalizePetSkin(skinId);
   if (Number(profile?.level || 1) < 2) return;
@@ -3523,7 +3540,7 @@ function petPanel() {
       </div>
       ${experienceHint}
       ${petSkinSelectorHTML()}
-      ${currentUserRankCard()}
+      ${petSkinGuideHTML()}
       <div class="pet-level-showcase level-${escapeHTML(visual?.effectStyle || "cute")}">
         ${visualImage ? `<img src="${escapeHTML(visualImage)}" alt="${escapeHTML(visual.title || "刘看山等级形象")}">` : ""}
         <div>
@@ -3531,6 +3548,7 @@ function petPanel() {
           <small>${escapeHTML(visual?.description || "阅读越多，看山越强")}</small>
         </div>
       </div>
+      ${currentUserRankCard()}
       <div class="pet-stats">
         <div class="stat-box stat-box-progress"><small>累计经验</small><strong>${profile.totalExp}</strong>${levelProgressHTML()}</div>
         <div class="stat-box"><small>学识值</small><strong>${profile.satiety}</strong></div>

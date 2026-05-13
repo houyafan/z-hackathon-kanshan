@@ -1633,6 +1633,7 @@ button {
 }
 
 .pet-level-showcase {
+  position: relative;
   display: grid;
   grid-template-columns: 86px minmax(0, 1fr);
   gap: 12px;
@@ -1650,10 +1651,23 @@ button {
 }
 
 .pet-level-showcase img {
+  position: relative;
+  z-index: 1;
   width: 86px;
   height: 86px;
   object-fit: cover;
   border-radius: 8px;
+  cursor: zoom-in;
+  transform-origin: left center;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, z-index 0s linear 0.18s;
+}
+
+.pet-level-showcase:hover img,
+.pet-level-showcase:focus-within img {
+  z-index: 8;
+  transform: scale(1.75);
+  box-shadow: 0 18px 42px rgba(22, 119, 255, 0.24);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
 
 .pet-level-showcase strong,
@@ -2941,6 +2955,31 @@ button {
 
 .pet-skin-switcher button[data-tone="blue"].active {
   border-color: rgba(22, 119, 255, 0.38);
+}
+
+.pet-skin-guide {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(22, 119, 255, 0.14);
+  border-radius: 8px;
+  background: #f8fbff;
+  color: #456078;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.55;
+}
+
+.pet-skin-guide strong {
+  color: #1677ff;
+}
+
+.pet-skin-guide.unlocked {
+  border-color: rgba(15, 163, 127, 0.18);
+  background: linear-gradient(135deg, rgba(233, 250, 244, 0.95), rgba(255, 255, 255, 0.96));
+}
+
+.pet-skin-guide.unlocked strong {
+  color: #0f9f7a;
 }
 
 .pet-hover-toggle {
