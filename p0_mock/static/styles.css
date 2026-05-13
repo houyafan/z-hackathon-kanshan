@@ -2635,7 +2635,7 @@ button {
 }
 
 .speech-bubble {
-  display: block;
+  display: none;
   top: -36px;
   width: max-content;
   max-width: 320px;
@@ -2652,6 +2652,7 @@ button {
 }
 
 .speech-bubble.follow-notice {
+  display: block;
   top: -104px;
   width: 340px;
   max-width: 340px;
