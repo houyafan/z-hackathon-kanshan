@@ -938,14 +938,14 @@ async function playStoryComicFrame(modal, frame, index) {
     { opacity: 0, transform: "translate(-50%, -42%) scale(0.84)" },
     { opacity: 1, transform: "translate(-50%, -50%) scale(1)" },
   ], {
-    duration: storyComicDuration(760),
+    duration: storyComicDuration(520),
     easing: "cubic-bezier(.18,.82,.22,1)",
     fill: "both",
   }));
   if (state.cancelled || !modal.isConnected) return;
 
   focus.classList.add("is-breathing");
-  await waitStoryComic(2000);
+  await waitStoryComic(1200);
   if (state.cancelled || !modal.isConnected) return;
 
   focus.classList.remove("is-breathing");
@@ -977,7 +977,7 @@ async function playStoryComicFrame(modal, frame, index) {
       opacity: 0.82,
     },
   ], {
-    duration: storyComicDuration(760),
+    duration: storyComicDuration(520),
     easing: "cubic-bezier(.22,.82,.2,1)",
     fill: "both",
   }));
@@ -1012,7 +1012,7 @@ async function playStoryComic(modal) {
     { opacity: 0, transform: "translate(-50%, 18px) scale(0.94)" },
     { opacity: 1, transform: "translate(-50%, 0) scale(1)" },
   ], {
-    duration: 520,
+    duration: 420,
     easing: "cubic-bezier(.18,.82,.22,1)",
     fill: "both",
   });
@@ -1122,14 +1122,14 @@ async function playLevelEndingComicFrame(modal, frame, index) {
     { opacity: 0, transform: "translate(-50%, -42%) scale(0.84)" },
     { opacity: 1, transform: "translate(-50%, -50%) scale(1)" },
   ], {
-    duration: levelEndingComicDuration(760),
+    duration: levelEndingComicDuration(520),
     easing: "cubic-bezier(.18,.82,.22,1)",
     fill: "both",
   }));
   if (state.cancelled || !modal.isConnected) return;
 
   focus.classList.add("is-breathing");
-  await waitLevelEndingComic(2000);
+  await waitLevelEndingComic(1200);
   if (state.cancelled || !modal.isConnected) return;
 
   focus.classList.remove("is-breathing");
@@ -1161,17 +1161,17 @@ async function playLevelEndingComicFrame(modal, frame, index) {
       opacity: 0.82,
     },
   ], {
-    duration: levelEndingComicDuration(760),
+    duration: levelEndingComicDuration(520),
     easing: "cubic-bezier(.22,.82,.2,1)",
     fill: "both",
   }));
   if (state.cancelled || !modal.isConnected) return;
 
+  thumb.classList.remove("is-pending");
+  thumb.classList.add("is-visible");
   focus.hidden = true;
   focus.className = "story-comic-focus";
   focus.removeAttribute("style");
-  thumb.classList.remove("is-pending");
-  thumb.classList.add("is-visible");
 }
 
 async function playLevelEndingComic(modal) {
@@ -1196,7 +1196,7 @@ async function playLevelEndingComic(modal) {
     { opacity: 0, transform: "translate(-50%, 18px) scale(0.94)" },
     { opacity: 1, transform: "translate(-50%, 0) scale(1)" },
   ], {
-    duration: 520,
+    duration: 420,
     easing: "cubic-bezier(.18,.82,.22,1)",
     fill: "both",
   });
