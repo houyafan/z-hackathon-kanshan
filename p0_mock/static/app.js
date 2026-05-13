@@ -73,8 +73,8 @@ const EFFECT_SETTLE_MS = 650;
 const RECOMMEND_PAGE_SIZE = 10;
 const FALLBACK_LEVEL_REQUIREMENTS = [
   { level: 1, title: "星途起点", requiredTotalExp: 0 },
-  { level: 2, title: "星章萌新", requiredTotalExp: 10 },
-  { level: 3, title: "星光信使", requiredTotalExp: 120 },
+  { level: 2, title: "星章萌新", requiredTotalExp: 5 },
+  { level: 3, title: "星光信使", requiredTotalExp: 10 },
   { level: 4, title: "行星记录员", requiredTotalExp: 250 },
   { level: 5, title: "星际见习官", requiredTotalExp: 450 },
   { level: 6, title: "星图导航员", requiredTotalExp: 700 },
@@ -1694,9 +1694,11 @@ function highlightOnboardingTarget(step) {
   });
   if (!target) return;
   target.classList.add("onboarding-highlight");
+  const targetPosition = window.getComputedStyle(target).position;
+  const skipAutoScroll = targetPosition === "fixed" || targetPosition === "sticky";
   const rect = target.getBoundingClientRect();
   const visible = rect.top >= 72 && rect.bottom <= window.innerHeight - 88;
-  if (!visible) {
+  if (!visible && !skipAutoScroll) {
     target.scrollIntoView({ block: "center", behavior: "smooth" });
   }
 }
@@ -3568,10 +3570,8 @@ function petPanel() {
         : `<button class="outline-btn" data-hover-travel-start>出门游历</button>`;
   const visual = currentLevelVisual();
   const visualImage = visual?.imageUrl || visual?.thumbnailUrl;
-  const resetButton = isAdminUser()
-    ? `<button class="reset-pet-btn" data-reset-pet>重置刘看山</button>`
-    : "";
-  const boostLevel10Button = isAdminUser()
+  const resetButton = `<button class="reset-pet-btn" data-reset-pet>重置刘看山</button>`;
+  const boostLevel10Button = Number(profile.level) >= 3
     ? `<button class="outline-btn" data-hover-boost-level>一键 Lv.10</button>`
     : "";
   const experienceBoostButton = Number(profile.level) >= 2 && Number(profile.level) < 10
@@ -3586,10 +3586,12 @@ function petPanel() {
         ? `${travelThemeText(activeTravel.theme)} · 已带回内容`
         : travelState?.blockReason || "阅读内容积攒学识和精力后出门";
   const experienceHint = Number(profile.level) < 2
-    ? `<div class="pet-experience-hint">升到 <strong>Lv.2</strong> 后，可用「快速体验升一级」一路体验完整养成流程。</div>`
-    : Number(profile.level) < 10
-      ? `<div class="pet-experience-hint unlocked"><strong>已解锁快速体验</strong>，可逐级升级体验到 Lv.10 终极彩蛋。</div>`
-      : `<div class="pet-experience-hint unlocked"><strong>完整流程已达成</strong>，Lv.10 终极形态已解锁。</div>`;
+    ? `<div class="pet-experience-hint">升到 <strong>Lv.2</strong> 后，可用「快速体验升一级」。</div>`
+    : Number(profile.level) < 3
+      ? `<div class="pet-experience-hint unlocked"><strong>已解锁快速体验</strong>，升到 Lv.3 后会出现「一键 Lv.10」。</div>`
+      : Number(profile.level) < 10
+        ? `<div class="pet-experience-hint unlocked"><strong>已解锁一键体验</strong>，可直接体验到 Lv.10 终极彩蛋。</div>`
+        : `<div class="pet-experience-hint unlocked"><strong>完整流程已达成</strong>，Lv.10 终极形态已解锁。</div>`;
   return `
     <section class="card side-card pet-panel" data-pet-panel>
       <div class="pet-title pet-panel-hero">

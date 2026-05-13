@@ -476,8 +476,8 @@ def load_level_visual_config():
 LEVEL_VISUALS = load_level_visual_config()
 LEVEL_REQUIRED_TOTAL_EXP = {
     1: 0,
-    2: 10,
-    3: 120,
+    2: 5,
+    3: 10,
     4: 250,
     5: 450,
     6: 700,
@@ -3262,12 +3262,17 @@ def boost_pet_to_level_10(conn, user_id):
         profile = fetch_profile(conn, user_id)
 
     old_level = int(profile["level"])
+    if old_level < 3:
+        return 403, {
+            "error": "LEVEL_TOO_LOW",
+            "message": "Lv.3 后可使用一键 Lv.10",
+        }
     old_exp = int(profile["total_exp"])
     old_stage = profile["stage"]
     target_exp = int(target["required_total_exp"])
     target_stage = target["stage"]
     new_exp = max(old_exp, target_exp)
-    source_id = f"admin-boost-level-10-{uuid.uuid4().hex[:8]}"
+    source_id = f"experience-boost-level-10-{uuid.uuid4().hex[:8]}"
 
     conn.execute(
         """
@@ -3291,9 +3296,9 @@ def boost_pet_to_level_10(conn, user_id):
     exp_delta = new_exp - old_exp
     level_delta = 10 - old_level
     if exp_delta:
-        write_growth_log(conn, user_id, source_id, "total_exp", exp_delta, old_exp, new_exp, "管理员一键升到 Lv.10", "manual")
+        write_growth_log(conn, user_id, source_id, "total_exp", exp_delta, old_exp, new_exp, "一键体验升到 Lv.10", "manual")
     if level_delta:
-        write_growth_log(conn, user_id, source_id, "level", level_delta, old_level, 10, "管理员一键升到 Lv.10", "manual")
+        write_growth_log(conn, user_id, source_id, "level", level_delta, old_level, 10, "一键体验升到 Lv.10", "manual")
     if target_stage != old_stage:
         write_growth_log(conn, user_id, source_id, "stage", 0, old_stage, target_stage, "等级变化触发阶段切换", "manual")
     if old_level < 10:
@@ -3307,7 +3312,7 @@ def boost_pet_to_level_10(conn, user_id):
             props={
                 "beforeLevel": old_level,
                 "afterLevel": 10,
-                "source": "admin_boost_level_10",
+                "source": "experience_boost_level_10",
             },
         )
 
@@ -6205,7 +6210,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/p0/pet/reset":
-            session = self.require_admin_json()
+            session = self.require_auth_json()
             if session is None:
                 return
             user_id = session["user_id"]
@@ -6225,12 +6230,17 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/p0/pet/boost-level-10":
-            session = self.require_admin_json()
+            session = self.require_auth_json()
             if session is None:
                 return
             with connect_db() as conn:
                 try:
-                    self.send_json(200, boost_pet_to_level_10(conn, session["user_id"]))
+                    response = boost_pet_to_level_10(conn, session["user_id"])
+                    if isinstance(response, tuple):
+                        status, payload = response
+                        self.send_json(status, payload)
+                    else:
+                        self.send_json(200, response)
                 except RuntimeError as error:
                     self.send_json(500, {"error": str(error), "message": "Lv.10 配置缺失"})
             return

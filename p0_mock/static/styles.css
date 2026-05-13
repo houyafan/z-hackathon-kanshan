@@ -3266,13 +3266,20 @@ button {
 }
 
 .onboarding-highlight {
-  position: relative !important;
   z-index: 8801 !important;
   outline: 3px solid rgba(22, 119, 255, 0.5);
   outline-offset: 4px;
   border-radius: 10px;
   box-shadow: 0 0 0 10px rgba(22, 119, 255, 0.1);
   animation: onboardingPulse 1.45s ease-in-out infinite;
+}
+
+.onboarding-highlight:not(#roamingCharacter) {
+  position: relative !important;
+}
+
+#roamingCharacter.onboarding-highlight {
+  position: fixed !important;
 }
 
 @keyframes onboardingPulse {

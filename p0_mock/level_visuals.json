@@ -11,7 +11,7 @@
     {
       "level": 2,
       "stage": "cub",
-      "required_total_exp": 10,
+      "required_total_exp": 5,
       "title": "星章萌新",
       "effect_style": "cute",
       "description": "围巾星章点亮，开始积累阅读成就"
@@ -19,7 +19,7 @@
     {
       "level": 3,
       "stage": "cub",
-      "required_total_exp": 120,
+      "required_total_exp": 10,
       "title": "星光信使",
       "effect_style": "cute",
       "description": "挂上任务星章，进入稳定阅读节奏"
