@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { gsap } from "https://cdn.jsdelivr.net/npm/gsap@3.12.5/+esm";
-import { initRoamingCharacter } from "/3d-liukanshan-roaming/roaming-character.js?v=47";
+import { initRoamingCharacter } from "/3d-liukanshan-roaming/roaming-character.js?v=54";
 import { playFinaleShipEffect } from "/static/finale-ship-effect.js?v=17";
 
 const app = document.getElementById("app");
@@ -11,6 +11,7 @@ let profile = null;
 let dailyStat = null;
 let _patHandlerAttached = false;
 let _lastPatAt = 0;
+let interactionBubbleLastByMode = {};
 let travelState = null;
 let character = null;
 let feedItems = [];
@@ -48,6 +49,7 @@ let modelPreloadPromise = null;
 let _activeCommentAssist = null;
 let noticeTimer = null;
 let noticeRemaining = 0;
+let noticeId = 0;
 let idleBandVisible = true;
 let _prevWakeStatus = null;
 let _lastWakeBubbleAt = null;
@@ -102,12 +104,74 @@ const INTERACTION_BUBBLE_MESSAGES = {
     "看山进入展示模式啦，左转右转都可以，围巾也要给你看清楚。",
     "转一转我，今天也是努力保持帅气正面的刘看山。",
     "镜头交给你，我负责乖乖站好被研究。",
+    "别只看正面呀，背后的围巾结也很认真。",
+    "检测到你在端详看山，姿势管理已启动。",
+    "转慢一点，我要保持一个很有知识感的角度。",
+    "今天的 3D 看山，也经得起 360 度知识审阅。",
+    "你负责旋转视角，我负责不晕。",
+    "这边是左脸，那边是右脸，都适合陪你刷知乎。",
   ],
   move: [
     "拖动我可以搬到你喜欢的位置，我会在那儿继续陪你读知乎。",
     "看山搬家中，正在找一个更舒服的陪伴角落。",
     "把我挪近一点也可以，读到好内容我会第一时间冒泡。",
     "移动成功预备中，今天的陪伴席位由你决定。",
+    "新的站位已收到，我会在这里认真守着信息流。",
+    "让我靠近精彩回答一点，知识香味更明显。",
+    "搬家不带行李，只带一颗想阅读的心。",
+    "这里视野不错，适合发现高赞回答。",
+    "你把我放哪儿，我就在哪儿当知乎小雷达。",
+    "已抵达新角落，开始扫描值得收藏的内容。",
+  ],
+  patHigh: [
+    "蹭蹭手，今天的看山电量很满。",
+    "嘿嘿，再摸一下也不是不可以。",
+    "收到摸摸，心情值正在冒蓝色小星星。",
+    "今天状态很好，适合一起连读三篇好内容。",
+    "看山开心到想把围巾甩成小旗子。",
+    "这一下摸摸，已被记录为今日友好互动。",
+    "我宣布：这只手很懂看山。",
+    "心情 +1，陪伴稳定性 +100。",
+  ],
+  patMid: [
+    "嗯，舒服，知识星球正在缓慢回血。",
+    "摸摸收到，我会继续乖乖陪读。",
+    "这下精神了一点，去看看有没有好问题吧。",
+    "看山喜欢这种轻轻的互动。",
+    "别停，我差一点就想出金句了。",
+    "你摸我一下，我给你守一会儿首页。",
+    "今日陪伴模式：已被温柔激活。",
+    "摸摸有效，围巾都显得更有精神了。",
+  ],
+  patLow: [
+    "看山有点累，但还是想陪你再读一会儿。",
+    "轻轻摸摸就好，我正在攒精神。",
+    "如果能再读几条内容，我应该会恢复得更快。",
+    "今天有点低电量，摸摸也算充电。",
+    "我先把小脑袋靠一下，等会儿继续巡逻。",
+    "摸到了，谢谢你，我会慢慢恢复的。",
+    "知识星光不太够，但你的摸摸有用。",
+    "今天先省电陪伴，读到好内容记得叫我。",
+  ],
+  patCooldown: [
+    "摸摸太密集啦，看山需要 1 秒整理表情。",
+    "收到连击申请，但看山的脸颊需要冷却。",
+    "再等一下下，我正在把刚才的开心存档。",
+    "摸摸缓存已满，稍后继续投喂温柔。",
+    "手速太快啦，我差点没反应过来。",
+    "这波互动很热烈，看山先稳住围巾。",
+  ],
+  patLimit: [
+    "今天已经被摸到心满意足啦，明天继续。",
+    "今日摸摸额度用完，看山要把开心留到明天。",
+    "再摸就要变成一只过度快乐的看山了。",
+    "今日互动已满格，去读点内容给我加餐吧。",
+  ],
+  patSleeping: [
+    "看山睡着啦，先读几条内容把我叫醒。",
+    "我在休眠补能中，知识星光到了就醒。",
+    "嘘，睡眠模式开启中，阅读可以帮我充电。",
+    "先让我小睡一下，读到好内容我就回来。",
   ],
 };
 let onboardingTimer = null;
@@ -685,9 +749,9 @@ function playHomecomingEffect() {
     message: "我回家啦，以后一起看知乎~",
     duration: ADOPTION_EFFECT_MS,
     particleCount: 156,
-    scaleMultiplier: 1.34,
+    scaleMultiplier: 1.28,
+    useStageCanvas: true,
   });
-  pulseCharacter("pet-homecoming", ADOPTION_EFFECT_MS);
   spawnSparks(centerX, centerY, { count: 18 });
   spawnRing(centerX, centerY, false);
 
@@ -1832,9 +1896,9 @@ async function runEffectTest(action) {
       message: "我回家啦，以后一起看知乎~",
       duration: ADOPTION_EFFECT_MS,
       particleCount: 156,
-      scaleMultiplier: 1.34,
+      scaleMultiplier: 1.28,
+      useStageCanvas: true,
     });
-    pulseCharacter("pet-homecoming", ADOPTION_EFFECT_MS);
     showToast("触发领养出场");
     return;
   }
@@ -2078,6 +2142,19 @@ function pickOne(list = []) {
   return list[Math.floor(Math.random() * list.length)];
 }
 
+function pickInteractionMessage(mode, fallbackMessages = []) {
+  const list = [
+    ...(INTERACTION_BUBBLE_MESSAGES[mode] || []),
+    ...fallbackMessages.filter(Boolean),
+  ];
+  if (!list.length) return "";
+  const last = interactionBubbleLastByMode[mode];
+  const candidates = list.length > 1 ? list.filter((item) => item !== last) : list;
+  const message = pickOne(candidates.length ? candidates : list);
+  interactionBubbleLastByMode[mode] = message;
+  return message;
+}
+
 function mergeUpdatedContent(content) {
   if (!content) return;
   feedItems = feedItems.map((item) => (item.id === content.id ? { ...item, ...content } : item));
@@ -2158,13 +2235,15 @@ function renderPetHoverCard() {
   card.hidden = true;
 }
 
-function closeCharacterNotice() {
+function closeCharacterNotice(expectedNoticeId = null) {
   const bubble = document.getElementById("speechBubble");
   window.clearInterval(noticeTimer);
   noticeTimer = null;
   noticeRemaining = 0;
   if (!bubble) return;
-  bubble.classList.remove("follow-notice");
+  if (expectedNoticeId != null && bubble.dataset.noticeId !== String(expectedNoticeId)) return;
+  bubble.classList.remove("follow-notice", "bubble-visible");
+  delete bubble.dataset.noticeId;
   bubble.textContent = profileBubbleTitle();
 }
 
@@ -2173,25 +2252,28 @@ function showCharacterNotice(message, seconds = 20, title = "关注动态") {
   if (!bubble) return;
   window.clearInterval(noticeTimer);
   noticeRemaining = seconds;
+  const activeNoticeId = String(++noticeId);
+  bubble.dataset.noticeId = activeNoticeId;
 
   const render = () => {
-    bubble.classList.add("follow-notice");
+    if (bubble.dataset.noticeId !== activeNoticeId) return;
+    bubble.classList.add("follow-notice", "bubble-visible");
     bubble.innerHTML = `
       <div class="notice-title">${escapeHTML(title)}</div>
       <div class="notice-text">${escapeHTML(message)}</div>
-      <button class="notice-close" data-notice-close>关闭 ${noticeRemaining}s</button>
     `;
-    bubble.querySelector("[data-notice-close]").addEventListener("click", (event) => {
-      event.stopPropagation();
-      closeCharacterNotice();
-    });
   };
 
   render();
   noticeTimer = window.setInterval(() => {
+    if (bubble.dataset.noticeId !== activeNoticeId) {
+      window.clearInterval(noticeTimer);
+      noticeTimer = null;
+      return;
+    }
     noticeRemaining -= 1;
     if (noticeRemaining <= 0) {
-      closeCharacterNotice();
+      closeCharacterNotice(activeNoticeId);
       return;
     }
     render();
@@ -2210,12 +2292,14 @@ function hidePetHoverCardUntilNextHover() {
   }, { once: true });
 }
 
-function showInteractionBubble(mode = "move") {
-  const list = INTERACTION_BUBBLE_MESSAGES[mode] || INTERACTION_BUBBLE_MESSAGES.move;
-  const message = pickOne(list);
+function showInteractionBubble(mode = "move", fallbackMessages = []) {
+  const message = pickInteractionMessage(
+    INTERACTION_BUBBLE_MESSAGES[mode] ? mode : "move",
+    fallbackMessages,
+  );
   if (!message) return;
   hidePetHoverCardUntilNextHover();
-  showCharacterNotice(message, 6, INTERACTION_NOTICE_TITLE);
+  showCharacterNotice(message, 3, INTERACTION_NOTICE_TITLE);
 }
 
 function applyWakeUI(currentProfile) {
@@ -2718,21 +2802,21 @@ function leaderboardBody(items) {
 
 function currentUserRankCard(data = leaderboardData) {
   if (!leaderboardLoaded && !leaderboardError) {
-    return `<div class="leaderboard-my-card muted">我的排行加载中</div>`;
+    return `<section class="card side-card leaderboard-my-card profile-rank-card muted" data-user-rank-card>我的排行加载中</section>`;
   }
   if (leaderboardError) {
-    return `<div class="leaderboard-my-card muted">我的排行暂时加载失败</div>`;
+    return `<section class="card side-card leaderboard-my-card profile-rank-card muted" data-user-rank-card>我的排行暂时加载失败</section>`;
   }
   const item = data?.currentUserItem;
   if (!profile?.adopted) {
-    return `<div class="leaderboard-my-card muted">领养刘看山后即可参与排行榜</div>`;
+    return `<section class="card side-card leaderboard-my-card profile-rank-card muted" data-user-rank-card>领养刘看山后即可参与排行榜</section>`;
   }
   if (!item) {
-    return `<div class="leaderboard-my-card muted">${leaderboardType === "travel_count" ? "你还没有完成游历" : "你暂未进入榜单"}</div>`;
+    return `<section class="card side-card leaderboard-my-card profile-rank-card muted" data-user-rank-card>${leaderboardType === "travel_count" ? "你还没有完成游历" : "你暂未进入榜单"}</section>`;
   }
   const sharedToday = Boolean(data?.shareRewardSharedToday);
   return `
-    <div class="leaderboard-my-card">
+    <section class="card side-card leaderboard-my-card profile-rank-card" data-user-rank-card>
       <span>我的名次</span>
       <strong>No.${item.rank}</strong>
       <small>Lv.${item.level} · ${formatCount(item.totalExp)} 经验 · 游历 ${formatCount(item.travelCount)} 次</small>
@@ -2744,7 +2828,7 @@ function currentUserRankCard(data = leaderboardData) {
         </ul>
         <button type="button" data-leaderboard-share ${sharedToday ? "disabled" : ""}>${sharedToday ? "明天再来分享领奖励" : "分享领升级奖励"}</button>
       </div>
-    </div>
+    </section>
   `;
 }
 
@@ -2805,6 +2889,11 @@ function replacePetPanels() {
     wrapper.innerHTML = petPanel().trim();
     card.replaceWith(wrapper.firstChild);
   });
+  document.querySelectorAll("[data-user-rank-card]").forEach((card) => {
+    const wrapper = document.createElement("div");
+    wrapper.innerHTML = currentUserRankCard().trim();
+    card.replaceWith(wrapper.firstChild);
+  });
   bindPetHoverCard();
   bindSidebarLeaderboard();
   bindPanelBasics();
@@ -2812,7 +2901,7 @@ function replacePetPanels() {
 }
 
 function ensureSidebarLeaderboard() {
-  if ((!document.querySelector("[data-sidebar-leaderboard]") && !document.querySelector("[data-pet-panel]")) || !profile?.adopted) return;
+  if ((!document.querySelector("[data-sidebar-leaderboard]") && !document.querySelector("[data-pet-panel]") && !document.querySelector("[data-user-rank-card]")) || !profile?.adopted) return;
   if (leaderboardData?.rankType === leaderboardType && leaderboardLoaded) return;
   loadLeaderboard(leaderboardType)
     .then(replaceSidebarLeaderboards)
@@ -3068,8 +3157,12 @@ function syncCharacter() {
         spawnIntervalFrames: 5,
         initialGhostOpacity: 0.34,
         ghostFadeSpeed: 0.045,
-        evolveCanvasMarginLeft: -130,
-        evolveCanvasMarginTop: -150,
+        evolveCanvasWidth: 720,
+        evolveCanvasHeight: 900,
+        evolveCanvasMarginLeft: -310,
+        evolveCanvasMarginTop: -390,
+        evolveCameraY: 1.18,
+        evolveCameraZ: 6.6,
         spawnScaleMultiplier: 1.28,
         enableEmojiBubble: false,
         emojiBubbleConfig: {
@@ -3394,6 +3487,18 @@ async function handleDailySignin(button) {
   }
 }
 
+function patBubbleMode(moodBand) {
+  if (moodBand === "high") return "patHigh";
+  if (moodBand === "low") return "patLow";
+  return "patMid";
+}
+
+function patErrorBubbleMode(errorCode) {
+  if (errorCode === "PET_SLEEPING") return "patSleeping";
+  if (errorCode === "PAT_DAILY_LIMIT") return "patLimit";
+  return "patCooldown";
+}
+
 async function handlePetPat() {
   const now = Date.now();
   if (now - _lastPatAt < 1500) return; // local debounce
@@ -3402,14 +3507,22 @@ async function handlePetPat() {
     const resp = await api("/api/p1/pet/pat", { method: "POST", body: "{}" });
     if (resp?.ok && resp.reaction) {
       hidePetHoverCardUntilNextHover();
-      showCharacterNotice(resp.reaction, 4, INTERACTION_NOTICE_TITLE);
+      showCharacterNotice(
+        pickInteractionMessage(patBubbleMode(resp.moodBand), [resp.reaction]),
+        3,
+        INTERACTION_NOTICE_TITLE,
+      );
       if (resp.profile) profile = resp.profile;
       syncCharacter();
     }
   } catch (err) {
     if (err?.message) {
       hidePetHoverCardUntilNextHover();
-      showCharacterNotice(err.message, 3, INTERACTION_NOTICE_TITLE);
+      showCharacterNotice(
+        pickInteractionMessage(patErrorBubbleMode(err.error), [err.message]),
+        3,
+        INTERACTION_NOTICE_TITLE,
+      );
     }
   }
 }
@@ -3464,6 +3577,7 @@ function petPanel() {
   const experienceBoostButton = Number(profile.level) >= 2 && Number(profile.level) < 10
     ? `<button class="outline-btn wide-action" data-boost-next-level>快速体验升一级</button>`
     : "";
+  const primaryActions = [experienceBoostButton, boostLevel10Button].filter(Boolean).join("");
   const travelHint = isSleeping
     ? `看山休眠中 · 还需阅读 ${wakeRemaining} 篇内容唤醒`
     : activeTravel?.status === "traveling"
@@ -3478,32 +3592,40 @@ function petPanel() {
       : `<div class="pet-experience-hint unlocked"><strong>完整流程已达成</strong>，Lv.10 终极形态已解锁。</div>`;
   return `
     <section class="card side-card pet-panel" data-pet-panel>
-      <div class="pet-title">
+      <div class="pet-title pet-panel-hero">
         <span class="pet-mini pet-mini-image level-${escapeHTML(visual?.effectStyle || "cute")}">
           ${visualImage ? `<img src="${escapeHTML(visualImage)}" alt="${escapeHTML(visual.title || "刘看山等级形象")}">` : "山"}
         </span>
-        <span>${escapeHTML(petDisplayName())}</span>
+        <span class="pet-title-copy">
+          <strong>${escapeHTML(petDisplayName())}</strong>
+          <small>${escapeHTML(profileLevelTitle())}</small>
+        </span>
         <span class="level-pill">Lv.${profile.level}</span>
       </div>
-      <div class="travel-panel-actions">
-        ${experienceBoostButton}
-        ${travelAction}
-        <button class="outline-btn" data-hover-handbook>旅行手账</button>
-        <button class="outline-btn" data-hover-growth-log>成长日志</button>
-        <button class="outline-btn" data-open-leaderboard>查看排行榜</button>
-        ${boostLevel10Button}
+      <div class="pet-action-panel">
+        ${primaryActions ? `<div class="pet-primary-actions">${primaryActions}</div>` : ""}
+        <div class="travel-panel-actions">
+          ${travelAction}
+          <button class="outline-btn" data-hover-handbook>旅行手账</button>
+          <button class="outline-btn" data-hover-growth-log>成长日志</button>
+          <button class="outline-btn" data-open-leaderboard>查看排行榜</button>
+        </div>
       </div>
-      <div class="pet-travel-summary">
-        <small>${escapeHTML(travelStatusText(profile.travelStatus))}</small>
-        <strong>${escapeHTML(travelHint)}</strong>
+      <div class="pet-status-panel">
+        <div class="pet-travel-summary">
+          <small>${escapeHTML(travelStatusText(profile.travelStatus))}</small>
+          <strong>${escapeHTML(travelHint)}</strong>
+        </div>
+        <label class="pet-reward-toggle">
+          <input type="checkbox" data-hover-reward-walk ${rewardWalkEnabled ? "" : "checked"}>
+          <span>关闭看山移动</span>
+        </label>
       </div>
-      <label class="pet-reward-toggle">
-        <input type="checkbox" data-hover-reward-walk ${rewardWalkEnabled ? "" : "checked"}>
-        <span>关闭看山移动</span>
-      </label>
-      ${experienceHint}
-      ${petSkinSelectorHTML()}
-      ${petSkinGuideHTML()}
+      <div class="pet-unlock-panel">
+        ${experienceHint}
+        ${petSkinSelectorHTML()}
+        ${petSkinGuideHTML()}
+      </div>
       <div class="pet-level-showcase level-${escapeHTML(visual?.effectStyle || "cute")}">
         ${visualImage ? `<img src="${escapeHTML(visualImage)}" alt="${escapeHTML(visual.title || "刘看山等级形象")}">` : ""}
         <div>
@@ -3511,7 +3633,6 @@ function petPanel() {
           <small>${escapeHTML(visual?.description || "阅读越多，看山越强")}</small>
         </div>
       </div>
-      ${currentUserRankCard()}
       <div class="pet-stats">
         <div class="stat-box stat-box-progress"><small>累计经验</small><strong>${profile.totalExp}</strong>${levelProgressHTML()}</div>
         <div class="stat-box"><small>学识值</small><strong>${profile.satiety}</strong></div>
@@ -4292,6 +4413,7 @@ function renderPeople() {
           </article>
         </div>
         <aside class="side-stack">
+          ${profile?.adopted ? currentUserRankCard() : ""}
           ${creatorCard()}
           ${petPanel()}
           ${renderDailyQuests(dailyStat)}
@@ -5613,6 +5735,14 @@ async function showLevelUpPreview(reward) {
   document.querySelector(".level-up-preview")?.remove();
   const panel = document.createElement("div");
   panel.className = `level-up-preview level-${visual?.effectStyle || "cute"}`;
+  const center = effectStageCenter();
+  const cardWidth = Math.min(260, Math.max(0, window.innerWidth - 32));
+  const left = Math.min(window.innerWidth - cardWidth - 16, Math.max(16, center.x + 118));
+  const maxTop = Math.max(84, window.innerHeight - 320);
+  const top = Math.min(maxTop, Math.max(84, center.y - 302));
+  panel.style.left = `${left}px`;
+  panel.style.top = `${top}px`;
+  panel.style.right = "auto";
   panel.innerHTML = `
     ${image ? `<img src="${escapeHTML(image)}" alt="${escapeHTML(milestone.title || visual?.title || `Lv.${reward.toLevel} 刘看山`)}">` : ""}
     <div>
