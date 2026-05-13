@@ -14,7 +14,7 @@
   "community_fallback_ring_ids": ["2001009660925334090", "2015023739549529606"],
   "session_ttl_hours": 24,
   "state_ttl_minutes": 10,
-  "local_auth_bypass": false,
+  "local_auth_bypass": true,
   "llm": {
     "api_url": "https://ark.cn-beijing.volces.com/api/v3/chat/completions",
     "api_key": "da042629-c5cb-4539-81c3-da191f144888",

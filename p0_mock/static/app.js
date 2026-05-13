@@ -2133,7 +2133,7 @@ function bindPetHoverCard() {
       rewardWalkEnabled = !event.currentTarget.checked;
       localStorage.setItem("liukanshan_reward_walk_enabled", rewardWalkEnabled ? "1" : "0");
       showToast(rewardWalkEnabled ? "看山会走到触发点" : "已关闭看山移动");
-      renderPetHoverCard();
+      replacePetPanels();
     });
   });
   bindOnce("[data-hover-reset]", (button) => {
@@ -2153,71 +2153,8 @@ function bindPetHoverCard() {
 function renderPetHoverCard() {
   const card = document.getElementById("petHoverCard");
   if (!card) return;
-  if (!profile?.adopted) {
-    card.innerHTML = "";
-    return;
-  }
-  const activeTravel = travelState?.activeTravel;
-  const canTravel = travelState?.canTravel;
-  const isSleeping = profile.wakeStatus === "sleeping";
-  const wakeRemaining = isSleeping
-    ? Math.max((profile.wakeRequired ?? 3) - (profile.wakeProgress ?? 0), 1)
-    : 0;
-  const travelDisabledForSleep = isSleeping;
-  const travelDisabledReason = travelRequirementText({ isSleeping, wakeRemaining });
-  const travelAction = isSleeping
-    ? disabledTravelButtonHTML("看山休眠中", travelDisabledReason)
-    : activeTravel?.status === "traveling"
-    ? `<button data-hover-travel-return>立即归来</button>`
-    : activeTravel?.status === "returned"
-      ? `<button data-hover-travel-claim="${escapeHTML(activeTravel.travelId)}">领取内容</button>`
-      : canTravel === false || travelDisabledForSleep
-        ? disabledTravelButtonHTML("出门游历", travelDisabledReason)
-        : `<button data-hover-travel-start>出门游历</button>`;
-  const travelHint = isSleeping
-    ? `看山休眠中 · 还需阅读 ${wakeRemaining} 篇内容唤醒`
-    : activeTravel?.status === "traveling"
-    ? `${travelThemeText(activeTravel.theme)} · ${formatCountdown(activeTravel.expectedReturnAt)}`
-    : activeTravel?.status === "returned"
-      ? `${travelThemeText(activeTravel.theme)} · 已带回内容`
-      : travelState?.blockReason || "阅读内容积攒学识和精力后出门";
-  const visual = currentLevelVisual();
-  const visualImage = visual?.thumbnailUrl || visual?.imageUrl;
-  const resetButton = isAdminUser() ? `<button data-hover-reset>重置</button>` : "";
-  const boostButton = isAdminUser() ? `<button data-hover-boost-level>一键 Lv.10</button>` : "";
-  card.innerHTML = `
-    <div class="pet-hover-head">
-      <span class="pet-mini pet-mini-image level-${escapeHTML(visual?.effectStyle || "cute")}">
-        ${visualImage ? `<img src="${escapeHTML(visualImage)}" alt="${escapeHTML(visual.title || "刘看山等级形象")}">` : "山"}
-      </span>
-      <div>
-        <strong>${escapeHTML(profile.petName || "刘看山")}</strong>
-        <small>Lv.${profile.level} · ${escapeHTML(profileLevelTitle())}</small>
-      </div>
-    </div>
-    <div class="pet-hover-stats">
-      <div class="pet-hover-exp"><small>经验</small><strong>${profile.totalExp}</strong>${levelProgressHTML(true)}</div>
-      <div><small>心情</small><strong>${profile.mood}</strong></div>
-      <div><small>学识</small><strong>${profile.satiety}</strong></div>
-      <div><small>精力</small><strong>${profile.travelEnergy ?? 0}</strong></div>
-    </div>
-    <div class="pet-hover-travel">
-      <small>${escapeHTML(travelStatusText(profile.travelStatus))}</small>
-      <strong>${escapeHTML(travelHint)}</strong>
-    </div>
-    <div class="pet-hover-actions">
-      ${travelAction}
-      <button data-hover-handbook>旅行手账</button>
-      <button data-hover-growth-log>成长日志</button>
-      ${boostButton}
-      ${resetButton}
-    </div>
-    <label class="pet-hover-toggle">
-      <input type="checkbox" data-hover-reward-walk ${rewardWalkEnabled ? "" : "checked"}>
-      <span>关闭看山移动</span>
-    </label>
-  `;
-  bindPetHoverCard();
+  card.innerHTML = "";
+  card.hidden = true;
 }
 
 function closeCharacterNotice() {
@@ -3498,11 +3435,17 @@ function petPanel() {
   }
 
   const activeTravel = travelState?.activeTravel;
+  const isSleeping = profile.wakeStatus === "sleeping";
+  const wakeRemaining = isSleeping
+    ? Math.max((profile.wakeRequired ?? 3) - (profile.wakeProgress ?? 0), 1)
+    : 0;
   const travelDisabledReason = travelRequirementText({
-    isSleeping: profile?.wakeStatus === "sleeping",
-    wakeRemaining: Math.max((profile?.wakeRequired ?? 3) - (profile?.wakeProgress ?? 0), 1),
+    isSleeping,
+    wakeRemaining,
   });
-  const travelAction = activeTravel?.status === "traveling"
+  const travelAction = isSleeping
+    ? disabledTravelButtonHTML("看山休眠中", travelDisabledReason, "outline-btn")
+    : activeTravel?.status === "traveling"
     ? `<button class="outline-btn" data-hover-travel-return>立即归来</button>`
     : activeTravel?.status === "returned"
       ? `<button class="outline-btn" data-hover-travel-claim="${escapeHTML(activeTravel.travelId)}">领取带回内容</button>`
@@ -3514,9 +3457,19 @@ function petPanel() {
   const resetButton = isAdminUser()
     ? `<button class="reset-pet-btn" data-reset-pet>重置刘看山</button>`
     : "";
+  const boostLevel10Button = isAdminUser()
+    ? `<button class="outline-btn" data-hover-boost-level>一键 Lv.10</button>`
+    : "";
   const experienceBoostButton = Number(profile.level) >= 2 && Number(profile.level) < 10
     ? `<button class="outline-btn wide-action" data-boost-next-level>快速体验升一级</button>`
     : "";
+  const travelHint = isSleeping
+    ? `看山休眠中 · 还需阅读 ${wakeRemaining} 篇内容唤醒`
+    : activeTravel?.status === "traveling"
+      ? `${travelThemeText(activeTravel.theme)} · ${formatCountdown(activeTravel.expectedReturnAt)}`
+      : activeTravel?.status === "returned"
+        ? `${travelThemeText(activeTravel.theme)} · 已带回内容`
+        : travelState?.blockReason || "阅读内容积攒学识和精力后出门";
   const experienceHint = Number(profile.level) < 2
     ? `<div class="pet-experience-hint">升到 <strong>Lv.2</strong> 后，可用「快速体验升一级」一路体验完整养成流程。</div>`
     : Number(profile.level) < 10
@@ -3537,7 +3490,16 @@ function petPanel() {
         <button class="outline-btn" data-hover-handbook>旅行手账</button>
         <button class="outline-btn" data-hover-growth-log>成长日志</button>
         <button class="outline-btn" data-open-leaderboard>查看排行榜</button>
+        ${boostLevel10Button}
       </div>
+      <div class="pet-travel-summary">
+        <small>${escapeHTML(travelStatusText(profile.travelStatus))}</small>
+        <strong>${escapeHTML(travelHint)}</strong>
+      </div>
+      <label class="pet-reward-toggle">
+        <input type="checkbox" data-hover-reward-walk ${rewardWalkEnabled ? "" : "checked"}>
+        <span>关闭看山移动</span>
+      </label>
       ${experienceHint}
       ${petSkinSelectorHTML()}
       ${petSkinGuideHTML()}
