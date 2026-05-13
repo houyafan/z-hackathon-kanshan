@@ -2636,7 +2636,7 @@ button {
 
 .speech-bubble {
   display: block;
-  top: -10px;
+  top: -36px;
   width: max-content;
   max-width: 320px;
   min-width: 96px;

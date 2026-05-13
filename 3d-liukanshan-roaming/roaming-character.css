@@ -1,7 +1,7 @@
 .roaming-character {
     position: fixed;
-    width: 130px;
-    height: 150px;
+    width: 160px;
+    height: 190px;
     z-index: 1000;
     cursor: grab;
     transition: transform 0.1s;

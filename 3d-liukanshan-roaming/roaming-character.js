@@ -1089,15 +1089,15 @@ class RoamingCharacter {
             shadowId: 'characterShadow',
             instructionId: 'instruction',
             modelPath: 'liukanshan.glb',
-            width: 130,
-            height: 150,
+            width: 160,
+            height: 190,
             evolveCanvasWidth: 360,
             evolveCanvasHeight: 420,
             evolveCanvasMarginLeft: -115,
             evolveCanvasMarginTop: -160,
             evolveCameraY: 0.72,
             evolveCameraZ: 4.2,
-            scale: 1.3,
+            scale: 0.5,
             speed: 250,
             spawnEffectDuration: 2800,
             enableGhostTrail: true,
@@ -1174,6 +1174,12 @@ class RoamingCharacter {
         this.isDragRotating = false;
         this.lastInteractionBubbleAt = 0;
         this.animationTime = 0;
+        this.mixer = null;
+        this.animationActions = {};
+        this.activeLocomotionAction = null;
+        this.lastLocomotionState = null;
+        this.runClipName = null;
+        this.idleClipName = null;
 
         this.characterElement = document.getElementById(this.config.containerId);
         this.speechBubble = document.getElementById(this.config.speechBubbleId);
@@ -1285,6 +1291,17 @@ class RoamingCharacter {
                     this.travelGate.dispose();
                     this.travelGate = null;
                 }
+                if (this.mixer) {
+                    this.mixer.stopAllAction();
+                    if (this.model) this.mixer.uncacheRoot(this.model);
+                    this.mixer = null;
+                }
+                this.animationActions = {};
+                this.activeLocomotionAction = null;
+                this.lastLocomotionState = null;
+                this.runClipName = null;
+                this.idleClipName = null;
+
                 if (this.model) {
                     this.scene.remove(this.model);
                     this.disposeObjectResources(this.model);
@@ -1292,21 +1309,26 @@ class RoamingCharacter {
 
                 const newModel = gltf.scene;
 
+                this.normalizeModelMaterials(newModel);
+
                 const box = new THREE.Box3().setFromObject(newModel);
                 const size = box.getSize(new THREE.Vector3());
                 const center = box.getCenter(new THREE.Vector3());
 
-                const maxDim = Math.max(size.x, size.y, size.z);
-                const scale = this.config.scale / maxDim;
+                const maxDim = Math.max(size.x, size.y, size.z) || 1;
+                const heightDim = size.y > 0.0001 ? size.y : maxDim;
+                const scale = this.config.scale / heightDim;
                 newModel.scale.multiplyScalar(scale);
                 newModel.position.sub(center.multiplyScalar(scale));
-                newModel.position.y = -0.3;
+                newModel.position.y = -0.05;
+                console.log('[Roaming] bbox size=', size.toArray(), 'scale=', scale, 'pos=', newModel.position.toArray());
 
                 this.scene.add(newModel);
                 this.model = newModel;
                 this.modelReady = true;
                 this.baseModelY = newModel.position.y;
                 this.baseModelScale = newModel.scale.clone();
+                this.setupAnimationMixer(newModel, gltf.animations || []);
                 this.resetGhostTrail();
                 this.resetEmojiBubble();
                 this.resetEvolveEffect();
@@ -1358,11 +1380,95 @@ class RoamingCharacter {
         );
     }
 
+    normalizeModelMaterials(root) {
+        if (!root) return;
+        root.traverse((child) => {
+            if (!child.isMesh && !child.isSkinnedMesh) return;
+            const mats = Array.isArray(child.material) ? child.material : [child.material];
+            for (const material of mats) {
+                if (!material) continue;
+                material.transparent = false;
+                material.opacity = 1;
+                material.depthWrite = true;
+                material.depthTest = true;
+                material.alphaTest = 0;
+                material.side = THREE.FrontSide;
+                if (material.map) material.map.colorSpace = THREE.SRGBColorSpace;
+                material.needsUpdate = true;
+            }
+            child.castShadow = false;
+            child.receiveShadow = false;
+            child.frustumCulled = false;
+        });
+    }
+
+    setupAnimationMixer(root, clips) {
+        if (!clips || clips.length === 0) {
+            console.log('[Roaming] no animation clips in model');
+            return;
+        }
+        this.mixer = new THREE.AnimationMixer(root);
+        this.animationActions = {};
+        const findClip = (keywords) => clips.find((clip) => {
+            const name = (clip.name || '').toLowerCase();
+            return keywords.some((k) => name.includes(k));
+        });
+        const runClip = findClip(['running', 'run', 'sprint', '跑']) || findClip(['walking', 'walk', '走']);
+        const idleClip = findClip(['idle', 'stand', '待机', '站立']);
+        for (const clip of clips) {
+            const action = this.mixer.clipAction(clip);
+            action.setLoop(THREE.LoopRepeat, Infinity);
+            action.clampWhenFinished = false;
+            this.animationActions[clip.name] = action;
+        }
+        this.runClipName = runClip ? runClip.name : null;
+        this.idleClipName = idleClip ? idleClip.name : null;
+        console.log('[Roaming] animations:', clips.map((c) => c.name),
+            'run=', this.runClipName, 'idle=', this.idleClipName);
+        if (this.idleClipName) {
+            const idleAction = this.animationActions[this.idleClipName];
+            idleAction.reset().fadeIn(0.0).play();
+            this.activeLocomotionAction = idleAction;
+            this.lastLocomotionState = 'idle';
+        }
+    }
+
+    updateLocomotionAnimation() {
+        if (!this.mixer) return;
+        let desired;
+        if (this.isMoving && !this.isEvolving() && !this.isTraveling() && !this.isSpawning) {
+            desired = this.runClipName ? 'run' : (this.idleClipName ? 'idle' : null);
+        } else {
+            desired = this.idleClipName ? 'idle' : null;
+        }
+        if (!desired || desired === this.lastLocomotionState) return;
+        const nextName = desired === 'run' ? this.runClipName : this.idleClipName;
+        const nextAction = nextName ? this.animationActions[nextName] : null;
+        if (!nextAction) return;
+        const prevAction = this.activeLocomotionAction;
+        if (prevAction && prevAction !== nextAction) {
+            nextAction.reset();
+            nextAction.setEffectiveWeight(1);
+            nextAction.play();
+            prevAction.crossFadeTo(nextAction, 0.25, false);
+        } else {
+            nextAction.reset().fadeIn(0.2).play();
+        }
+        this.activeLocomotionAction = nextAction;
+        this.lastLocomotionState = desired;
+    }
+
+    isLocomotionAnimationDriving() {
+        return !!(this.mixer && this.activeLocomotionAction && this.activeLocomotionAction.isRunning());
+    }
+
     animate() {
         requestAnimationFrame(() => this.animate());
 
         const delta = Math.min(this.clock.getDelta(), 0.05);
         this.animationTime += delta;
+        if (this.mixer) this.mixer.update(delta);
+        this.updateLocomotionAnimation();
 
         if (this.model) {
             if (this.isEvolving()) {
@@ -1382,23 +1488,38 @@ class RoamingCharacter {
             } else if (this.isSpawning) {
                 this.updateSpawnEffect(delta);
             } else if (this.isMoving) {
-                const bounce = Math.sin(this.animationTime * 8) * 0.08;
-                this.model.position.y = this.baseModelY + bounce;
+                if (this.isLocomotionAnimationDriving()) {
+                    this.model.position.y = this.baseModelY;
+                    this.model.rotation.z = 0;
+                    const pulse = 0.95 + Math.sin(this.animationTime * 8) * 0.05;
+                    this.characterShadow.style.transform = `translateX(-50%) scale(${pulse})`;
+                    this.characterShadow.style.opacity = 0.22;
+                } else {
+                    const bounce = Math.sin(this.animationTime * 8) * 0.08;
+                    this.model.position.y = this.baseModelY + bounce;
 
-                const sway = Math.sin(this.animationTime * 16) * 0.05;
-                this.model.rotation.z = sway;
+                    const sway = Math.sin(this.animationTime * 16) * 0.05;
+                    this.model.rotation.z = sway;
 
-                const shadowScale = 1 - bounce * 0.5;
-                this.characterShadow.style.transform = `translateX(-50%) scale(${shadowScale})`;
-                this.characterShadow.style.opacity = 0.25 - bounce * 0.1;
+                    const shadowScale = 1 - bounce * 0.5;
+                    this.characterShadow.style.transform = `translateX(-50%) scale(${shadowScale})`;
+                    this.characterShadow.style.opacity = 0.25 - bounce * 0.1;
+                }
             } else {
-                const idle = Math.sin(this.animationTime * 1.5) * 0.02;
-                this.model.position.y = this.baseModelY + idle;
-                this.model.rotation.y = 0;
-                this.model.rotation.z = 0;
+                if (this.isLocomotionAnimationDriving()) {
+                    this.model.position.y = this.baseModelY;
+                    this.model.rotation.z = 0;
+                    this.characterShadow.style.transform = `translateX(-50%) scale(1)`;
+                    this.characterShadow.style.opacity = 0.25;
+                } else {
+                    const idle = Math.sin(this.animationTime * 1.5) * 0.02;
+                    this.model.position.y = this.baseModelY + idle;
+                    this.model.rotation.y = 0;
+                    this.model.rotation.z = 0;
 
-                this.characterShadow.style.transform = `translateX(-50%) scale(1)`;
-                this.characterShadow.style.opacity = 0.25;
+                    this.characterShadow.style.transform = `translateX(-50%) scale(1)`;
+                    this.characterShadow.style.opacity = 0.25;
+                }
             }
         }
 
