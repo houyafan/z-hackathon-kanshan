@@ -10,6 +10,7 @@ let profile = null;
 let dailyStat = null;
 let _patHandlerAttached = false;
 let _lastPatAt = 0;
+let interactionBubbleLastByMode = {};
 let travelState = null;
 let character = null;
 let feedItems = [];
@@ -102,12 +103,74 @@ const INTERACTION_BUBBLE_MESSAGES = {
     "看山进入展示模式啦，左转右转都可以，围巾也要给你看清楚。",
     "转一转我，今天也是努力保持帅气正面的刘看山。",
     "镜头交给你，我负责乖乖站好被研究。",
+    "别只看正面呀，背后的围巾结也很认真。",
+    "检测到你在端详看山，姿势管理已启动。",
+    "转慢一点，我要保持一个很有知识感的角度。",
+    "今天的 3D 看山，也经得起 360 度知识审阅。",
+    "你负责旋转视角，我负责不晕。",
+    "这边是左脸，那边是右脸，都适合陪你刷知乎。",
   ],
   move: [
     "拖动我可以搬到你喜欢的位置，我会在那儿继续陪你读知乎。",
     "看山搬家中，正在找一个更舒服的陪伴角落。",
     "把我挪近一点也可以，读到好内容我会第一时间冒泡。",
     "移动成功预备中，今天的陪伴席位由你决定。",
+    "新的站位已收到，我会在这里认真守着信息流。",
+    "让我靠近精彩回答一点，知识香味更明显。",
+    "搬家不带行李，只带一颗想阅读的心。",
+    "这里视野不错，适合发现高赞回答。",
+    "你把我放哪儿，我就在哪儿当知乎小雷达。",
+    "已抵达新角落，开始扫描值得收藏的内容。",
+  ],
+  patHigh: [
+    "蹭蹭手，今天的看山电量很满。",
+    "嘿嘿，再摸一下也不是不可以。",
+    "收到摸摸，心情值正在冒蓝色小星星。",
+    "今天状态很好，适合一起连读三篇好内容。",
+    "看山开心到想把围巾甩成小旗子。",
+    "这一下摸摸，已被记录为今日友好互动。",
+    "我宣布：这只手很懂看山。",
+    "心情 +1，陪伴稳定性 +100。",
+  ],
+  patMid: [
+    "嗯，舒服，知识星球正在缓慢回血。",
+    "摸摸收到，我会继续乖乖陪读。",
+    "这下精神了一点，去看看有没有好问题吧。",
+    "看山喜欢这种轻轻的互动。",
+    "别停，我差一点就想出金句了。",
+    "你摸我一下，我给你守一会儿首页。",
+    "今日陪伴模式：已被温柔激活。",
+    "摸摸有效，围巾都显得更有精神了。",
+  ],
+  patLow: [
+    "看山有点累，但还是想陪你再读一会儿。",
+    "轻轻摸摸就好，我正在攒精神。",
+    "如果能再读几条内容，我应该会恢复得更快。",
+    "今天有点低电量，摸摸也算充电。",
+    "我先把小脑袋靠一下，等会儿继续巡逻。",
+    "摸到了，谢谢你，我会慢慢恢复的。",
+    "知识星光不太够，但你的摸摸有用。",
+    "今天先省电陪伴，读到好内容记得叫我。",
+  ],
+  patCooldown: [
+    "摸摸太密集啦，看山需要 1 秒整理表情。",
+    "收到连击申请，但看山的脸颊需要冷却。",
+    "再等一下下，我正在把刚才的开心存档。",
+    "摸摸缓存已满，稍后继续投喂温柔。",
+    "手速太快啦，我差点没反应过来。",
+    "这波互动很热烈，看山先稳住围巾。",
+  ],
+  patLimit: [
+    "今天已经被摸到心满意足啦，明天继续。",
+    "今日摸摸额度用完，看山要把开心留到明天。",
+    "再摸就要变成一只过度快乐的看山了。",
+    "今日互动已满格，去读点内容给我加餐吧。",
+  ],
+  patSleeping: [
+    "看山睡着啦，先读几条内容把我叫醒。",
+    "我在休眠补能中，知识星光到了就醒。",
+    "嘘，睡眠模式开启中，阅读可以帮我充电。",
+    "先让我小睡一下，读到好内容我就回来。",
   ],
 };
 let onboardingTimer = null;
@@ -2078,6 +2141,19 @@ function pickOne(list = []) {
   return list[Math.floor(Math.random() * list.length)];
 }
 
+function pickInteractionMessage(mode, fallbackMessages = []) {
+  const list = [
+    ...(INTERACTION_BUBBLE_MESSAGES[mode] || []),
+    ...fallbackMessages.filter(Boolean),
+  ];
+  if (!list.length) return "";
+  const last = interactionBubbleLastByMode[mode];
+  const candidates = list.length > 1 ? list.filter((item) => item !== last) : list;
+  const message = pickOne(candidates.length ? candidates : list);
+  interactionBubbleLastByMode[mode] = message;
+  return message;
+}
+
 function mergeUpdatedContent(content) {
   if (!content) return;
   feedItems = feedItems.map((item) => (item.id === content.id ? { ...item, ...content } : item));
@@ -2215,9 +2291,11 @@ function hidePetHoverCardUntilNextHover() {
   }, { once: true });
 }
 
-function showInteractionBubble(mode = "move") {
-  const list = INTERACTION_BUBBLE_MESSAGES[mode] || INTERACTION_BUBBLE_MESSAGES.move;
-  const message = pickOne(list);
+function showInteractionBubble(mode = "move", fallbackMessages = []) {
+  const message = pickInteractionMessage(
+    INTERACTION_BUBBLE_MESSAGES[mode] ? mode : "move",
+    fallbackMessages,
+  );
   if (!message) return;
   hidePetHoverCardUntilNextHover();
   showCharacterNotice(message, 3, INTERACTION_NOTICE_TITLE);
@@ -3408,6 +3486,18 @@ async function handleDailySignin(button) {
   }
 }
 
+function patBubbleMode(moodBand) {
+  if (moodBand === "high") return "patHigh";
+  if (moodBand === "low") return "patLow";
+  return "patMid";
+}
+
+function patErrorBubbleMode(errorCode) {
+  if (errorCode === "PET_SLEEPING") return "patSleeping";
+  if (errorCode === "PAT_DAILY_LIMIT") return "patLimit";
+  return "patCooldown";
+}
+
 async function handlePetPat() {
   const now = Date.now();
   if (now - _lastPatAt < 1500) return; // local debounce
@@ -3416,14 +3506,22 @@ async function handlePetPat() {
     const resp = await api("/api/p1/pet/pat", { method: "POST", body: "{}" });
     if (resp?.ok && resp.reaction) {
       hidePetHoverCardUntilNextHover();
-      showCharacterNotice(resp.reaction, 3, INTERACTION_NOTICE_TITLE);
+      showCharacterNotice(
+        pickInteractionMessage(patBubbleMode(resp.moodBand), [resp.reaction]),
+        3,
+        INTERACTION_NOTICE_TITLE,
+      );
       if (resp.profile) profile = resp.profile;
       syncCharacter();
     }
   } catch (err) {
     if (err?.message) {
       hidePetHoverCardUntilNextHover();
-      showCharacterNotice(err.message, 3, INTERACTION_NOTICE_TITLE);
+      showCharacterNotice(
+        pickInteractionMessage(patErrorBubbleMode(err.error), [err.message]),
+        3,
+        INTERACTION_NOTICE_TITLE,
+      );
     }
   }
 }
