@@ -2660,6 +2660,10 @@ button {
   text-align: left;
 }
 
+.speech-bubble.bubble-visible {
+  display: block;
+}
+
 .notice-title {
   margin-bottom: 6px;
   color: #1677ff;
@@ -2674,18 +2678,6 @@ button {
   font-size: 13px;
   font-weight: 600;
   line-height: 1.55;
-}
-
-.notice-close {
-  width: 100%;
-  height: 30px;
-  margin-top: 10px;
-  border: 1px solid #d8e5ff;
-  border-radius: 8px;
-  background: #f3f7ff;
-  color: #1677ff;
-  font-size: 13px;
-  font-weight: 700;
 }
 
 .speech-bubble::after {
@@ -4847,6 +4839,10 @@ button {
 
 .roaming-character.pet-level-up .character-canvas {
   animation: petLevelBounce 1.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.roaming-character.roaming-evolving.pet-level-up .character-canvas {
+  animation: none;
 }
 
 .level-up-preview {

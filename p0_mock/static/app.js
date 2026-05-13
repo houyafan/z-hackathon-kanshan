@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { gsap } from "https://cdn.jsdelivr.net/npm/gsap@3.12.5/+esm";
-import { initRoamingCharacter } from "/3d-liukanshan-roaming/roaming-character.js?v=47";
+import { initRoamingCharacter } from "/3d-liukanshan-roaming/roaming-character.js?v=50";
 
 const app = document.getElementById("app");
 const toast = document.getElementById("toast");
@@ -47,6 +47,7 @@ let modelPreloadPromise = null;
 let _activeCommentAssist = null;
 let noticeTimer = null;
 let noticeRemaining = 0;
+let noticeId = 0;
 let idleBandVisible = true;
 let _prevWakeStatus = null;
 let _lastWakeBubbleAt = null;
@@ -2157,13 +2158,15 @@ function renderPetHoverCard() {
   card.hidden = true;
 }
 
-function closeCharacterNotice() {
+function closeCharacterNotice(expectedNoticeId = null) {
   const bubble = document.getElementById("speechBubble");
   window.clearInterval(noticeTimer);
   noticeTimer = null;
   noticeRemaining = 0;
   if (!bubble) return;
-  bubble.classList.remove("follow-notice");
+  if (expectedNoticeId != null && bubble.dataset.noticeId !== String(expectedNoticeId)) return;
+  bubble.classList.remove("follow-notice", "bubble-visible");
+  delete bubble.dataset.noticeId;
   bubble.textContent = profileBubbleTitle();
 }
 
@@ -2172,25 +2175,28 @@ function showCharacterNotice(message, seconds = 20, title = "关注动态") {
   if (!bubble) return;
   window.clearInterval(noticeTimer);
   noticeRemaining = seconds;
+  const activeNoticeId = String(++noticeId);
+  bubble.dataset.noticeId = activeNoticeId;
 
   const render = () => {
-    bubble.classList.add("follow-notice");
+    if (bubble.dataset.noticeId !== activeNoticeId) return;
+    bubble.classList.add("follow-notice", "bubble-visible");
     bubble.innerHTML = `
       <div class="notice-title">${escapeHTML(title)}</div>
       <div class="notice-text">${escapeHTML(message)}</div>
-      <button class="notice-close" data-notice-close>关闭 ${noticeRemaining}s</button>
     `;
-    bubble.querySelector("[data-notice-close]").addEventListener("click", (event) => {
-      event.stopPropagation();
-      closeCharacterNotice();
-    });
   };
 
   render();
   noticeTimer = window.setInterval(() => {
+    if (bubble.dataset.noticeId !== activeNoticeId) {
+      window.clearInterval(noticeTimer);
+      noticeTimer = null;
+      return;
+    }
     noticeRemaining -= 1;
     if (noticeRemaining <= 0) {
-      closeCharacterNotice();
+      closeCharacterNotice(activeNoticeId);
       return;
     }
     render();
@@ -2214,7 +2220,7 @@ function showInteractionBubble(mode = "move") {
   const message = pickOne(list);
   if (!message) return;
   hidePetHoverCardUntilNextHover();
-  showCharacterNotice(message, 6, INTERACTION_NOTICE_TITLE);
+  showCharacterNotice(message, 3, INTERACTION_NOTICE_TITLE);
 }
 
 function applyWakeUI(currentProfile) {
@@ -3067,8 +3073,12 @@ function syncCharacter() {
         spawnIntervalFrames: 5,
         initialGhostOpacity: 0.34,
         ghostFadeSpeed: 0.045,
-        evolveCanvasMarginLeft: -130,
-        evolveCanvasMarginTop: -150,
+        evolveCanvasWidth: 720,
+        evolveCanvasHeight: 900,
+        evolveCanvasMarginLeft: -310,
+        evolveCanvasMarginTop: -390,
+        evolveCameraY: 1.18,
+        evolveCameraZ: 6.6,
         spawnScaleMultiplier: 1.28,
         enableEmojiBubble: false,
         emojiBubbleConfig: {
@@ -3401,7 +3411,7 @@ async function handlePetPat() {
     const resp = await api("/api/p1/pet/pat", { method: "POST", body: "{}" });
     if (resp?.ok && resp.reaction) {
       hidePetHoverCardUntilNextHover();
-      showCharacterNotice(resp.reaction, 4, INTERACTION_NOTICE_TITLE);
+      showCharacterNotice(resp.reaction, 3, INTERACTION_NOTICE_TITLE);
       if (resp.profile) profile = resp.profile;
       syncCharacter();
     }
@@ -5602,6 +5612,14 @@ async function showLevelUpPreview(reward) {
   document.querySelector(".level-up-preview")?.remove();
   const panel = document.createElement("div");
   panel.className = `level-up-preview level-${visual?.effectStyle || "cute"}`;
+  const center = effectStageCenter();
+  const cardWidth = Math.min(260, Math.max(0, window.innerWidth - 32));
+  const left = Math.min(window.innerWidth - cardWidth - 16, Math.max(16, center.x + 118));
+  const maxTop = Math.max(84, window.innerHeight - 320);
+  const top = Math.min(maxTop, Math.max(84, center.y - 302));
+  panel.style.left = `${left}px`;
+  panel.style.top = `${top}px`;
+  panel.style.right = "auto";
   panel.innerHTML = `
     ${image ? `<img src="${escapeHTML(image)}" alt="${escapeHTML(milestone.title || visual?.title || `Lv.${reward.toLevel} 刘看山`)}">` : ""}
     <div>

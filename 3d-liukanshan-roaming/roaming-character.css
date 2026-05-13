@@ -23,10 +23,10 @@
 
 .roaming-character.roaming-evolving {
     z-index: 1200;
-    width: 360px;
-    height: 420px;
-    margin-left: -115px;
-    margin-top: -160px;
+    width: 720px;
+    height: 900px;
+    margin-left: -310px;
+    margin-top: -390px;
 }
 
 .roaming-character.roaming-traveling {
@@ -91,8 +91,8 @@
     position: absolute;
     left: 50%;
     top: 50%;
-    width: 340px;
-    height: 365px;
+    width: 640px;
+    height: 720px;
     transform: translate(-50%, -50%);
     border-radius: 52% 52% 46% 46%;
     background:
@@ -108,8 +108,8 @@
     position: absolute;
     left: 50%;
     bottom: 10px;
-    width: 220px;
-    height: 54px;
+    width: 380px;
+    height: 88px;
     transform: translateX(-50%);
     border-radius: 50%;
     background: radial-gradient(ellipse, rgba(255, 215, 0, 0.24) 0%, rgba(255, 176, 32, 0.1) 46%, rgba(255, 215, 0, 0) 74%);
@@ -170,6 +170,10 @@
     transform: scale(1.1);
 }
 
+.roaming-character.roaming-evolving:hover {
+    transform: none;
+}
+
 .character-canvas {
     position: relative;
     z-index: 2;
@@ -223,6 +227,10 @@
 }
 
 .roaming-character:hover .speech-bubble {
+    display: block;
+}
+
+.speech-bubble.bubble-visible {
     display: block;
 }
 

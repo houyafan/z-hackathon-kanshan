@@ -1092,12 +1092,12 @@ class RoamingCharacter {
             modelPath: 'liukanshan.glb',
             width: 160,
             height: 190,
-            evolveCanvasWidth: 360,
-            evolveCanvasHeight: 420,
-            evolveCanvasMarginLeft: -115,
-            evolveCanvasMarginTop: -160,
-            evolveCameraY: 0.72,
-            evolveCameraZ: 4.2,
+            evolveCanvasWidth: 720,
+            evolveCanvasHeight: 900,
+            evolveCanvasMarginLeft: -310,
+            evolveCanvasMarginTop: -390,
+            evolveCameraY: 1.18,
+            evolveCameraZ: 6.6,
             scale: 0.5,
             speed: 250,
             spawnEffectDuration: 2800,
@@ -1548,7 +1548,7 @@ class RoamingCharacter {
             this.faceFront();
             this.showBubbleMessage(this.config.arrivedMessage, { autoHide: 2000 });
             setTimeout(() => {
-                this.setDomMessage(this.config.idleMessage);
+                this.setDomMessage(this.config.idleMessage, { visible: false });
             }, 2000);
             return;
         }
@@ -2052,9 +2052,16 @@ class RoamingCharacter {
         this.faceFront();
     }
 
-    setDomMessage(text) {
+    setDomMessage(text, options = {}) {
         if (this.speechBubble) {
             this.speechBubble.textContent = text;
+            this.speechBubble.classList.remove('follow-notice');
+            delete this.speechBubble.dataset.noticeId;
+            if (options.visible === false) {
+                this.speechBubble.classList.remove('bubble-visible');
+            } else {
+                this.speechBubble.classList.add('bubble-visible');
+            }
         }
     }
 
@@ -2068,7 +2075,7 @@ class RoamingCharacter {
         if (options.autoHide && options.autoHide > 0) {
             this.bubbleTimer = window.setTimeout(() => {
                 this.emojiBubble?.hide();
-                this.setDomMessage(this.config.idleMessage);
+                this.setDomMessage(this.config.idleMessage, { visible: false });
             }, options.autoHide);
         }
     }
@@ -2309,7 +2316,7 @@ class RoamingCharacter {
             this.isSpawning = false;
             this.cleanupSpawnEffect();
             window.setTimeout(() => {
-                this.setDomMessage(this.config.idleMessage);
+                this.setDomMessage(this.config.idleMessage, { visible: false });
                 this.emojiBubble?.hide();
             }, 1600);
         }
@@ -2340,6 +2347,10 @@ class RoamingCharacter {
     hideMessage() {
         window.clearTimeout(this.bubbleTimer);
         this.emojiBubble?.hide();
+        this.speechBubble?.classList.remove('bubble-visible', 'follow-notice');
+        if (this.speechBubble) {
+            delete this.speechBubble.dataset.noticeId;
+        }
     }
 
     moveToElement(element, options = {}) {
