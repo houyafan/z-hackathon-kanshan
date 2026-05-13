@@ -3619,7 +3619,7 @@ def grant_pat(conn, user_id):
     conn.execute(
         "INSERT INTO pet_growth_log "
         "(user_id, source_type, source_id, change_type, delta, before_value, after_value, reason, created_at) "
-        "VALUES (?, 'pat', 'pat', 'mood', ?, ?, ?, '主人摸头', ?)",
+        "VALUES (?, 'pat', 'pat', 'mood', ?, ?, ?, '摸摸看山', ?)",
         (user_id, new_mood - int(profile["mood"]), int(profile["mood"]), new_mood, now_text()),
     )
     mood_band = (
@@ -3628,9 +3628,9 @@ def grant_pat(conn, user_id):
         "mid"
     )
     reactions = {
-        "high": ["蹭蹭主人的手 ♡", "嘿嘿，主人最好了", "再多摸一下嘛"],
-        "mid": ["嗯——舒服", "主人摸得很温柔", "看山喜欢"],
-        "low": ["主人...看山有点累", "今天精神不太好呢", "再陪陪看山好吗"],
+        "high": ["蹭蹭手 ♡", "嘿嘿，今天心情很好", "再多摸一下嘛"],
+        "mid": ["嗯，舒服", "摸得很温柔", "看山喜欢"],
+        "low": ["看山有点累", "今天精神不太好呢", "再陪陪看山好吗"],
     }
     import random as _random
     return {

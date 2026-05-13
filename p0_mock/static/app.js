@@ -2723,21 +2723,21 @@ function leaderboardBody(items) {
 
 function currentUserRankCard(data = leaderboardData) {
   if (!leaderboardLoaded && !leaderboardError) {
-    return `<div class="leaderboard-my-card muted">我的排行加载中</div>`;
+    return `<section class="card side-card leaderboard-my-card profile-rank-card muted" data-user-rank-card>我的排行加载中</section>`;
   }
   if (leaderboardError) {
-    return `<div class="leaderboard-my-card muted">我的排行暂时加载失败</div>`;
+    return `<section class="card side-card leaderboard-my-card profile-rank-card muted" data-user-rank-card>我的排行暂时加载失败</section>`;
   }
   const item = data?.currentUserItem;
   if (!profile?.adopted) {
-    return `<div class="leaderboard-my-card muted">领养刘看山后即可参与排行榜</div>`;
+    return `<section class="card side-card leaderboard-my-card profile-rank-card muted" data-user-rank-card>领养刘看山后即可参与排行榜</section>`;
   }
   if (!item) {
-    return `<div class="leaderboard-my-card muted">${leaderboardType === "travel_count" ? "你还没有完成游历" : "你暂未进入榜单"}</div>`;
+    return `<section class="card side-card leaderboard-my-card profile-rank-card muted" data-user-rank-card>${leaderboardType === "travel_count" ? "你还没有完成游历" : "你暂未进入榜单"}</section>`;
   }
   const sharedToday = Boolean(data?.shareRewardSharedToday);
   return `
-    <div class="leaderboard-my-card">
+    <section class="card side-card leaderboard-my-card profile-rank-card" data-user-rank-card>
       <span>我的名次</span>
       <strong>No.${item.rank}</strong>
       <small>Lv.${item.level} · ${formatCount(item.totalExp)} 经验 · 游历 ${formatCount(item.travelCount)} 次</small>
@@ -2749,7 +2749,7 @@ function currentUserRankCard(data = leaderboardData) {
         </ul>
         <button type="button" data-leaderboard-share ${sharedToday ? "disabled" : ""}>${sharedToday ? "明天再来分享领奖励" : "分享领升级奖励"}</button>
       </div>
-    </div>
+    </section>
   `;
 }
 
@@ -2810,6 +2810,11 @@ function replacePetPanels() {
     wrapper.innerHTML = petPanel().trim();
     card.replaceWith(wrapper.firstChild);
   });
+  document.querySelectorAll("[data-user-rank-card]").forEach((card) => {
+    const wrapper = document.createElement("div");
+    wrapper.innerHTML = currentUserRankCard().trim();
+    card.replaceWith(wrapper.firstChild);
+  });
   bindPetHoverCard();
   bindSidebarLeaderboard();
   bindPanelBasics();
@@ -2817,7 +2822,7 @@ function replacePetPanels() {
 }
 
 function ensureSidebarLeaderboard() {
-  if ((!document.querySelector("[data-sidebar-leaderboard]") && !document.querySelector("[data-pet-panel]")) || !profile?.adopted) return;
+  if ((!document.querySelector("[data-sidebar-leaderboard]") && !document.querySelector("[data-pet-panel]") && !document.querySelector("[data-user-rank-card]")) || !profile?.adopted) return;
   if (leaderboardData?.rankType === leaderboardType && leaderboardLoaded) return;
   loadLeaderboard(leaderboardType)
     .then(replaceSidebarLeaderboards)
@@ -3520,7 +3525,6 @@ function petPanel() {
           <small>${escapeHTML(visual?.description || "阅读越多，看山越强")}</small>
         </div>
       </div>
-      ${currentUserRankCard()}
       <div class="pet-stats">
         <div class="stat-box stat-box-progress"><small>累计经验</small><strong>${profile.totalExp}</strong>${levelProgressHTML()}</div>
         <div class="stat-box"><small>学识值</small><strong>${profile.satiety}</strong></div>
@@ -4301,6 +4305,7 @@ function renderPeople() {
           </article>
         </div>
         <aside class="side-stack">
+          ${profile?.adopted ? currentUserRankCard() : ""}
           ${creatorCard()}
           ${petPanel()}
           ${renderDailyQuests(dailyStat)}
