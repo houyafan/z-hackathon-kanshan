@@ -55,7 +55,13 @@
       "mcp__playwright__browser_evaluate",
       "mcp__playwright__browser_take_screenshot",
       "mcp__playwright__browser_wait_for",
-      "Bash(ps *)"
+      "Bash(ps *)",
+      "Bash(lsof -i:5173)",
+      "Bash(PORT=5173 python3 server.py)",
+      "Bash(xargs kill -9)",
+      "Bash(AUTH_MODE=mock LOCAL_AUTH_BYPASS=1 PORT=5173 python3 *)",
+      "Bash(curl -sI http://127.0.0.1:5173/)",
+      "Bash(grep -niE \"share.*#[0-9a-f]{3,6}|#[0-9a-f]{3,6}.*share\" /Users/niuhui/Desktop/z-hackathon-kanshan/p0_mock/static/styles.css)"
     ]
   }
 }
