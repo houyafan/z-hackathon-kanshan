@@ -1320,7 +1320,7 @@ class RoamingCharacter {
                 const scale = this.config.scale / heightDim;
                 newModel.scale.multiplyScalar(scale);
                 newModel.position.sub(center.multiplyScalar(scale));
-                newModel.position.y = -0.05;
+                newModel.position.y = -0.15;
                 console.log('[Roaming] bbox size=', size.toArray(), 'scale=', scale, 'pos=', newModel.position.toArray());
 
                 this.scene.add(newModel);
