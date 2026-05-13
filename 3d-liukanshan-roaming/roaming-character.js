@@ -1543,6 +1543,7 @@ class RoamingCharacter {
 
         if (distance < 5) {
             this.isMoving = false;
+            this.faceFront();
             this.showBubbleMessage(this.config.arrivedMessage, { autoHide: 2000 });
             setTimeout(() => {
                 this.setDomMessage(this.config.idleMessage);

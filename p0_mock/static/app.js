@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { gsap } from "https://cdn.jsdelivr.net/npm/gsap@3.12.5/+esm";
-import { initRoamingCharacter } from "/3d-liukanshan-roaming/roaming-character.js?v=43";
+import { initRoamingCharacter } from "/3d-liukanshan-roaming/roaming-character.js?v=46";
 
 const app = document.getElementById("app");
 const toast = document.getElementById("toast");
