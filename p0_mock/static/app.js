@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { gsap } from "https://cdn.jsdelivr.net/npm/gsap@3.12.5/+esm";
-import { initRoamingCharacter } from "/3d-liukanshan-roaming/roaming-character.js?v=46";
+import { initRoamingCharacter } from "/3d-liukanshan-roaming/roaming-character.js?v=47";
 
 const app = document.getElementById("app");
 const toast = document.getElementById("toast");
@@ -58,7 +58,7 @@ let travelAnimationTimer = null;
 const savedRewardWalk = localStorage.getItem("liukanshan_reward_walk_enabled") ?? localStorage.getItem("liukanshan_level_walk_enabled");
 let rewardWalkEnabled = savedRewardWalk !== "0";
 let selectedPetSkin = "normal";
-const MODEL_PATH = "/3d-liukanshan-roaming/liukanshan-slot.glb?v=3";
+const MODEL_PATH = "/3d-liukanshan-roaming/liukanshan-slot.glb?v=5";
 const ONBOARDING_VERSION = "v2";
 const ONBOARDING_KEY = `liukanshan_onboarding_${ONBOARDING_VERSION}`;
 const STORY_INTRO_VERSION = "v1";

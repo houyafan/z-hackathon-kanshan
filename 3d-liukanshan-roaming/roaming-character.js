@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
 const DEFAULT_GHOST_TRAIL_CONFIG = {
     maxGhostCount: 8,
@@ -1267,6 +1268,7 @@ class RoamingCharacter {
 
     loadModel() {
         const loader = new GLTFLoader();
+        loader.setMeshoptDecoder(MeshoptDecoder);
         loader.load(
             this.config.modelPath,
             (gltf) => {
