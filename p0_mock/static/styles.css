@@ -2901,6 +2901,48 @@ button {
   margin: 12px 0 0;
 }
 
+.pet-skin-switcher {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 6px;
+  border: 1px solid rgba(22, 119, 255, 0.14);
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(248, 251, 255, 0.98), rgba(255, 255, 255, 0.98));
+}
+
+.pet-skin-switcher button {
+  min-width: 0;
+  height: 30px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #456078;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 28px;
+  white-space: nowrap;
+}
+
+.pet-skin-switcher button.active {
+  border-color: rgba(22, 119, 255, 0.34);
+  background: #fff;
+  color: #1677ff;
+  box-shadow: 0 6px 16px rgba(22, 119, 255, 0.12);
+}
+
+.pet-skin-switcher button[data-tone="gold"].active {
+  border-color: rgba(221, 157, 35, 0.38);
+  color: #a86f08;
+  box-shadow: 0 6px 16px rgba(221, 157, 35, 0.14);
+}
+
+.pet-skin-switcher button[data-tone="blue"].active {
+  border-color: rgba(22, 119, 255, 0.38);
+}
+
 .pet-hover-toggle {
   display: flex;
   align-items: center;

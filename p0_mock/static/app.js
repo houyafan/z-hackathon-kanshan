@@ -57,6 +57,7 @@ let levelEndingTimer = null;
 let travelAnimationTimer = null;
 const savedRewardWalk = localStorage.getItem("liukanshan_reward_walk_enabled") ?? localStorage.getItem("liukanshan_level_walk_enabled");
 let rewardWalkEnabled = savedRewardWalk !== "0";
+let selectedPetSkin = "normal";
 const MODEL_PATH = "/3d-liukanshan-roaming/liukanshan-slot.glb?v=2";
 const ONBOARDING_VERSION = "v2";
 const ONBOARDING_KEY = `liukanshan_onboarding_${ONBOARDING_VERSION}`;
@@ -79,6 +80,13 @@ const FALLBACK_LEVEL_REQUIREMENTS = [
   { level: 9, title: "星际领航员", requiredTotalExp: 1900 },
   { level: 10, title: "宇宙知识领航者", requiredTotalExp: 2500 },
 ];
+const PET_SKINS = [
+  { id: "normal", label: "普通", assetBase: "/static/assets/pet-level", tone: "normal" },
+  { id: "yanxuan", label: "盐选会员", assetBase: "/static/assets/yanxuan-member", tone: "gold" },
+  { id: "knowledge", label: "知识会员", assetBase: "/static/assets/knowledge-member", tone: "blue" },
+];
+const PET_SKIN_BY_ID = new Map(PET_SKINS.map((skin) => [skin.id, skin]));
+selectedPetSkin = normalizePetSkin(localStorage.getItem("liukanshan_pet_skin"));
 const RECOMMEND_GROWTH_TIP = "刘看山成长互动仅在推荐列表生效，进入推荐页阅读、点赞、评论、收藏后可获得成长。";
 const ADMIN_USER_TOKENS = new Set(["p2wcex", "sunny-27-1-97"]);
 const ADMIN_USER_UIDS = new Set(["1908940156829918831", "2013197829758268031"]);
@@ -418,16 +426,69 @@ function characterElement() {
   return document.getElementById("roamingCharacter");
 }
 
+function normalizePetSkin(value) {
+  return PET_SKINS.some((skin) => skin.id === value) ? value : "normal";
+}
+
+function activePetSkinId(level = profile?.level) {
+  return Number(level || 1) >= 2 ? normalizePetSkin(selectedPetSkin) : "normal";
+}
+
+function activePetSkin(level = profile?.level) {
+  return PET_SKIN_BY_ID.get(activePetSkinId(level)) || PET_SKINS[0];
+}
+
+function petSkinAssetUrl(level, skinId = selectedPetSkin) {
+  const safeLevel = Math.min(Math.max(1, Number(level || 1)), 10);
+  const normalizedSkinId = safeLevel >= 2 ? normalizePetSkin(skinId) : "normal";
+  const skin = PET_SKIN_BY_ID.get(normalizedSkinId) || PET_SKINS[0];
+  return `${skin.assetBase}/level-${String(safeLevel).padStart(2, "0")}.png`;
+}
+
+function petSkinSelectorHTML() {
+  const level = Number(profile?.level || 1);
+  if (level < 2) return "";
+  const activeSkin = activePetSkinId(level);
+  return `
+    <div class="pet-skin-switcher" aria-label="切换刘看山皮肤">
+      ${PET_SKINS.map((skin) => `
+        <button
+          type="button"
+          class="${skin.id === activeSkin ? "active" : ""}"
+          data-pet-skin="${escapeHTML(skin.id)}"
+          data-tone="${escapeHTML(skin.tone)}"
+          aria-pressed="${skin.id === activeSkin ? "true" : "false"}">
+          ${escapeHTML(skin.label)}
+        </button>
+      `).join("")}
+    </div>
+  `;
+}
+
+function switchPetSkin(skinId) {
+  const nextSkin = normalizePetSkin(skinId);
+  if (Number(profile?.level || 1) < 2) return;
+  selectedPetSkin = nextSkin;
+  localStorage.setItem("liukanshan_pet_skin", selectedPetSkin);
+  renderPetHoverCard();
+  replacePetPanels();
+  showToast(`已切换为${activePetSkin().label}形象`);
+}
+
 function currentLevelVisual() {
   if (!profile?.adopted) return null;
+  const skin = activePetSkin(profile.level);
+  const imageUrl = petSkinAssetUrl(profile.level, skin.id);
   return {
     level: profile.level,
-    imageUrl: profile.level2dImage,
-    thumbnailUrl: profile.level2dThumbnail || profile.level2dImage,
+    imageUrl,
+    thumbnailUrl: imageUrl,
     title: profile.levelTitle,
     effectStyle: profile.levelEffectStyle || "cute",
     shareBgImage: profile.shareBgImage,
     description: profile.levelVisualDescription,
+    skinId: skin.id,
+    skinLabel: skin.label,
   };
 }
 
@@ -448,9 +509,19 @@ async function loadLevelVisuals() {
 function visualForLevel(level) {
   const safeLevel = Math.max(1, Number(level || 1));
   const visuals = levelVisuals || [];
-  return [...visuals]
+  const visual = [...visuals]
     .filter((item) => Number(item.level) <= safeLevel)
     .sort((a, b) => Number(b.level) - Number(a.level))[0] || null;
+  if (!visual) return null;
+  const skin = activePetSkin(safeLevel);
+  const imageUrl = petSkinAssetUrl(safeLevel, skin.id);
+  return {
+    ...visual,
+    imageUrl,
+    thumbnailUrl: imageUrl,
+    skinId: skin.id,
+    skinLabel: skin.label,
+  };
 }
 
 function levelRequirementRows() {
@@ -3451,6 +3522,7 @@ function petPanel() {
         <button class="outline-btn" data-open-leaderboard>查看排行榜</button>
       </div>
       ${experienceHint}
+      ${petSkinSelectorHTML()}
       ${currentUserRankCard()}
       <div class="pet-level-showcase level-${escapeHTML(visual?.effectStyle || "cute")}">
         ${visualImage ? `<img src="${escapeHTML(visualImage)}" alt="${escapeHTML(visual.title || "刘看山等级形象")}">` : ""}
@@ -4291,6 +4363,11 @@ function bindPanelBasics() {
     if (button.dataset.basicBound) return;
     button.dataset.basicBound = "1";
     button.addEventListener("click", () => boostPetOneLevel(button));
+  });
+  document.querySelectorAll("[data-pet-skin]").forEach((button) => {
+    if (button.dataset.basicBound) return;
+    button.dataset.basicBound = "1";
+    button.addEventListener("click", () => switchPetSkin(button.dataset.petSkin));
   });
 }
 
