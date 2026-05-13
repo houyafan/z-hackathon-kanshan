@@ -1445,7 +1445,7 @@ class RoamingCharacter {
             if (this.isPointerHovering && !this.isDragRotating) {
                 this.playParkedIdleAnimation();
             } else {
-                this.stopParkedIdleAnimation();
+                this.holdParkedIdlePose();
             }
             return;
         }
@@ -1496,17 +1496,24 @@ class RoamingCharacter {
         this.lastLocomotionState = 'parked-idle';
     }
 
-    stopParkedIdleAnimation() {
+    holdParkedIdlePose() {
         const idleAction = this.idleClipName ? this.animationActions[this.idleClipName] : this.activeLocomotionAction;
         if (idleAction) {
+            if (this.activeLocomotionAction && this.activeLocomotionAction !== idleAction) {
+                this.activeLocomotionAction.stop();
+            }
             idleAction.paused = false;
-            idleAction.stop();
-        }
-        if (!idleAction || this.activeLocomotionAction === idleAction) {
+            idleAction.reset();
+            idleAction.setEffectiveWeight(1);
+            idleAction.play();
+            idleAction.paused = true;
+            this.activeLocomotionAction = idleAction;
+            this.lastLocomotionState = 'parked-idle-paused';
+            this.mixer?.update(0);
+        } else {
             this.activeLocomotionAction = null;
             this.lastLocomotionState = null;
         }
-        this.restoreModelBindPose();
     }
 
     isLocomotionAnimationDriving() {
@@ -1656,15 +1663,6 @@ class RoamingCharacter {
         this.model.rotation.z = 0;
     }
 
-    restoreModelBindPose() {
-        if (!this.model) return;
-        this.model.traverse((child) => {
-            if (child.isSkinnedMesh && child.skeleton) {
-                child.skeleton.pose();
-            }
-        });
-    }
-
     getHomePositions() {
         const initialHome = this.clampTarget(window.innerWidth - 150, window.innerHeight - 200);
         const centeredHome = this.clampTarget(window.innerWidth - 200, window.innerHeight - 260);
@@ -1779,7 +1777,7 @@ class RoamingCharacter {
         const shouldRotate = event.shiftKey || event.altKey || event.metaKey;
         this.isPointerHovering = false;
         if (this.isParkedAtHome()) {
-            this.stopParkedIdleAnimation();
+            this.holdParkedIdlePose();
             this.faceFront();
         }
         this.isDragRotating = true;
@@ -2516,7 +2514,7 @@ class RoamingCharacter {
         this.characterElement.addEventListener('pointerleave', () => {
             this.isPointerHovering = false;
             if (this.isParkedAtHome()) {
-                this.stopParkedIdleAnimation();
+                this.holdParkedIdlePose();
                 this.faceFront();
             }
         });
