@@ -1116,6 +1116,7 @@ class RoamingCharacter {
             enableDragRotate: true,
             dragRotateSpeed: 0.012,
             dragPitchLimit: 0.52,
+            homeIdleThreshold: 32,
             messages: [
                 "我来啦！",
                 "好的~",
@@ -1168,6 +1169,9 @@ class RoamingCharacter {
         this.isWaving = false;
         this.waveElapsed = 0;
         this.waveDuration = 1.2;
+        this.isPointerHovering = false;
+        this.dragMoved = false;
+        this.suppressNextClick = false;
         this.dragRotation = { yaw: 0, pitch: 0 };
         this.dragStart = { x: 0, y: 0, yaw: 0, pitch: 0, characterX: 0, characterY: 0 };
         this.dragPointerId = null;
@@ -1437,6 +1441,15 @@ class RoamingCharacter {
 
     updateLocomotionAnimation() {
         if (!this.mixer) return;
+        if (this.isParkedAtHome()) {
+            if (this.isPointerHovering && !this.isDragRotating) {
+                this.playParkedIdleAnimation();
+            } else {
+                this.stopParkedIdleAnimation();
+            }
+            return;
+        }
+
         let desired;
         if (this.isMoving && !this.isEvolving() && !this.isTraveling() && !this.isSpawning) {
             desired = this.runClipName ? 'run' : (this.idleClipName ? 'idle' : null);
@@ -1449,15 +1462,51 @@ class RoamingCharacter {
         if (!nextAction) return;
         const prevAction = this.activeLocomotionAction;
         if (prevAction && prevAction !== nextAction) {
+            prevAction.paused = false;
+            nextAction.paused = false;
             nextAction.reset();
             nextAction.setEffectiveWeight(1);
             nextAction.play();
             prevAction.crossFadeTo(nextAction, 0.25, false);
         } else {
+            nextAction.paused = false;
             nextAction.reset().fadeIn(0.2).play();
         }
         this.activeLocomotionAction = nextAction;
         this.lastLocomotionState = desired;
+    }
+
+    playParkedIdleAnimation() {
+        const idleAction = this.idleClipName ? this.animationActions[this.idleClipName] : null;
+        if (!idleAction) return;
+        if (this.activeLocomotionAction === idleAction) {
+            idleAction.paused = false;
+            idleAction.play();
+            this.lastLocomotionState = 'parked-idle';
+            return;
+        }
+        if (this.activeLocomotionAction && this.activeLocomotionAction !== idleAction) {
+            this.activeLocomotionAction.stop();
+        }
+        idleAction.reset();
+        idleAction.paused = false;
+        idleAction.setEffectiveWeight(1);
+        idleAction.play();
+        this.activeLocomotionAction = idleAction;
+        this.lastLocomotionState = 'parked-idle';
+    }
+
+    stopParkedIdleAnimation() {
+        const idleAction = this.idleClipName ? this.animationActions[this.idleClipName] : this.activeLocomotionAction;
+        if (idleAction) {
+            idleAction.paused = false;
+            idleAction.stop();
+        }
+        if (!idleAction || this.activeLocomotionAction === idleAction) {
+            this.activeLocomotionAction = null;
+            this.lastLocomotionState = null;
+        }
+        this.restoreModelBindPose();
     }
 
     isLocomotionAnimationDriving() {
@@ -1508,7 +1557,9 @@ class RoamingCharacter {
                     this.characterShadow.style.opacity = 0.25 - bounce * 0.1;
                 }
             } else {
-                if (this.isLocomotionAnimationDriving()) {
+                if (this.isParkedAtHome()) {
+                    this.applyParkedHomePose();
+                } else if (this.isLocomotionAnimationDriving()) {
                     this.model.position.y = this.baseModelY;
                     this.model.rotation.z = 0;
                     this.characterShadow.style.transform = `translateX(-50%) scale(1)`;
@@ -1600,8 +1651,58 @@ class RoamingCharacter {
 
     faceFront() {
         if (!this.model) return;
+        this.model.rotation.x = 0;
         this.model.rotation.y = 0;
         this.model.rotation.z = 0;
+    }
+
+    restoreModelBindPose() {
+        if (!this.model) return;
+        this.model.traverse((child) => {
+            if (child.isSkinnedMesh && child.skeleton) {
+                child.skeleton.pose();
+            }
+        });
+    }
+
+    getHomePositions() {
+        const initialHome = this.clampTarget(window.innerWidth - 150, window.innerHeight - 200);
+        const centeredHome = this.clampTarget(window.innerWidth - 200, window.innerHeight - 260);
+        return [initialHome, centeredHome];
+    }
+
+    isAtHomePosition() {
+        const threshold = this.config.homeIdleThreshold;
+        return this.getHomePositions().some((position) => {
+            const dx = this.characterX - position.x;
+            const dy = this.characterY - position.y;
+            return Math.sqrt(dx * dx + dy * dy) <= threshold;
+        });
+    }
+
+    isParkedAtHome() {
+        return !this.isMoving
+            && !this.isSpawning
+            && !this.isEvolving()
+            && !this.isTraveling()
+            && this.isAtHomePosition();
+    }
+
+    applyParkedHomePose() {
+        if (!this.model) return;
+        this.model.position.y = this.baseModelY;
+        this.model.rotation.x = 0;
+        this.model.rotation.z = 0;
+
+        if (!this.isDragRotating) {
+            this.dragRotation.yaw = 0;
+            this.dragRotation.pitch = 0;
+        }
+
+        this.model.rotation.y = 0;
+
+        this.characterShadow.style.transform = `translateX(-50%) scale(1)`;
+        this.characterShadow.style.opacity = 0.25;
     }
 
     setRenderSize(width, height) {
@@ -1648,6 +1749,7 @@ class RoamingCharacter {
 
     applyDragRotation() {
         if (!this.model || this.isSpawning || this.isEvolving() || this.isTraveling()) return;
+        if (this.isParkedAtHome() && !this.isDragRotating) return;
         this.model.rotation.x = THREE.MathUtils.clamp(
             this.dragRotation.pitch,
             -this.config.dragPitchLimit,
@@ -1675,9 +1777,16 @@ class RoamingCharacter {
     startDragRotate(event) {
         if (!this.config.enableDragRotate || !this.model || this.shouldIgnoreDragTarget(event.target)) return;
         const shouldRotate = event.shiftKey || event.altKey || event.metaKey;
+        this.isPointerHovering = false;
+        if (this.isParkedAtHome()) {
+            this.stopParkedIdleAnimation();
+            this.faceFront();
+        }
         this.isDragRotating = true;
         this.dragPointerId = event.pointerId;
         this.dragMode = shouldRotate ? 'rotate' : 'move';
+        this.dragMoved = false;
+        this.suppressNextClick = false;
         this.dragStart.x = event.clientX;
         this.dragStart.y = event.clientY;
         this.dragStart.yaw = this.dragRotation.yaw;
@@ -1690,13 +1799,15 @@ class RoamingCharacter {
         this.characterElement.classList.add(shouldRotate ? 'is-drag-rotating' : 'is-drag-moving');
         this.emitInteractionBubble(this.dragMode, event);
         this.characterElement.setPointerCapture?.(event.pointerId);
-        event.preventDefault();
     }
 
     updateDragRotate(event) {
         if (!this.isDragRotating || event.pointerId !== this.dragPointerId) return;
         const dx = event.clientX - this.dragStart.x;
         const dy = event.clientY - this.dragStart.y;
+        if (Math.hypot(dx, dy) > 4) {
+            this.dragMoved = true;
+        }
         if (this.dragMode === 'move') {
             const target = this.clampTarget(this.dragStart.characterX + dx, this.dragStart.characterY + dy);
             this.characterX = target.x;
@@ -1713,17 +1824,25 @@ class RoamingCharacter {
                 this.config.dragPitchLimit
             );
         }
-        event.preventDefault();
+        if (this.dragMoved) {
+            event.preventDefault();
+        }
     }
 
     stopDragRotate(event) {
         if (!this.isDragRotating || event.pointerId !== this.dragPointerId) return;
+        const shouldSuppressClick = this.dragMoved;
         this.isDragRotating = false;
         this.dragPointerId = null;
+        this.isPointerHovering = false;
+        this.suppressNextClick = shouldSuppressClick;
+        this.dragMoved = false;
         this.dragMode = null;
         this.characterElement.classList.remove('is-drag-rotating', 'is-drag-moving');
         this.characterElement.releasePointerCapture?.(event.pointerId);
-        event.preventDefault();
+        if (shouldSuppressClick) {
+            event.preventDefault();
+        }
     }
 
     findWaveBone(options = {}) {
@@ -2390,6 +2509,24 @@ class RoamingCharacter {
     }
 
     setupEventListeners() {
+        this.characterElement.addEventListener('pointerenter', () => {
+            if (this.isDragRotating) return;
+            this.isPointerHovering = true;
+        });
+        this.characterElement.addEventListener('pointerleave', () => {
+            this.isPointerHovering = false;
+            if (this.isParkedAtHome()) {
+                this.stopParkedIdleAnimation();
+                this.faceFront();
+            }
+        });
+        this.characterElement.addEventListener('click', (event) => {
+            if (!this.suppressNextClick) return;
+            this.suppressNextClick = false;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+        }, true);
+
         this.characterElement.addEventListener('pointerdown', (event) => this.startDragRotate(event));
         this.characterElement.addEventListener('pointermove', (event) => this.updateDragRotate(event));
         this.characterElement.addEventListener('pointerup', (event) => this.stopDragRotate(event));
