@@ -84,7 +84,7 @@ const FALLBACK_LEVEL_REQUIREMENTS = [
   { level: 10, title: "宇宙知识领航者", requiredTotalExp: 2500 },
 ];
 const PET_SKINS = [
-  { id: "normal", label: "普通", assetBase: "/static/assets/pet-level", tone: "normal" },
+  { id: "normal", label: "MBTI", assetBase: "/static/assets/pet-level", tone: "normal" },
   { id: "yanxuan", label: "盐选会员", assetBase: "/static/assets/yanxuan-member", tone: "gold" },
   { id: "knowledge", label: "知识会员", assetBase: "/static/assets/knowledge-member", tone: "blue" },
 ];
