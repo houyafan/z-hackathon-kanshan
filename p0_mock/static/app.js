@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { gsap } from "https://cdn.jsdelivr.net/npm/gsap@3.12.5/+esm";
 import { initRoamingCharacter } from "/3d-liukanshan-roaming/roaming-character.js?v=55";
-import { playFinaleShipEffect } from "/static/finale-ship-effect.js?v=17";
+import { playLevelStageEffect, stageForLevel } from "/static/finale-ship-effect.js?v=21";
 
 const app = document.getElementById("app");
 const toast = document.getElementById("toast");
@@ -5694,25 +5694,15 @@ function showReward(reward, sourceElement) {
     }
   }
   if (character && reward.levelUp) {
-    const reachedFinale = Number(reward.toLevel) >= 10;
-    if (reachedFinale) {
-      playFinaleShipEffect({ message, duration: LEVEL_UP_EFFECT_MS });
-      pulseCharacter("pet-level-up", LEVEL_UP_EFFECT_MS);
-      levelUpReturnTimer = window.setTimeout(() => {
-        character?.setMessage?.(profileBubbleTitle(), { autoHide: 2200 });
-        levelUpReturnTimer = null;
-      }, LEVEL_UP_EFFECT_MS + EFFECT_SETTLE_MS);
-    } else {
-      const { x: centerX, y: centerY } = effectStageCenter();
-      character.setPosition?.(centerX, centerY);
-      character.playEvolveEffect?.({ message, autoHide: LEVEL_UP_EFFECT_MS });
-      pulseCharacter("pet-level-up", LEVEL_UP_EFFECT_MS);
-      levelUpReturnTimer = window.setTimeout(() => {
-        character?.setPosition?.(window.innerWidth - 150, window.innerHeight - 200);
-        character?.setMessage?.(profileBubbleTitle(), { autoHide: 2200 });
-        levelUpReturnTimer = null;
-      }, LEVEL_UP_EFFECT_MS + EFFECT_SETTLE_MS);
-    }
+    // 全部升级走 finale-ship 风格的分阶段合影动画：
+    // Lv 1-3 冰山 / Lv 4-6 圣诞树 / Lv 7-9 小屋 / Lv 10 海盗船
+    const stage = stageForLevel(reward.toLevel);
+    playLevelStageEffect(stage, { message, duration: LEVEL_UP_EFFECT_MS });
+    pulseCharacter("pet-level-up", LEVEL_UP_EFFECT_MS);
+    levelUpReturnTimer = window.setTimeout(() => {
+      character?.setMessage?.(profileBubbleTitle(), { autoHide: 2200 });
+      levelUpReturnTimer = null;
+    }, LEVEL_UP_EFFECT_MS + EFFECT_SETTLE_MS);
   }
   if (sourceElement && character && !reward.levelUp && rewardWalkEnabled) {
     const defaultArrivedMessage = character.config.arrivedMessage;
