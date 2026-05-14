@@ -1748,12 +1748,13 @@ class RoamingCharacter {
     applyDragRotation() {
         if (!this.model || this.isSpawning || this.isEvolving() || this.isTraveling()) return;
         if (this.isParkedAtHome() && !this.isDragRotating) return;
+        const baseYaw = this.isMoving ? this.model.rotation.y : 0;
         this.model.rotation.x = THREE.MathUtils.clamp(
             this.dragRotation.pitch,
             -this.config.dragPitchLimit,
             this.config.dragPitchLimit
         );
-        this.model.rotation.y += this.dragRotation.yaw;
+        this.model.rotation.y = baseYaw + this.dragRotation.yaw;
     }
 
     shouldIgnoreDragTarget(target) {
@@ -1830,6 +1831,7 @@ class RoamingCharacter {
     stopDragRotate(event) {
         if (!this.isDragRotating || event.pointerId !== this.dragPointerId) return;
         const shouldSuppressClick = this.dragMoved;
+        const pointerId = this.dragPointerId;
         this.isDragRotating = false;
         this.dragPointerId = null;
         this.isPointerHovering = false;
@@ -1837,9 +1839,25 @@ class RoamingCharacter {
         this.dragMoved = false;
         this.dragMode = null;
         this.characterElement.classList.remove('is-drag-rotating', 'is-drag-moving');
-        this.characterElement.releasePointerCapture?.(event.pointerId);
+        if (pointerId !== null && this.characterElement.hasPointerCapture?.(pointerId)) {
+            this.characterElement.releasePointerCapture?.(pointerId);
+        }
         if (shouldSuppressClick) {
             event.preventDefault();
+        }
+    }
+
+    cancelDragRotate() {
+        if (!this.isDragRotating) return;
+        const pointerId = this.dragPointerId;
+        this.isDragRotating = false;
+        this.dragPointerId = null;
+        this.isPointerHovering = false;
+        this.dragMoved = false;
+        this.dragMode = null;
+        this.characterElement.classList.remove('is-drag-rotating', 'is-drag-moving');
+        if (pointerId !== null && this.characterElement.hasPointerCapture?.(pointerId)) {
+            this.characterElement.releasePointerCapture?.(pointerId);
         }
     }
 
@@ -2529,6 +2547,8 @@ class RoamingCharacter {
         this.characterElement.addEventListener('pointermove', (event) => this.updateDragRotate(event));
         this.characterElement.addEventListener('pointerup', (event) => this.stopDragRotate(event));
         this.characterElement.addEventListener('pointercancel', (event) => this.stopDragRotate(event));
+        this.characterElement.addEventListener('lostpointercapture', () => this.cancelDragRotate());
+        window.addEventListener('blur', () => this.cancelDragRotate());
 
         if (this.config.enableClickMove) {
             document.addEventListener('click', (e) => {
