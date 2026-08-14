@@ -7,6 +7,7 @@ from urllib.request import Request, urlopen
 import base64
 import hashlib
 import hmac
+import html
 import json
 import mimetypes
 import os
@@ -5479,6 +5480,35 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def send_html(self, status, html, extra_headers=None):
+        data = html.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        for key, value in (extra_headers or {}).items():
+            self.send_header(key, value)
+        self.end_headers()
+        self.wfile.write(data)
+
+    def send_oauth_error_page(self):
+        session, _ = self.oauth_session(create=False)
+        error = session.get("error") if session else None
+        code = html.escape(str((error or {}).get("code") or "OAUTH_FAILED"))
+        message = html.escape(str((error or {}).get("message") or "OAuth 授权未完成，请重新尝试。"))
+        page_html = f"""<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>OAuth 授权失败</title></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:720px;margin:80px auto;line-height:1.7;color:#1f2937">
+  <h1>OAuth 授权失败</h1>
+  <p><strong>错误码：</strong>{code}</p>
+  <p><strong>错误信息：</strong>{message}</p>
+  <p>请检查线上 Secret、App ID / App Key 是否匹配，以及知乎开放平台登记的回调地址是否为当前域名的 <code>/auth/callback</code>。</p>
+  <p><a href="/api/oauth/status">查看 OAuth 状态</a> · <a href="/auth/login?next=/">重新授权</a></p>
+</body>
+</html>"""
+        self.send_html(401, page_html)
+
     def send_file(self, path):
         if not path.exists() or not path.is_file():
             self.send_error(404)
@@ -5714,7 +5744,11 @@ class Handler(BaseHTTPRequestHandler):
                     "code": str(getattr(error, "code", "OAUTH_FAILED")),
                     "message": str(error)[:200],
                 }
-                self.send_redirect("/?oauth=error", cookie)
+                self.send_redirect("/oauth/error", cookie)
+            return
+
+        if path == "/oauth/error":
+            self.send_oauth_error_page()
             return
 
         if path == "/api/auth/me":
