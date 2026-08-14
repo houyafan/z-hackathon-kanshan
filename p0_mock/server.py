@@ -2,6 +2,7 @@
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from http.cookies import SimpleCookie
 from pathlib import Path
+from urllib.error import HTTPError
 from urllib.parse import parse_qs, quote, urlencode, unquote, urlparse
 from urllib.request import Request, urlopen
 import base64
@@ -2090,10 +2091,31 @@ def sys_platform_is_macos():
 
 
 def oauth_app_key():
-    return os.environ.get("ZHIHU_OAUTH_APP_KEY") or keychain_secret(
-        ZH_OAUTH_CREDENTIAL_SERVICE,
-        ZH_OAUTH_CREDENTIAL_ACCOUNT,
-    )
+    return oauth_app_key_details()["value"]
+
+
+def secret_fingerprint(value):
+    if not value:
+        return None
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:12]
+
+
+def oauth_app_key_details():
+    env_value = os.environ.get("ZHIHU_OAUTH_APP_KEY")
+    if env_value:
+        return {
+            "value": env_value,
+            "source": "env:ZHIHU_OAUTH_APP_KEY",
+            "length": len(env_value),
+            "sha256Prefix": secret_fingerprint(env_value),
+        }
+    keychain_value = keychain_secret(ZH_OAUTH_CREDENTIAL_SERVICE, ZH_OAUTH_CREDENTIAL_ACCOUNT)
+    return {
+        "value": keychain_value,
+        "source": "macOS Keychain" if keychain_value else "missing",
+        "length": len(keychain_value),
+        "sha256Prefix": secret_fingerprint(keychain_value),
+    }
 
 
 def oauth_access_secret():
@@ -2106,6 +2128,40 @@ def oauth_configured():
 
 def oauth_backend_configured():
     return bool(oauth_configured() and oauth_access_secret())
+
+
+def oauth_exchange_debug(code):
+    app_key = oauth_app_key_details()
+    access_secret = oauth_access_secret()
+    access_secret_source = "missing"
+    if os.environ.get("ZHIHU_ACCESS_SECRET"):
+        access_secret_source = "env:ZHIHU_ACCESS_SECRET"
+    elif access_secret:
+        access_secret_source = "macOS Keychain"
+    return {
+        "stage": "callback_received",
+        "codeReceived": bool(code),
+        "codeLength": len(code or ""),
+        "tokenExchange": {
+            "url": f"{ZH_OPENAPI_BASE}/access_token",
+            "method": "POST",
+            "contentType": "application/x-www-form-urlencoded",
+            "appId": ZH_OAUTH_APP_ID,
+            "appKeySource": app_key["source"],
+            "appKeyLength": app_key["length"],
+            "appKeySha256Prefix": app_key["sha256Prefix"],
+            "grantType": "authorization_code",
+            "redirectUri": ZH_OAUTH_REDIRECT_URI,
+            "codeField": "code",
+            "codeLength": len(code or ""),
+        },
+        "accessSecret": {
+            "source": access_secret_source,
+            "configured": bool(access_secret),
+            "length": len(access_secret or ""),
+            "sha256Prefix": secret_fingerprint(access_secret),
+        },
+    }
 
 
 def oauth_session_expired(session):
@@ -2122,6 +2178,7 @@ def oauth_logout_session(session):
         "state": None,
         "state_verified": None,
         "error": None,
+        "debug": None,
     })
 
 
@@ -2144,8 +2201,16 @@ def read_json_response(response):
 
 def zhihu_json_request(url, *, method="GET", data=None, headers=None, timeout=20):
     request = Request(url, data=data, method=method, headers=headers or {})
-    with urlopen(request, timeout=timeout) as response:
-        return read_json_response(response)
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            return read_json_response(response)
+    except HTTPError as error:
+        body = error.read().decode("utf-8", errors="replace")
+        try:
+            payload = json.loads(body)
+        except json.JSONDecodeError:
+            payload = {"code": error.code, "message": body or error.reason}
+        raise oauth_payload_error(payload, f"HTTP {error.code}")
 
 
 def exchange_oauth_access_token(code):
@@ -5496,6 +5561,8 @@ class Handler(BaseHTTPRequestHandler):
         error = session.get("error") if session else None
         code = html.escape(str((error or {}).get("code") or "OAUTH_FAILED"))
         message = html.escape(str((error or {}).get("message") or "OAuth 授权未完成，请重新尝试。"))
+        debug = session.get("debug") if session else None
+        debug_text = html.escape(json.dumps(debug or {}, ensure_ascii=False, indent=2))
         page_html = f"""<!doctype html>
 <html lang="zh-CN">
 <head><meta charset="utf-8"><title>OAuth 授权失败</title></head>
@@ -5503,6 +5570,8 @@ class Handler(BaseHTTPRequestHandler):
   <h1>OAuth 授权失败</h1>
   <p><strong>错误码：</strong>{code}</p>
   <p><strong>错误信息：</strong>{message}</p>
+  <h2>诊断信息</h2>
+  <pre style="white-space:pre-wrap;background:#f6f8fa;padding:16px;border-radius:8px;overflow:auto">{debug_text}</pre>
   <p>请检查线上 Secret、App ID / App Key 是否匹配，以及知乎开放平台登记的回调地址是否为当前域名的 <code>/auth/callback</code>。</p>
   <p><a href="/api/oauth/status">查看 OAuth 状态</a> · <a href="/auth/login?next=/">重新授权</a></p>
 </body>
@@ -5706,19 +5775,27 @@ class Handler(BaseHTTPRequestHandler):
             qs = parse_qs(parsed.query)
             code = (qs.get("authorization_code") or qs.get("code") or [""])[0]
             returned_state = (qs.get("state") or [""])[0]
+            session["debug"] = oauth_exchange_debug(code)
             try:
                 if not code:
                     raise RuntimeError("回调缺少 authorization_code")
                 if returned_state and not hmac.compare_digest(returned_state, session.get("state") or ""):
                     raise RuntimeError("state 校验失败")
+                session["debug"]["stage"] = "token_exchange_started"
                 token_payload = exchange_oauth_access_token(code)
                 token = token_payload.get("access_token")
                 expires_in = int(token_payload.get("expires_in") or 0)
+                session["debug"]["stage"] = "token_exchange_succeeded"
+                session["debug"]["tokenReceived"] = bool(token)
+                session["debug"]["expiresIn"] = expires_in
                 access_secret = oauth_access_secret()
                 profile = None
                 try:
+                    session["debug"]["stage"] = "profile_fetch_started"
                     profile = fetch_oauth_profile(access_secret, token)
+                    session["debug"]["profileFetched"] = bool(profile)
                 except Exception:
+                    session["debug"]["profileFetched"] = False
                     profile = None
                 storage_user = mock_zhihu_user()
                 if profile and profile.get("uid"):
@@ -5738,8 +5815,11 @@ class Handler(BaseHTTPRequestHandler):
                     "state_verified": bool(returned_state),
                     "error": None,
                 })
+                session["debug"]["stage"] = "authorized"
                 self.send_redirect(safe_next_url(session.get("next_url") or "/"), cookie)
             except Exception as error:
+                if session.get("debug"):
+                    session["debug"]["failedStage"] = session["debug"].get("stage")
                 session["error"] = {
                     "code": str(getattr(error, "code", "OAUTH_FAILED")),
                     "message": str(error)[:200],
@@ -5774,6 +5854,7 @@ class Handler(BaseHTTPRequestHandler):
                 "stateVerified": session.get("state_verified"),
                 "expiresAt": datetime.fromtimestamp(session["expires_at"], APP_TZ).isoformat() if session.get("expires_at") else None,
                 "error": session.get("error"),
+                "debug": session.get("debug"),
                 "interfaces": ZHIHU_OAUTH_USER_INTERFACES,
                 "localPreviewOnly": bool(LOCAL_AUTH_BYPASS and self.is_local_request()),
             }
