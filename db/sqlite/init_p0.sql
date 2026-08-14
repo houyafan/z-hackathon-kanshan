@@ -20,41 +20,6 @@ CREATE TABLE IF NOT EXISTS zhihu_user (
   UNIQUE (uid)
 );
 
-CREATE TABLE IF NOT EXISTS zhihu_oauth_token (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id INTEGER NOT NULL,
-  access_token TEXT NOT NULL,
-  token_type TEXT NOT NULL DEFAULT 'Bearer',
-  expires_at TEXT NOT NULL,
-  scope TEXT DEFAULT NULL,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-  UNIQUE (user_id)
-);
-
-CREATE TABLE IF NOT EXISTS auth_session (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  session_id TEXT NOT NULL,
-  user_id INTEGER NOT NULL,
-  expires_at TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-  UNIQUE (session_id)
-);
-
-CREATE TABLE IF NOT EXISTS oauth_state (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  state TEXT NOT NULL,
-  next_url TEXT DEFAULT NULL,
-  expires_at TEXT NOT NULL,
-  consumed_at TEXT DEFAULT NULL,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-  UNIQUE (state)
-);
-
 CREATE TABLE IF NOT EXISTS pet_profile (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
@@ -500,12 +465,6 @@ CREATE INDEX IF NOT EXISTS idx_pet_travel_event_rank
 
 CREATE INDEX IF NOT EXISTS idx_pet_travel_handbook_user
   ON pet_travel_handbook (user_id, created_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_auth_session_user
-  ON auth_session (user_id, expires_at);
-
-CREATE INDEX IF NOT EXISTS idx_oauth_state_expiry
-  ON oauth_state (state, expires_at, consumed_at);
 
 INSERT OR IGNORE INTO pet_level_config
   (level, stage, required_total_exp, title, unlock_features)

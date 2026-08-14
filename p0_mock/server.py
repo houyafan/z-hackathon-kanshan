@@ -12,6 +12,7 @@ import mimetypes
 import os
 import secrets
 import sqlite3
+import subprocess
 import threading
 import time
 import uuid
@@ -29,7 +30,6 @@ BUNDLED_CONFIG_PATH = ROOT / "p0_mock" / "config.json"
 LEVEL_VISUAL_CONFIG_PATH = ROOT / "p0_mock" / "level_visuals.json"
 RECOMMEND_FEED_PATH = ROOT / "p0_mock" / "data" / "zhihu_recommend_feed.json"
 DEFAULT_USER_ID = 10001
-SESSION_COOKIE_NAME = "lks_session"
 APP_TZ = timezone(timedelta(hours=8), "Asia/Shanghai")
 ADMIN_USER_TOKENS = {"p2wcex", "sunny-27-1-97"}
 ADMIN_USER_UIDS = {1908940156829918831, 2013197829758268031}
@@ -56,14 +56,14 @@ def env_bool(name):
 
 def apply_env_overrides(config):
     string_overrides = {
-        "auth_mode": "AUTH_MODE",
         "zhihu_openapi_base": "ZH_OPENAPI_BASE",
         "zhihu_hot_list_api_url": "ZH_HOT_LIST_API_URL",
         "zhihu_hot_list_access_secret": "ZH_HOT_LIST_ACCESS_SECRET",
         "zhihu_access_secret": "ZH_ACCESS_SECRET",
-        "zhihu_app_id": "ZH_APP_ID",
-        "zhihu_app_key": "ZH_APP_KEY",
-        "zhihu_auth_redirect_uri": "ZH_AUTH_REDIRECT_URI",
+        "zhihu_oauth_app_id": "ZHIHU_OAUTH_APP_ID",
+        "zhihu_oauth_redirect_uri": "ZHIHU_OAUTH_REDIRECT_URI",
+        "zhihu_oauth_credential_service": "ZHIHU_OAUTH_CREDENTIAL_SERVICE",
+        "zhihu_oauth_credential_account": "ZHIHU_OAUTH_CREDENTIAL_ACCOUNT",
     }
     for key, env_name in string_overrides.items():
         value = os.environ.get(env_name)
@@ -71,12 +71,11 @@ def apply_env_overrides(config):
             config[key] = value
 
     public_base_url = os.environ.get("PUBLIC_BASE_URL")
-    if public_base_url and not os.environ.get("ZH_AUTH_REDIRECT_URI"):
-        config["zhihu_auth_redirect_uri"] = f"{public_base_url.rstrip('/')}/auth/callback"
+    if public_base_url and not os.environ.get("ZHIHU_OAUTH_REDIRECT_URI"):
+        config["zhihu_oauth_redirect_uri"] = f"{public_base_url.rstrip('/')}/auth/callback"
 
     int_overrides = {
         "session_ttl_hours": "SESSION_TTL_HOURS",
-        "state_ttl_minutes": "STATE_TTL_MINUTES",
     }
     for key, env_name in int_overrides.items():
         value = os.environ.get(env_name)
@@ -92,22 +91,22 @@ def apply_env_overrides(config):
 
 def load_config():
     default_config = {
-        "auth_mode": "mock",
         "zhihu_openapi_base": "https://openapi.zhihu.com",
         "zhihu_hot_list_api_url": "https://developer.zhihu.com/api/v1/content/hot_list",
         "zhihu_hot_list_access_secret": "",
         "zhihu_access_secret": "",
-        "zhihu_app_id": "",
-        "zhihu_app_key": "",
-        "zhihu_auth_redirect_uri": "http://127.0.0.1:5173/auth/callback",
+        "zhihu_oauth_enabled": True,
+        "zhihu_oauth_app_id": "",
+        "zhihu_oauth_redirect_uri": "",
+        "zhihu_oauth_credential_service": "zhihu-hackathon:liukanshan-3d:local",
+        "zhihu_oauth_credential_account": "oauth-app-key",
         "community_base_url": "https://openapi.zhihu.com",
         "community_app_key": "",
         "community_app_secret": "",
         "community_ring_id": "",
         "community_fallback_ring_ids": ["2001009660925334090", "2015023739549529606"],
-        "session_ttl_hours": 24,
-        "state_ttl_minutes": 10,
-        "local_auth_bypass": False,
+        "session_ttl_hours": 8,
+        "local_auth_bypass": True,
         "mock_user": {
             "uid": DEFAULT_USER_ID,
             "fullname": "看山七子",
@@ -137,9 +136,6 @@ def load_config():
         **bundled_config.get("mock_user", {}),
         **external_config.get("mock_user", {}),
     }
-    for key in ("zhihu_app_id", "zhihu_app_key", "zhihu_auth_redirect_uri"):
-        if not merged.get(key) and bundled_config.get(key):
-            merged[key] = bundled_config[key]
     return apply_env_overrides(merged)
 
 
@@ -160,10 +156,13 @@ ZH_HOT_LIST_ACCESS_SECRET = str(
     or os.environ.get("ZH_ACCESS_SECRET")
     or ""
 )
-ZH_APP_ID = str(CONFIG.get("zhihu_app_id") or "")
-ZH_APP_KEY = str(CONFIG.get("zhihu_app_key") or "")
-ZH_AUTH_REDIRECT_URI = str(CONFIG.get("zhihu_auth_redirect_uri") or "http://127.0.0.1:5173/auth/callback")
-AUTH_MODE = str(CONFIG.get("auth_mode") or ("oauth" if ZH_APP_ID and ZH_APP_KEY else "mock")).lower()
+ZH_OAUTH_ENABLED = bool(CONFIG.get("zhihu_oauth_enabled", True))
+ZH_OAUTH_APP_ID = str(CONFIG.get("zhihu_oauth_app_id") or "")
+ZH_OAUTH_REDIRECT_URI = str(CONFIG.get("zhihu_oauth_redirect_uri") or "")
+ZH_OAUTH_CREDENTIAL_SERVICE = str(
+    CONFIG.get("zhihu_oauth_credential_service") or "zhihu-hackathon:liukanshan-3d:local"
+)
+ZH_OAUTH_CREDENTIAL_ACCOUNT = str(CONFIG.get("zhihu_oauth_credential_account") or "oauth-app-key")
 MOCK_USER = CONFIG["mock_user"]
 COMMUNITY_BASE_URL = str(CONFIG.get("community_base_url") or ZH_OPENAPI_BASE).rstrip("/")
 COMMUNITY_APP_KEY = str(CONFIG.get("community_app_key") or "")
@@ -174,8 +173,8 @@ COMMUNITY_FALLBACK_RING_IDS = [
     for item in (CONFIG.get("community_fallback_ring_ids") or [])
     if str(item).strip()
 ]
-SESSION_TTL_HOURS = int(CONFIG.get("session_ttl_hours") or 24)
-STATE_TTL_MINUTES = int(CONFIG.get("state_ttl_minutes") or 10)
+SESSION_COOKIE_NAME = "lks_session"
+SESSION_TTL_HOURS = int(CONFIG.get("session_ttl_hours") or 8)
 LOCAL_AUTH_BYPASS = bool(CONFIG.get("local_auth_bypass"))
 FOLLOW_MOMENT_EXP = 2
 FOLLOW_MOMENT_MAX_EXP_PER_SYNC = 10
@@ -707,26 +706,16 @@ def migrate_project_daily_metric(conn):
         """
         INSERT INTO project_daily_metric
           (stat_date, registered_user_count, login_count, created_at, updated_at)
-        SELECT stat_date, SUM(registered_user_count), SUM(login_count), MIN(created_at), ?
+        SELECT stat_date, registered_user_count, 0, created_at, ?
         FROM (
           SELECT substr(created_at, 1, 10) AS stat_date,
                  COUNT(*) AS registered_user_count,
-                 0 AS login_count,
                  MIN(created_at) AS created_at
           FROM zhihu_user
           WHERE created_at IS NOT NULL
           GROUP BY substr(created_at, 1, 10)
-          UNION ALL
-          SELECT substr(created_at, 1, 10) AS stat_date,
-                 0 AS registered_user_count,
-                 COUNT(*) AS login_count,
-                 MIN(created_at) AS created_at
-          FROM auth_session
-          WHERE created_at IS NOT NULL
-          GROUP BY substr(created_at, 1, 10)
         )
         WHERE stat_date IS NOT NULL AND stat_date != ''
-        GROUP BY stat_date
         ON CONFLICT(stat_date) DO NOTHING
         """,
         (now_text(),),
@@ -2069,181 +2058,198 @@ def upsert_zhihu_user(conn, user):
     return fetch_user(conn, uid)
 
 
-def save_oauth_token(conn, user_id, token):
-    expires_in = int(token.get("expires_in") or 3600)
-    conn.execute(
-        """
-        INSERT INTO zhihu_oauth_token
-          (user_id, access_token, token_type, expires_at, scope, created_at, updated_at)
-        VALUES
-          (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(user_id) DO UPDATE SET
-          access_token = excluded.access_token,
-          token_type = excluded.token_type,
-          expires_at = excluded.expires_at,
-          scope = excluded.scope,
-          updated_at = excluded.updated_at
-        """,
-        (
-            user_id,
-            token["access_token"],
-            token.get("token_type") or "Bearer",
-            future_text(seconds=expires_in),
-            token.get("scope"),
-            now_text(),
-            now_text(),
-        ),
+ZHIHU_OAUTH_USER_INTERFACES = [
+    {"id": "contents", "name": "我的创作", "endpoint": "/api/v1/user/contents"},
+    {"id": "followees", "name": "我的关注", "endpoint": "/api/v1/user/followees"},
+    {"id": "favlists", "name": "收藏夹", "endpoint": "/api/v1/user/favlists"},
+    {"id": "favlist_contents", "name": "收藏内容", "endpoint": "/api/v1/user/favlist_contents"},
+    {"id": "collections", "name": "近期收藏", "endpoint": "/api/v1/user/collections"},
+]
+OAUTH_SESSIONS = {}
+
+
+def keychain_secret(service, account):
+    if not service or not account or not sys_platform_is_macos():
+        return ""
+    try:
+        result = subprocess.run(
+            ["/usr/bin/security", "find-generic-password", "-s", service, "-a", account, "-w"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except Exception:
+        return ""
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def sys_platform_is_macos():
+    return os.uname().sysname == "Darwin" if hasattr(os, "uname") else False
+
+
+def oauth_app_key():
+    return os.environ.get("ZHIHU_OAUTH_APP_KEY") or keychain_secret(
+        ZH_OAUTH_CREDENTIAL_SERVICE,
+        ZH_OAUTH_CREDENTIAL_ACCOUNT,
     )
 
 
-def create_session(conn, user_id):
-    session_id = secrets.token_urlsafe(32)
-    created_at = now_text()
-    conn.execute(
-        """
-        INSERT INTO auth_session
-          (session_id, user_id, expires_at, created_at, updated_at)
-        VALUES
-          (?, ?, ?, ?, ?)
-        """,
-        (session_id, user_id, future_text(hours=SESSION_TTL_HOURS), created_at, created_at),
-    )
-    record_project_daily_metric(conn, login_delta=1, at_text=created_at)
-    return session_id
+def oauth_access_secret():
+    return os.environ.get("ZHIHU_ACCESS_SECRET") or keychain_secret("zhihu-cli", "access-secret")
 
 
-def fetch_session(conn, session_id):
-    if not session_id:
-        return None
-    row = conn.execute(
-        """
-        SELECT s.*, u.fullname, u.avatar_path, u.headline
-        FROM auth_session s
-        JOIN zhihu_user u ON u.uid = s.user_id
-        WHERE s.session_id = ?
-        """,
-        (session_id,),
-    ).fetchone()
-    if row is None:
-        return None
-    if parse_time(row["expires_at"]) <= now_dt():
-        conn.execute("DELETE FROM auth_session WHERE session_id = ?", (session_id,))
-        return None
-    if AUTH_MODE == "oauth" and int(row["user_id"]) == DEFAULT_USER_ID:
-        conn.execute("DELETE FROM auth_session WHERE session_id = ?", (session_id,))
-        return None
-    if AUTH_MODE == "oauth" and fetch_oauth_token(conn, row["user_id"]) is None:
-        conn.execute("DELETE FROM auth_session WHERE session_id = ?", (session_id,))
-        return None
-    return row
+def oauth_configured():
+    return bool(ZH_OAUTH_ENABLED and ZH_OAUTH_APP_ID and ZH_OAUTH_REDIRECT_URI and oauth_app_key())
 
 
-def create_oauth_state(conn, next_url):
-    state = secrets.token_urlsafe(24)
-    conn.execute(
-        """
-        INSERT INTO oauth_state
-          (state, next_url, expires_at, created_at)
-        VALUES
-          (?, ?, ?, ?)
-        """,
-        (state, safe_next_url(next_url), future_text(minutes=STATE_TTL_MINUTES), now_text()),
-    )
-    return state
+def oauth_backend_configured():
+    return bool(oauth_configured() and oauth_access_secret())
 
 
-def consume_oauth_state(conn, state):
-    row = conn.execute(
-        """
-        SELECT *
-        FROM oauth_state
-        WHERE state = ? AND consumed_at IS NULL
-        """,
-        (state,),
-    ).fetchone()
-    if row is None or parse_time(row["expires_at"]) <= now_dt():
-        return None
-    conn.execute(
-        "UPDATE oauth_state SET consumed_at = ? WHERE state = ?",
-        (now_text(), state),
-    )
-    return row
+def oauth_session_expired(session):
+    expires_at = session.get("expires_at")
+    return bool(expires_at and expires_at <= time.time())
 
 
-def exchange_access_token(code):
-    body = urlencode({
-        "app_id": ZH_APP_ID,
-        "app_key": ZH_APP_KEY,
+def oauth_logout_session(session):
+    session.update({
+        "token": None,
+        "expires_at": None,
+        "profile": None,
+        "user_id": None,
+        "state": None,
+        "state_verified": None,
+        "error": None,
+    })
+
+
+def oauth_payload_error(payload, fallback):
+    data = payload.get("data") or payload.get("Data") if isinstance(payload, dict) else None
+    if isinstance(data, str):
+        message = data
+    elif isinstance(data, dict):
+        message = data.get("message") or data.get("Message") or fallback
+    else:
+        message = payload.get("message") or payload.get("Message") or fallback if isinstance(payload, dict) else fallback
+    error = RuntimeError(str(message)[:200])
+    error.code = payload.get("code") or payload.get("Code") if isinstance(payload, dict) else "OAUTH_FAILED"
+    return error
+
+
+def read_json_response(response):
+    return json.loads(response.read().decode("utf-8"))
+
+
+def zhihu_json_request(url, *, method="GET", data=None, headers=None, timeout=20):
+    request = Request(url, data=data, method=method, headers=headers or {})
+    with urlopen(request, timeout=timeout) as response:
+        return read_json_response(response)
+
+
+def exchange_oauth_access_token(code):
+    app_key = oauth_app_key()
+    if not app_key:
+        raise RuntimeError("OAuth app_key 尚未配置")
+    form = urlencode({
+        "app_id": ZH_OAUTH_APP_ID,
+        "app_key": app_key,
         "grant_type": "authorization_code",
-        "redirect_uri": ZH_AUTH_REDIRECT_URI,
+        "redirect_uri": ZH_OAUTH_REDIRECT_URI,
         "code": code,
     }).encode("utf-8")
-    request = Request(
+    payload = zhihu_json_request(
         f"{ZH_OPENAPI_BASE}/access_token",
-        data=body,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
         method="POST",
+        data=form,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        timeout=20,
     )
-    with urlopen(request, timeout=10) as response:
-        payload = json.loads(response.read().decode("utf-8"))
-    token_payload = payload.get("data") if isinstance(payload.get("data"), dict) else payload
-    if token_payload.get("access_token"):
-        return token_payload
-    if payload.get("code"):
-        raise RuntimeError(str(payload.get("data") or payload))
-    if not token_payload.get("access_token"):
-        raise RuntimeError("知乎 OAuth 未返回 access_token")
+    token_payload = payload.get("data") or payload.get("Data") if isinstance(payload, dict) else None
+    if not isinstance(token_payload, dict):
+        token_payload = payload
+    token = token_payload.get("access_token") if isinstance(token_payload, dict) else None
+    if not token:
+        raise oauth_payload_error(payload, "未获得 OAuth access token")
     return token_payload
 
 
-def fetch_zhihu_user(access_token):
-    request = Request(
+def oauth_user_headers(access_secret, token):
+    if not access_secret:
+        raise RuntimeError("开放平台 Access Secret 未配置")
+    if not token:
+        raise RuntimeError("请先完成知乎账号授权")
+    return {
+        "Authorization": f"Bearer {access_secret}",
+        "X-OAuth-Token": token,
+        "X-Request-Timestamp": str(int(time.time())),
+        "Content-Type": "application/json",
+    }
+
+
+def fetch_oauth_profile(access_secret, token):
+    payload = zhihu_json_request(
         f"{ZH_OPENAPI_BASE}/user",
-        headers={"Authorization": f"Bearer {access_token}"},
-        method="GET",
+        headers=oauth_user_headers(access_secret, token),
+        timeout=20,
     )
-    with urlopen(request, timeout=10) as response:
-        payload = json.loads(response.read().decode("utf-8"))
-    user_payload = payload.get("data") if isinstance(payload.get("data"), dict) else payload
-    if user_payload.get("uid"):
-        return user_payload
-    if payload.get("code"):
-        raise RuntimeError(str(payload.get("data") or payload))
-    if not user_payload.get("uid"):
-        raise RuntimeError("知乎 OAuth 未返回用户 uid")
-    return user_payload
-
-
-def fetch_oauth_token(conn, user_id):
-    row = conn.execute(
-        "SELECT * FROM zhihu_oauth_token WHERE user_id = ?",
-        (user_id,),
-    ).fetchone()
-    if row is None or parse_time(row["expires_at"]) <= now_dt():
+    source = None
+    if isinstance(payload, dict):
+        source = payload.get("data") or payload.get("Data") or payload.get("user")
+    if not isinstance(source, dict):
         return None
-    return row
+    return {
+        "uid": source.get("uid") or source.get("Uid") or source.get("id") or source.get("Id"),
+        "fullname": source.get("name") or source.get("Fullname") or source.get("fullname") or "知乎用户",
+        "headline": source.get("headline") or source.get("Headline"),
+        "description": source.get("description") or source.get("Description"),
+        "avatar_path": source.get("avatar_url") or source.get("AvatarUrl"),
+        "email": source.get("email") or source.get("Email"),
+    }
 
 
-def fetch_zhihu_moments_payload(access_token, page=0, per_page=10):
-    params = urlencode({"page": page, "per_page": per_page})
-    request = Request(
-        f"{ZH_OPENAPI_BASE}/user/moments?{params}",
-        headers={"Authorization": f"Bearer {access_token}"},
-        method="GET",
-    )
-    with urlopen(request, timeout=10) as response:
-        payload = json.loads(response.read().decode("utf-8"))
-    if isinstance(payload, dict) and payload.get("code") and payload.get("code") not in (0, 20000):
-        raise RuntimeError(str(payload.get("data") or payload))
-    return payload
+def first_user_api_item(payload):
+    if isinstance(payload, dict) and isinstance(payload.get("Data"), dict):
+        items = payload["Data"].get("Items")
+        return items[0] if isinstance(items, list) and items else None
+    return None
 
 
-def fetch_zhihu_moments(access_token, page=0, per_page=10):
-    payload = fetch_zhihu_moments_payload(access_token, page=page, per_page=per_page)
-    moments_payload = payload.get("data") if isinstance(payload, dict) and isinstance(payload.get("data"), list) else payload
-    if isinstance(moments_payload, list):
-        return moments_payload
-    return []
+def run_oauth_user_interfaces(token):
+    access_secret = oauth_access_secret()
+    context = {}
+    results = []
+    for definition in ZHIHU_OAUTH_USER_INTERFACES:
+        query = {"Limit": "1"}
+        if definition["id"] == "contents":
+            query.update({"ContentType": "all", "Offset": "0", "SortField": "ts", "SortOrder": "desc"})
+        if definition["id"] == "followees":
+            query["Offset"] = "0"
+        if definition["id"] == "favlist_contents":
+            if not context.get("favlist_token"):
+                results.append({**definition, "status": "empty", "item": None, "message": "账号没有可用于测试的收藏夹。"})
+                continue
+            query.update({"FavlistUrlToken": str(context["favlist_token"]), "Offset": "0"})
+        try:
+            payload = zhihu_json_request(
+                f"https://developer.zhihu.com{definition['endpoint']}?{urlencode(query)}",
+                headers=oauth_user_headers(access_secret, token),
+                timeout=30,
+            )
+            if isinstance(payload, dict) and payload.get("Code") not in (0, "0", None):
+                raise oauth_payload_error(payload, "用户数据接口失败")
+            item = first_user_api_item(payload)
+            if definition["id"] == "favlists" and isinstance(item, dict) and item.get("UrlToken"):
+                context["favlist_token"] = item["UrlToken"]
+            results.append({
+                **definition,
+                "status": "success" if item else "empty",
+                "item": item,
+                "message": None if item else "接口成功但没有数据。",
+            })
+        except Exception as error:
+            results.append({**definition, "status": "error", "item": None, "message": str(error)[:200]})
+    return results
 
 
 def append_query_param(url, key, value):
@@ -2454,7 +2460,6 @@ def project_public_origin(project_url=""):
     for candidate in (
         project_url,
         CONFIG.get("project_public_url"),
-        ZH_AUTH_REDIRECT_URI,
         "https://ahipkiokdnvl.sealosbja.site/",
     ):
         origin = url_origin(candidate)
@@ -3918,98 +3923,8 @@ def apply_follow_moment_reward(conn, user_id, new_count):
 def sync_follow_moments(user_id, page=0, per_page=10):
     page = max(0, int(page))
     per_page = max(1, min(int(per_page), 50))
+    offset = page * per_page
     with connect_db() as conn:
-        token = fetch_oauth_token(conn, user_id)
-        if token is None:
-            return 409, {
-                "error": "OAUTH_TOKEN_REQUIRED",
-                "message": "缺少知乎 OAuth token，请重新登录",
-            }
-
-    try:
-        moments = fetch_zhihu_moments(token["access_token"], page=page, per_page=per_page)
-    except Exception as error:
-        with connect_db() as conn:
-            conn.execute(
-                """
-                INSERT INTO zhihu_follow_moment_sync
-                  (user_id, last_synced_at, last_new_count, last_error, created_at, updated_at)
-                VALUES
-                  (?, ?, 0, ?, ?, ?)
-                ON CONFLICT(user_id) DO UPDATE SET
-                  last_synced_at = excluded.last_synced_at,
-                  last_new_count = 0,
-                  last_error = excluded.last_error,
-                  updated_at = excluded.updated_at
-                """,
-                (user_id, now_text(), str(error), now_text(), now_text()),
-            )
-        return 502, {"error": "FOLLOW_MOMENTS_SYNC_FAILED", "message": str(error)}
-
-    new_keys = []
-    new_moment_ids = []
-    newest_action_time = None
-    with connect_db() as conn:
-        conn.execute("BEGIN")
-        for moment in moments:
-            normalized = normalize_moment(moment)
-            newest_action_time = max(newest_action_time or 0, normalized["action_time"])
-            cursor = conn.execute(
-                """
-                INSERT OR IGNORE INTO zhihu_follow_moment
-                  (user_id, moment_key, actor_name, action_text, action_time,
-                   target_title, target_excerpt, target_author_name, raw_payload,
-                   llm_summary_status, created_at, updated_at)
-                VALUES
-                  (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
-                """,
-                (
-                    user_id,
-                    normalized["moment_key"],
-                    normalized["actor_name"],
-                    normalized["action_text"],
-                    normalized["action_time"],
-                    normalized["target_title"],
-                    normalized["target_excerpt"],
-                    normalized["target_author_name"],
-                    normalized["raw_payload"],
-                    now_text(),
-                    now_text(),
-                ),
-            )
-            if cursor.rowcount:
-                new_keys.append(normalized["moment_key"])
-                if cursor.lastrowid:
-                    new_moment_ids.append(int(cursor.lastrowid))
-
-        new_count = len(new_keys)
-        reward_count = 0
-        if new_keys:
-            placeholders = ",".join("?" for _ in new_keys)
-            reward_count = conn.execute(
-                f"""
-                SELECT COUNT(*)
-                FROM zhihu_follow_moment
-                WHERE user_id = ?
-                  AND moment_key IN ({placeholders})
-                  AND reward_granted = 0
-                """,
-                (user_id, *new_keys),
-            ).fetchone()[0]
-
-        reward, profile = apply_follow_moment_reward(conn, user_id, reward_count)
-        if new_keys and (reward["exp"] or reward["mood"]):
-            placeholders = ",".join("?" for _ in new_keys)
-            conn.execute(
-                f"""
-                UPDATE zhihu_follow_moment
-                SET reward_granted = 1,
-                    updated_at = ?
-                WHERE user_id = ? AND moment_key IN ({placeholders})
-                """,
-                (now_text(), user_id, *new_keys),
-            )
-
         alert_count = conn.execute(
             """
             SELECT COUNT(*)
@@ -4028,6 +3943,14 @@ def sync_follow_moments(user_id, page=0, per_page=10):
             """,
             (user_id,),
         ).fetchone()
+        newest_action_time = conn.execute(
+            """
+            SELECT MAX(action_time)
+            FROM zhihu_follow_moment
+            WHERE user_id = ?
+            """,
+            (user_id,),
+        ).fetchone()[0]
         conn.execute(
             """
             INSERT INTO zhihu_follow_moment_sync
@@ -4045,40 +3968,42 @@ def sync_follow_moments(user_id, page=0, per_page=10):
               last_error = NULL,
               updated_at = excluded.updated_at
             """,
-            (user_id, now_text(), newest_action_time, new_count, now_text(), now_text()),
+            (user_id, now_text(), newest_action_time, 0, now_text(), now_text()),
         )
         conn.commit()
 
         batch_id = uuid.uuid4().hex
         retry_ids = []
-        if new_moment_ids:
-            now = now_dt()
-            for r in conn.execute(
-                "SELECT id, llm_retry_count, updated_at FROM zhihu_follow_moment "
-                "WHERE user_id = ? AND llm_summary_status = 'failed' AND llm_retry_count < 3",
-                (user_id,),
-            ).fetchall():
-                try:
-                    last = parse_time(r["updated_at"]) if r["updated_at"] else now - timedelta(seconds=99999)
-                except Exception:
-                    last = now - timedelta(seconds=99999)
-                wait_secs = 30 * (2 ** int(r["llm_retry_count"] or 0))
-                if (now - last).total_seconds() >= wait_secs:
-                    conn.execute(
-                        "UPDATE zhihu_follow_moment SET llm_summary_status='pending', updated_at=? WHERE id=?",
-                        (now_text(), r["id"]),
-                    )
-                    retry_ids.append(int(r["id"]))
-            if retry_ids:
-                conn.commit()
+        now = now_dt()
+        for r in conn.execute(
+            "SELECT id, llm_retry_count, updated_at FROM zhihu_follow_moment "
+            "WHERE user_id = ? AND llm_summary_status = 'failed' AND llm_retry_count < 3 "
+            "ORDER BY action_time DESC, id DESC LIMIT ? OFFSET ?",
+            (user_id, per_page, offset),
+        ).fetchall():
+            try:
+                last = parse_time(r["updated_at"]) if r["updated_at"] else now - timedelta(seconds=99999)
+            except Exception:
+                last = now - timedelta(seconds=99999)
+            wait_secs = 30 * (2 ** int(r["llm_retry_count"] or 0))
+            if (now - last).total_seconds() >= wait_secs:
+                conn.execute(
+                    "UPDATE zhihu_follow_moment SET llm_summary_status='pending', updated_at=? WHERE id=?",
+                    (now_text(), r["id"]),
+                )
+                retry_ids.append(int(r["id"]))
+        if retry_ids:
+            conn.commit()
 
-        scheduled_ids = list(new_moment_ids) + retry_ids
+        scheduled_ids = retry_ids
         if scheduled_ids:
             schedule_follow_summary(user_id, batch_id, scheduled_ids)
 
+        reward, profile = apply_follow_moment_reward(conn, user_id, 0)
+
         return 200, {
             "newCount": alert_count,
-            "syncedNewCount": new_count,
+            "syncedNewCount": 0,
             "latestMoment": camel_follow_moment(latest_alert),
             "reward": reward,
             "profile": profile,
@@ -5627,20 +5552,48 @@ class Handler(BaseHTTPRequestHandler):
         host = (self.headers.get("Host") or "").split(":", 1)[0].lower()
         return host in ("127.0.0.1", "localhost", "::1")
 
-    def local_bypass_session(self):
-        if not LOCAL_AUTH_BYPASS or not self.is_local_request():
-            return None
+    def session_cookie(self, session_id):
+        max_age = SESSION_TTL_HOURS * 3600
+        return f"{SESSION_COOKIE_NAME}={session_id}; Max-Age={max_age}; HttpOnly; SameSite=Lax; Path=/"
+
+    def clear_session_cookie(self):
+        return f"{SESSION_COOKIE_NAME}=; Max-Age=0; HttpOnly; SameSite=Lax; Path=/"
+
+    def oauth_session(self, create=False):
+        session_id = self.get_cookie_value(SESSION_COOKIE_NAME)
+        session = OAUTH_SESSIONS.get(session_id) if session_id else None
+        if session and oauth_session_expired(session):
+            oauth_logout_session(session)
+            session["error"] = {"code": "TOKEN_EXPIRED", "message": "授权已过期，请重新登录。"}
+        if session or not create:
+            return session, None
+        session_id = secrets.token_urlsafe(24)
+        session = {
+            "id": session_id,
+            "state": None,
+            "next_url": "/",
+            "token": None,
+            "expires_at": None,
+            "profile": None,
+            "user_id": None,
+            "state_verified": None,
+            "error": None,
+        }
+        OAUTH_SESSIONS[session_id] = session
+        return session, self.session_cookie(session_id)
+
+    def local_mock_session(self):
         with connect_db() as conn:
             user = upsert_zhihu_user(conn, mock_zhihu_user())
         return {"user_id": int(user["uid"])}
 
     def get_current_session(self):
-        session_id = self.get_cookie_value(SESSION_COOKIE_NAME)
-        with connect_db() as conn:
-            session = fetch_session(conn, session_id)
-        if session is not None:
-            return session
-        return self.local_bypass_session()
+        if LOCAL_AUTH_BYPASS and self.is_local_request():
+            return self.local_mock_session()
+        session, _ = self.oauth_session(create=False)
+        if session and session.get("token") and session.get("user_id"):
+            return {"user_id": int(session["user_id"])}
+        return None
 
     def require_auth_json(self):
         session = self.get_current_session()
@@ -5678,13 +5631,6 @@ class Handler(BaseHTTPRequestHandler):
             return None
         return session
 
-    def session_cookie(self, session_id):
-        max_age = SESSION_TTL_HOURS * 3600
-        return f"{SESSION_COOKIE_NAME}={session_id}; Max-Age={max_age}; HttpOnly; SameSite=Lax; Path=/"
-
-    def clear_session_cookie(self):
-        return f"{SESSION_COOKIE_NAME}=; Max-Age=0; HttpOnly; SameSite=Lax; Path=/"
-
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
@@ -5702,53 +5648,73 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/auth/login":
             qs = parse_qs(parsed.query)
             next_url = safe_next_url((qs.get("next") or ["/"])[0])
-            if AUTH_MODE == "mock" and self.is_local_request():
-                with connect_db() as conn:
-                    user = upsert_zhihu_user(conn, mock_zhihu_user())
-                    session_id = create_session(conn, user["uid"])
-                self.send_redirect(next_url, self.session_cookie(session_id))
+            if LOCAL_AUTH_BYPASS and self.is_local_request():
+                self.local_mock_session()
+                self.send_redirect(next_url)
                 return
-
-            if not ZH_APP_ID or not ZH_APP_KEY:
-                self.send_error(500, "Missing ZH_APP_ID or ZH_APP_KEY")
+            if not ZH_OAUTH_ENABLED or not ZH_OAUTH_APP_ID or not ZH_OAUTH_REDIRECT_URI:
+                self.send_error(500, "OAuth is not configured")
                 return
-            with connect_db() as conn:
-                state = create_oauth_state(conn, next_url)
+            if not oauth_app_key():
+                self.send_error(500, "OAuth app_key is not configured")
+                return
+            session, cookie = self.oauth_session(create=True)
+            session["state"] = secrets.token_urlsafe(24)
+            session["next_url"] = next_url
+            session["error"] = None
             params = urlencode({
-                "redirect_uri": ZH_AUTH_REDIRECT_URI,
-                "app_id": ZH_APP_ID,
+                "redirect_uri": ZH_OAUTH_REDIRECT_URI,
+                "app_id": ZH_OAUTH_APP_ID,
                 "response_type": "code",
-                "state": state,
+                "state": session["state"],
             })
-            self.send_redirect(f"{ZH_OPENAPI_BASE}/authorize?{params}")
+            self.send_redirect(f"{ZH_OPENAPI_BASE}/authorize?{params}", cookie)
             return
 
         if path == "/auth/callback":
+            session, cookie = self.oauth_session(create=True)
             qs = parse_qs(parsed.query)
-            code = (qs.get("code") or qs.get("authorization_code") or [""])[0]
-            state = (qs.get("state") or [""])[0]
-            if not code:
-                self.send_error(400, "Missing OAuth code")
-                return
-            with connect_db() as conn:
-                next_url = "/"
-                if state:
-                    state_row = consume_oauth_state(conn, state)
-                    if state_row is None:
-                        self.send_error(400, "Invalid OAuth state")
-                        return
-                    next_url = safe_next_url(state_row["next_url"])
+            code = (qs.get("authorization_code") or qs.get("code") or [""])[0]
+            returned_state = (qs.get("state") or [""])[0]
             try:
-                token = exchange_access_token(code)
-                zhihu_user = fetch_zhihu_user(token["access_token"])
+                if not code:
+                    raise RuntimeError("回调缺少 authorization_code")
+                if returned_state and not hmac.compare_digest(returned_state, session.get("state") or ""):
+                    raise RuntimeError("state 校验失败")
+                token_payload = exchange_oauth_access_token(code)
+                token = token_payload.get("access_token")
+                expires_in = int(token_payload.get("expires_in") or 0)
+                access_secret = oauth_access_secret()
+                profile = None
+                try:
+                    profile = fetch_oauth_profile(access_secret, token)
+                except Exception:
+                    profile = None
+                storage_user = mock_zhihu_user()
+                if profile and profile.get("uid"):
+                    try:
+                        int(profile["uid"])
+                        storage_user = profile
+                    except (TypeError, ValueError):
+                        pass
+                with connect_db() as conn:
+                    user = upsert_zhihu_user(conn, storage_user)
+                session.update({
+                    "token": token,
+                    "expires_at": time.time() + expires_in if expires_in > 0 else None,
+                    "profile": profile,
+                    "user_id": int(user["uid"]),
+                    "state": None,
+                    "state_verified": bool(returned_state),
+                    "error": None,
+                })
+                self.send_redirect(safe_next_url(session.get("next_url") or "/"), cookie)
             except Exception as error:
-                self.send_error(502, f"Zhihu OAuth failed: {error}")
-                return
-            with connect_db() as conn:
-                user = upsert_zhihu_user(conn, zhihu_user)
-                save_oauth_token(conn, user["uid"], token)
-                session_id = create_session(conn, user["uid"])
-            self.send_redirect(next_url, self.session_cookie(session_id))
+                session["error"] = {
+                    "code": str(getattr(error, "code", "OAUTH_FAILED")),
+                    "message": str(error)[:200],
+                }
+                self.send_redirect("/?oauth=error", cookie)
             return
 
         if path == "/api/auth/me":
@@ -5759,6 +5725,26 @@ class Handler(BaseHTTPRequestHandler):
             with connect_db() as conn:
                 user = fetch_user(conn, session["user_id"])
             self.send_json(200, {"authenticated": True, "user": camel_user(user)})
+            return
+
+        if path == "/api/oauth/status":
+            session, cookie = self.oauth_session(create=True)
+            body = {
+                "ok": True,
+                "configured": oauth_backend_configured(),
+                "callbackConfigured": bool(ZH_OAUTH_REDIRECT_URI),
+                "authorized": bool(session.get("token")),
+                "appId": ZH_OAUTH_APP_ID,
+                "redirectUri": ZH_OAUTH_REDIRECT_URI,
+                "profile": session.get("profile"),
+                "stateVerified": session.get("state_verified"),
+                "expiresAt": datetime.fromtimestamp(session["expires_at"], APP_TZ).isoformat() if session.get("expires_at") else None,
+                "error": session.get("error"),
+                "interfaces": ZHIHU_OAUTH_USER_INTERFACES,
+                "localPreviewOnly": bool(LOCAL_AUTH_BYPASS and self.is_local_request()),
+            }
+            headers = {"Set-Cookie": cookie} if cookie else None
+            self.send_json(200, body, headers)
             return
 
         if path == "/admin":
@@ -5887,28 +5873,17 @@ class Handler(BaseHTTPRequestHandler):
             qs = parse_qs(parsed.query)
             page = max(0, int((qs.get("page") or [0])[0]))
             per_page = max(1, min(int((qs.get("per_page") or qs.get("perPage") or qs.get("limit") or [20])[0]), 50))
+            offset = page * per_page
             with connect_db() as conn:
-                token = fetch_oauth_token(conn, session["user_id"])
-                if token is not None:
-                    try:
-                        self.send_json(200, fetch_zhihu_moments_payload(token["access_token"], page=page, per_page=per_page))
-                    except Exception as error:
-                        self.send_json(502, {"error": "FOLLOW_MOMENTS_FETCH_FAILED", "message": str(error)})
-                    return
-                if AUTH_MODE != "mock":
-                    self.send_json(409, {
-                        "error": "OAUTH_TOKEN_REQUIRED",
-                        "message": "缺少知乎 OAuth token，请重新登录",
-                    })
-                    return
                 rows = conn.execute(
                     """
                     SELECT *
                     FROM zhihu_follow_moment
+                    WHERE user_id = ?
                     ORDER BY action_time DESC, id DESC
-                    LIMIT ?
+                    LIMIT ? OFFSET ?
                     """,
-                    (per_page,),
+                    (session["user_id"], per_page, offset),
                 ).fetchall()
                 self.send_json(200, {"data": [raw_follow_moment(row) for row in rows]})
             return
@@ -6153,11 +6128,25 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/auth/logout":
-            session_id = self.get_cookie_value(SESSION_COOKIE_NAME)
-            if session_id:
-                with connect_db() as conn:
-                    conn.execute("DELETE FROM auth_session WHERE session_id = ?", (session_id,))
+            session, _ = self.oauth_session(create=False)
+            if session:
+                oauth_logout_session(session)
             self.send_json(200, {"ok": True}, {"Set-Cookie": self.clear_session_cookie()})
+            return
+
+        if path == "/api/oauth/logout":
+            session, _ = self.oauth_session(create=False)
+            if session:
+                oauth_logout_session(session)
+            self.send_json(200, {"ok": True}, {"Set-Cookie": self.clear_session_cookie()})
+            return
+
+        if path == "/api/oauth/run-all":
+            session, _ = self.oauth_session(create=False)
+            if not session or not session.get("token"):
+                self.send_json(401, {"ok": False, "error": {"code": "LOGIN_REQUIRED", "message": "请先完成知乎账号授权"}})
+                return
+            self.send_json(200, {"ok": True, "results": run_oauth_user_interfaces(session["token"])})
             return
 
         if path == "/api/p0/pet/adopt":
@@ -6593,7 +6582,9 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     init_db()
     print("─" * 60)
-    print(f"[liukanshan-demo] auth_mode={AUTH_MODE}, "
+    print(f"[liukanshan-demo] oauth_enabled={ZH_OAUTH_ENABLED}, "
+          f"oauth_app_id={'present' if ZH_OAUTH_APP_ID else 'MISSING'}, "
+          f"callback={'present' if ZH_OAUTH_REDIRECT_URI else 'MISSING'}, "
           f"local_auth_bypass={LOCAL_AUTH_BYPASS}")
     print(f"[liukanshan-demo] llm_model={LLM_MODEL}, "
           f"llm_demo_fallback={LLM_DEMO_FALLBACK}, "

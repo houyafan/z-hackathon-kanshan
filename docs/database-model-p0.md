@@ -32,10 +32,7 @@ pet_growth_log     成长数值流水
 pet_level_config   等级配置
 pet_daily_stat     用户每日养成统计
 zhihu_content_pool 推荐页内容池
-zhihu_user         知乎 OAuth 用户映射
-zhihu_oauth_token  知乎 OAuth token 服务端存储
-auth_session       产品登录 session
-oauth_state        OAuth state 防 CSRF 与回跳
+zhihu_user         知乎 OAuth / 本地 mock 用户映射
 zhihu_follow_moment      当前用户关注动态
 zhihu_follow_moment_sync 关注动态同步水位
 ```
@@ -80,16 +77,13 @@ zhihu_follow_moment_sync 关注动态同步水位
 
 ## 4. 表设计
 
-### 4.0 登录与用户表
+### 4.0 用户表
 
-接入知乎登录后，P0 的 `user_id` 使用知乎 OAuth `/user` 返回的 `uid`。前端不再传可信 `userId`，所有养成写入都由服务端 session 解析当前用户。
+当前 P0 已按 Hackathon Skill 安全边界重新接入知乎 OAuth：线上通过知乎授权建立内存会话，本地请求可使用 mock 用户预览。前端不再传可信 `userId`，所有养成写入都由服务端解析当前用户。
 
 | 表 | 说明 |
 | --- | --- |
-| `zhihu_user` | 授权登录过的知乎用户基础信息，`uid` 唯一 |
-| `zhihu_oauth_token` | 服务端保存 OAuth `access_token` 与过期时间，token 不下发前端 |
-| `auth_session` | 本产品登录态，cookie `lks_session` 对应 `session_id` |
-| `oauth_state` | OAuth 授权前生成的一次性 state，用于防 CSRF 和登录后回跳 |
+| `zhihu_user` | 授权用户或本地 mock 用户基础信息，`uid` 唯一 |
 
 ### 4.1 pet_profile
 
@@ -296,7 +290,7 @@ VALUES
 
 ### 4.7 zhihu_follow_moment
 
-当前用户关注动态池，来源为知乎 OAuth `GET /user/moments`。用于判断关注 tab 是否有新内容，并驱动刘看山提醒和轻量成长奖励。
+当前用户关注动态池，来源为本地 mock 数据。用于判断关注 tab 是否有新内容，并驱动刘看山提醒和轻量成长奖励。
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
@@ -348,7 +342,7 @@ zhihu_follow_moment.raw_payload
 
 | 接口 | 说明 |
 | --- | --- |
-| `POST /api/p0/follow-moments/sync` | 使用当前用户 OAuth token 同步关注动态，新增动态入库并给刘看山发放轻量奖励 |
+| `POST /api/p0/follow-moments/sync` | 基于本地已入库关注动态刷新同步状态，并处理失败摘要重试 |
 | `GET /api/p0/follow-moments` | 查询已入库关注动态，用于后续关注 tab/调试 |
 | `POST /api/p0/follow-moments/mark-notified` | 前端完成气泡提醒后标记已提醒，避免重复打扰 |
 
